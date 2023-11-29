@@ -1,3 +1,13 @@
-i)  kubectl get nodes
+li)  kubectl get nodes
 ii) kubectl describe node node_name
-iii) 
+iii) kubectl get pods
+iv) kubectl get svc
+v) kubectl apply -f pod.yaml(file name)
+vi) kubectl create pod podname
+vii) kubectl delete pod podname
+viii) kubectl create svc servicename
+ix) kubectl create namespace
+x) kubectl get ns 
+xi) kubectl get rs(replica set)
+xii) kubectl get pods -o wide 
+xiii) 
