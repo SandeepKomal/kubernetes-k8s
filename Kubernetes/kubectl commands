@@ -1,18 +1,18 @@
-li)  kubectl get nodes
-ii) kubectl describe node node_name
-iii) kubectl get pods
-iv) kubectl get svc
-v) kubectl apply -f pod.yaml(file name)
-vi) kubectl create pod podname
-vii) kubectl delete pod podname
-viii) kubectl create svc servicename
-ix) kubectl create namespace
-x) kubectl get ns 
-xi) kubectl get rs(replica set)
-xii) kubectl get pods -o wide 
-xiii) kubectl get deploy (deployment)
-ixx) kubectl delete deploy deployment name 
-xx) kubectl rollout undo deployment deployment name --to-revision=2
-xxi) kubectl rollout history deployment deployment name 
-xxii) kubectl exec -it customer(container) /bin/bash
+kubectl get nodes
+kubectl describe node node_name
+kubectl get pods
+kubectl get svc
+kubectl apply -f pod.yaml(file name)
+kubectl create pod podname
+kubectl delete pod podname
+kubectl create svc servicename
+kubectl create namespace
+kubectl get ns 
+kubectl get rs(replica set)
+kubectl get pods -o wide 
+kubectl get deploy (deployment)
+kubectl delete deploy deployment name 
+kubectl rollout undo deployment deployment name --to-revision=2
+kubectl rollout history deployment deployment name 
+kubectl exec -it customer(container) /bin/bash
 
