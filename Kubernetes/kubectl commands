@@ -10,4 +10,7 @@ ix) kubectl create namespace
 x) kubectl get ns 
 xi) kubectl get rs(replica set)
 xii) kubectl get pods -o wide 
-xiii) 
+xiii) kubectl get deploy (deployment)
+ixx) kubectl delete deploy deployment name 
+xx) kubectl rollout undo deployment deployment name --to-revision=2
+xxi) kubectl rollout history deployment deployment name 
