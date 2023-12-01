@@ -6,9 +6,12 @@ kubectl apply -f pod.yaml(file name)
 kubectl create pod podname
 kubectl delete pod podname
 kubectl create svc servicename
+kubectl delete svc servicename
 kubectl create namespace
-kubectl get ns 
+kubectl get ns
+kubectl delete ns namespacename
 kubectl get rs(replica set)
+kubectl delete rs rsname
 kubectl get pods -o wide 
 kubectl get deploy (deployment)
 kubectl delete deploy deployment name 
