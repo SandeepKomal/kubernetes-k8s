@@ -1,0 +1,26 @@
+
+When creating an Amazon EKS (Elastic Kubernetes Service) cluster on the AWS Management Console, 
+you typically need to define IAM roles for both the control plane and the worker nodes (data plane). 
+Here are the recommended IAM roles for each:
+
+#############Master Node (Control Plane) #################
+AmazonEKSClusterPolicy: This managed policy provides the necessary permissions for the Amazon EKS control plane to manage resources on your behalf. 
+You can attach this policy directly to the IAM role used for the EKS cluster's control plane.
+
+########## Woker Node (Data Plane) ######################
+
+Amazon EKS Worker Node Policy:
+This policy (AmazonEKSClusterNodegroupPolicy) allows worker nodes to join the EKS cluster and perform necessary operations within the cluster.
+
+Amazon EKS CNI Policy:
+1)This policy (AmazonEKS_CNI_Policy) grants worker nodes the necessary permissions for the Amazon VPC CNI (Container Network Interface) plugin to function correctly. 
+2)It enables communication between pods and allows the CNI plugin to manage network resources.
+3)The Amazon EKS CNI plugin is responsible for allocating and managing IP addresses for pods, setting up network routes, and configuring security groups. 
+Without the necessary permissions granted by the CNI policy, the worker nodes won't be able to perform these networking operations.
+4)The CNI policy allows worker nodes to communicate with the Amazon VPC and 
+ensures that pods within the EKS cluster can communicate with each other and with external resources.
+
+
+Amazon Elastic Container Registry (ECR) Read-Only Policy:
+If your worker nodes need to pull container images from Amazon ECR, you should attach the AmazonEC2ContainerRegistryReadOnly managed policy 
+or a custom policy that provides read-only access to the ECR repositories.
