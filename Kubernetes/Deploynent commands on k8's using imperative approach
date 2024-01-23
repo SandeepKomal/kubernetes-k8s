@@ -1,0 +1,25 @@
+##### Deploynent commands on k8's using imperative approach ###
+
+kubectl run (podname) image=image ---> to run a pod using the image
+
+kubectl get pods ---> to get list of all the pods
+
+kubectl delete pod podname ---> to delete the specigic pod
+
+kubectl get pods -o  wide ---> to get all the details of the pod(ip,the workernode ,conatiners ruuning,)
+
+kubectl get nodes ---> to get list of all the nodes
+
+kubectl delete node nodename --->  to get list of all the nodes
+
+kubectl get nodes -o wide --->  to get all the details of the nodes
+
+kubectl get pod <podname> -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | wc -l ---> no of container in the specified pod 
+
+kubectl exec -it podname /bin/bash ----> to login to the pod
+
+
+
+
+
+
