@@ -18,6 +18,8 @@ kubectl get pod <podname> -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n'
 
 kubectl exec -it podname /bin/bash ----> to login to the pod
 
+kubectl describe pod podname 
+
 
 
 
