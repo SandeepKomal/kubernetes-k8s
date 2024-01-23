@@ -14,12 +14,30 @@ kubectl delete node nodename --->  to get list of all the nodes
 
 kubectl get nodes -o wide --->  to get all the details of the nodes
 
-kubectl get pod <podname> -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | wc -l ---> no of container in the specified pod 
+kubectl get pod <podname> -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | wc -l ---> no of containers in the specified pod 
 
 kubectl exec -it podname /bin/bash ----> to login to the pod
 
 kubectl describe pod podname 
 
+kubectl get svc 
+
+kubectl delete svc servicename 
+
+ClusterIP:
+kubectl expose pod podname --port=80(portnumber) --type=ClusterIP --name=servicename
+login to pod  kubectl exec -it podname /bin/bash
+curl pod ip adrress
+
+Nodeport :
+kubectl expose pod podname --port=80(portnumber) --type=NodePort --name=servicename
+it will expose the pod with node port by asssining a port no to the node that is between 30000 - 32767
+and we should add that port to cluster security group to expose the app
+The public ip of wokrernode:the randomly assigned port number will give you the app
+
+Load balancer :
+kubectl expose pod podname --port=80(portnumber) --type=LoadBalancer --name=servicename
+just give the dns endpoint of the loadbalancer will give you the app in the browser
 
 
 
