@@ -7,8 +7,8 @@ kubectl create pod podname
 kubectl delete pod podname
 kubectl create svc servicename
 kubectl delete svc servicename
-kubectl create namespace
-kubectl get ns
+kubectl create namespace / ns namespacename
+kubectl get ns /namespace
 kubectl delete ns namespacename
 kubectl get rs(replica set)
 kubectl delete rs rsname
