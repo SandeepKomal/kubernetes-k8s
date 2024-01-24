@@ -10,6 +10,8 @@ kubectl delete svc servicename
 kubectl create namespace / ns namespacename
 kubectl get ns /namespace
 kubectl delete ns namespacename
+kubectl apply -f pod.yaml -n namespacename
+kubectl get pods -n namespacename
 kubectl get rs(replica set)
 kubectl delete rs rsname
 kubectl get pods -o wide 
