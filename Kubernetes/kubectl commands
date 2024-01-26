@@ -17,8 +17,8 @@ kubectl delete rs rsname
 kubectl get pods -o wide 
 kubectl get deploy (deployment)
 kubectl delete deploy deployment name 
-kubectl rollout undo deployment deployment name --to-revision=2
-kubectl rollout history deployment deployment name 
+kubectl rollout undo deployment deployname --to-revision=2
+kubectl rollout history deployment deployment name
 kubectl exec -it customer(container) /bin/bash
 kubectl get pods -l tier=backend
 kubectl get pods -l app=packersmovers
