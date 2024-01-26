@@ -1,6 +1,6 @@
 ##### Deploynent commands on k8's using imperative approach ###
 
-kubectl run (podname) image=image ---> to run a pod using the image
+kubectl run (podname) --image=image ---> to run a pod using the image
 
 kubectl get pods ---> to get list of all the pods
 
