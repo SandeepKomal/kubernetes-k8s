@@ -28,10 +28,10 @@ aws iam create-policy \
 Note: Please replace the account ID in line 34 with your own aws account id
 
 eksctl create iamserviceaccount \
-  --cluster batch15-cluster \
+  --cluster deploy \
   --namespace kube-system \
   --name aws-load-balancer-controller \
-  --attach-policy-arn arn:aws:iam::573567580560:policy/AWSLoadBalancerControllerIAMPolicy \
+  --attach-policy-arn arn:aws:iam::637423236688:policy/AWSLoadBalancerControllerIAMPolicy \
   --override-existing-serviceaccounts \
   --approve
 
