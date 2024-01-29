@@ -14,7 +14,7 @@ helm version --short
 
 eksctl utils associate-iam-oidc-provider \
     --region ${AWS_REGION} \
-    --cluster batch15-cluster \
+    --cluster deploy \
     --approve
 
 ########################## Create a policy called AWSLoadBalancerControllerIAMPolicy #######################
