@@ -14,7 +14,7 @@ helm version --short
 
 eksctl utils associate-iam-oidc-provider \
     --region ${AWS_REGION} \
-    --cluster deploy \
+    --cluster spring \
     --approve
 
 ########################## Create a policy called AWSLoadBalancerControllerIAMPolicy #######################
@@ -28,7 +28,7 @@ aws iam create-policy \
 Note: Please replace the account ID in line 34 with your own aws account id
 
 eksctl create iamserviceaccount \
-  --cluster deploy \
+  --cluster spring \
   --namespace kube-system \
   --name aws-load-balancer-controller \
   --attach-policy-arn arn:aws:iam::637423236688:policy/AWSLoadBalancerControllerIAMPolicy \
