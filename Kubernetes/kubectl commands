@@ -22,5 +22,8 @@ kubectl rollout history deployment deployment name
 kubectl exec -it customer(container) /bin/bash
 kubectl get pods -l tier=backend
 kubectl get pods -l app=packersmovers
-
+kubectl get cm
+kubectl describe cm config-mapname
+kubectl get ingress
+kubectl describe ingress ingressname
 
