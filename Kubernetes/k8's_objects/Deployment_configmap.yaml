@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer
+  labels:
+    app: packersmovers
+    tier: backend
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  revisionHistoryLimit: 4
+  replicas: 1
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app: packersmovers
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: packersmovers
+        tier: backend
+    spec:
+      containers:
+      - name: customer
+        image: 637423236688.dkr.ecr.us-east-1.amazonaws.com/spring:11
+        imagePullPolicy: Always
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: customer-config-map
+              key: db-username
+        - name: DB_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: customer-config-map
+              key: db-password
+        - name: DB_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: customer-config-map
+              key: db-endpoint
+        ports:
+        - containerPort: 8081
