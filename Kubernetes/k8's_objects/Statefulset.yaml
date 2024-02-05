@@ -19,21 +19,21 @@ spec:
         image: mysql:5.7
         ports:
         - containerPort: 3306
-        volumeMounts:
-        - name: mysql-store
-          mountPath: /var/lib/mysql
+        # volumeMounts:
+        # - name: mysql-store
+        #   mountPath: /var/lib/mysql
         env:
           - name: MYSQL_ROOT_PASSWORD
             valueFrom:
               secretKeyRef:
                 name: mysql-password
                 key: MYSQL_ROOT_PASSWORD
-  volumeClaimTemplates:
-  - metadata:
-      name: mysql-store
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      storageClassName: "linode-block-storage-retain"
-      resources:
-        requests:
-          storage: 5Gi
+  # volumeClaimTemplates:
+  # - metadata:
+  #     name: mysql-store
+  #   spec:
+  #     accessModes: ["ReadWriteOnce"]
+  #     storageClassName: "linode-block-storage-retain"
+  #     resources:
+  #       requests:
+  #         storage: 5Gi
