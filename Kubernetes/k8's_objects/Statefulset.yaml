@@ -26,8 +26,20 @@ spec:
           - name: MYSQL_ROOT_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: mysql-password
-                key: MYSQL_ROOT_PASSWORD
+                name: customer-secrets
+                key: db-root-password
+
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                name: customer-secrets
+                key: db-username
+
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: customer-secrets
+                key: db-password
   # volumeClaimTemplates:
   # - metadata:
   #     name: mysql-store
