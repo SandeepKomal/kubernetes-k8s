@@ -1,52 +1,59 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  type: LoadBalancer
+  selector:
+    app: mysql
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3306
+      targetPort: 3306
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: mysql-set
+  name: mysql-deployment
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: mysql
-  serviceName: "mysql"
-  replicas: 3
+    serviceName: "mysql"
   template:
     metadata:
       labels:
         app: mysql
     spec:
-      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: mysql-pv
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
       containers:
-      - name: mysql
-        image: mysql:5.7
-        ports:
-        - containerPort: 3306
-        volumeMounts:
-        - name: mysql-store
-          mountPath: /var/lib/mysql
-        env:
-          - name: MYSQL_ROOT_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: customer-secrets
-                key: db-root-password
-
-          - name: MYSQL_USER
-            valueFrom:
-              secretKeyRef:
-                name: customer-secrets
-                key: db-username
-
-          - name: MYSQL_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: customer-secrets
-                key: db-password
-  volumeClaimTemplates:
-  - metadata:
-      name: mysql-store
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      storageClassName: gp2
-      # storageClassName: "linode-block-storage-retain"
-      resources:
-        requests:
-          storage: 5Gi
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: customer-secrets
+                  key: db-root-password
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: customer-secrets
+                  key: db-username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: customer-secrets
+                  key: db-password
+          volumeMounts:
+            - name: mysql-pv
+              mountPath: /var/lib/mysql
+          ports:
+            - containerPort: 3306
+              name: mysql
