@@ -1,6 +1,5 @@
-# Kubectl Commands
+# Kubectl Commands : ### Quick access to kubectl commands
 
-Quick access to kubectl commands
 
 ### Cluster & Node management:
 
