@@ -22,15 +22,49 @@ List the API resources that are available
 ```
 kubectl api-resources
 ```
-List the API versions that are available
+Update the taints on one or more nodes
 
 ```
-kubectl api-versions
+kubectl taint node <node_name> 
 ```
 
-List everything
+Describe a specific node.
 
 ```
-kubectl get all --all-namespaces 
+kubectl describe node <node-name> 
 ```
+Delete a node or multiple nodes
 
+```
+kubectl delete node <node_name> 
+```
+Display Resource usage (CPU/Memory/Storage) for nodes
+
+```
+kubectl top node <node_name>
+```
+Pods running on a node
+
+```
+kubectl get pods -o wide | grep <node_name>
+```
+Mark a node as unschedulable
+
+```
+kubectl cordon node <node_name> 
+```
+Mark node as schedulable
+
+```
+kubectl uncordon node <node_name>
+```
+Drain a node in preparation for maintenance.
+
+```
+kubectl drain node <node_name> 
+```
+Add or update the labels of one or more nodes
+
+```
+kubectl label node
+```
