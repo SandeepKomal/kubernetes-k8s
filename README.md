@@ -1,11 +1,11 @@
-# Cluster & Node management:
+# Kubectl Commands
 
-Copy element text content or input values to the clipboard.
+Quick access to kubectl commands
 
-## Installation
+## Cluster & Node management:
 
 ```
-$ npm install --save @github/clipboard-copy-element
+kubectl cluster-info
 ```
 
 ## Usage
