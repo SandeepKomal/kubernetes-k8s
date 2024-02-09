@@ -2,7 +2,9 @@
 
 Quick access to kubectl commands
 
-## Cluster & Node management:
+### Cluster & Node management:
+
+Display endpoint information about the master and services in the cluster
 
 ```
 kubectl cluster-info
