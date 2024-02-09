@@ -1,70 +1,22 @@
-# Kubectl Commands 
+# Installing CLI tools for K8's
 
-### Cluster & Node management:
-
-Display endpoint information about the master and services in the cluster
+### Install kubectl CLI tool on EC2:
 
 ```
-kubectl cluster-info
+curl -o kubectl https://s3.us-west-2.amazonaws.com/amazon-eks/1.23.7/2022-06-29/bin/linux/amd64/kubectl
 ```
-Display the Kubernetes version running on the client and server
-
 ```
-kubectl version
+chmod +x ./kubectl
 ```
-Get the configuration of the cluster
-
 ```
-kubectl config view 
+mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
 ```
-List the API resources that are available
-
 ```
-kubectl api-resources
+echo 'export PATH=$PATH:$HOME/bin' >> ~/.bashrc
 ```
-Update the taints on one or more nodes
-
 ```
-kubectl taint node <node_name> 
+kubectl version --short --client
 ```
 
-Describe a specific node.
 
-```
-kubectl describe node <node-name> 
-```
-Delete a node or multiple nodes
 
-```
-kubectl delete node <node_name> 
-```
-Display Resource usage (CPU/Memory/Storage) for nodes
-
-```
-kubectl top node <node_name>
-```
-Pods running on a node
-
-```
-kubectl get pods -o wide | grep <node_name>
-```
-Mark a node as unschedulable
-
-```
-kubectl cordon node <node_name> 
-```
-Mark node as schedulable
-
-```
-kubectl uncordon node <node_name>
-```
-Drain a node in preparation for maintenance.
-
-```
-kubectl drain node <node_name> 
-```
-Add or update the labels of one or more nodes
-
-```
-kubectl label node
-```
