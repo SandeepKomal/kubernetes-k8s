@@ -1,5 +1,4 @@
 # Kubectl Commands 
-###  Quick access to kubectl commands
 
 ### Cluster & Node management:
 
@@ -8,21 +7,31 @@ Display endpoint information about the master and services in the cluster
 ```
 kubectl cluster-info
 ```
+Display the Kubernetes version running on the client and server
 
-## Usage
+```
+kubectl version
+```
+Get the configuration of the cluster
 
-### Script
+```
+kubectl config view 
+```
+List the API resources that are available
 
-Import as ES modules:
+```
+kubectl api-resources
+```
+List the API versions that are available
 
-```js
-import '@github/clipboard-copy-element'
+```
+kubectl api-versions
 ```
 
-With a script tag:
+List everything
 
-```html
-<script type="module" src="./node_modules/@github/clipboard-copy-element/dist/index.js">
+```
+kubectl get all --all-namespaces 
 ```
 
 ### Markup
