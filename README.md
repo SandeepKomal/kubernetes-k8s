@@ -17,6 +17,26 @@ echo 'export PATH=$PATH:$HOME/bin' >> ~/.bashrc
 ```
 kubectl version --short --client
 ```
+### Install  Kustomize CLI tool on EC2:
 
+```
+curl --silent --location --remote-name \
+  "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v3.2.3/kustomize_kustomize.v3.2.3_linux_amd64" && \
+  chmod a+x kustomize_kustomize.v3.2.3_linux_amd64 && \
+  sudo mv kustomize_kustomize.v3.2.3_linux_amd64 /usr/local/bin/kustomize
+```
+```
+kustomize version
+```
+### Install  AWS CLI tool on EC2 :
 
+```
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+```
+```
+unzip awscliv2.zip 
+```
+```
+sudo ./aws/install 
+```
 
