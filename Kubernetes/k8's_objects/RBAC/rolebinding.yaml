@@ -1,0 +1,17 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: my-role-binding
+  namespace: naveen  # Replace 'your-namespace' with your desired namespace
+subjects:
+- kind: User
+  name: arn:aws:iam::637423236688:user/naveen1
+  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: my-service-account  # Replace 'your-service-account' with the service account name
+  namespace: naveen  # Replace 'your-namespace' with the namespace of the service account
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: my-role  # Replace 'my-role' with the name of the Role
+  apiGroup: rbac.authorization.k8s.io
