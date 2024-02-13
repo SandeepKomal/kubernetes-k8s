@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-load-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-load-test
+  template:
+    metadata:
+      labels:
+        app: cpu-load-test
+    spec:
+      containers:
+      - name: cpu-load-container
+        image: busybox
+        command: ["/bin/sh", "-c", "while true; do :; done"]
