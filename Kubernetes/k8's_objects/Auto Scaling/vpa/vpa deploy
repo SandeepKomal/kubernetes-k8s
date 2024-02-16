@@ -1,43 +1,33 @@
 Deploy the Vertical Pod Autoscaler
-
-
 To deploy the Vertical Pod Autoscaler
 Open a terminal window and navigate to a directory where you would like to download the Vertical Pod Autoscaler source code.
 
 Clone the kubernetes/autoscaler GitHub repository.
-
 git clone https://github.com/kubernetes/autoscaler.git
 
 
 Change to the vertical-pod-autoscaler directory.
-
 cd autoscaler/vertical-pod-autoscaler/
 
 
 
 (Optional) If you have already deployed another version of the Vertical Pod Autoscaler, remove it with the following command.
-
 ./hack/vpa-down.sh
 
 
 If your nodes don't have internet access to the registry.k8s.io container registry, then you need to pull the following images and push them to your own private repository. For more information about how to pull the images and push them to your own private repository, see Copy a container image from one repository to another repository.
-
 registry.k8s.io/autoscaling/vpa-admission-controller:0.10.0
 registry.k8s.io/autoscaling/vpa-recommender:0.10.0
 registry.k8s.io/autoscaling/vpa-updater:0.10.0
 
 If you're pushing the images to a private Amazon ECR repository, then replace registry.k8s.io in the manifests with your registry. Replace 111122223333 with your account ID. Replace region-code with the AWS Region that your cluster is in. The following commands assume that you named your repository the same as the repository name in the manifest. If you named your repository something different, then you'll need to change it too.
-
 sed -i.bak -e 's/registry.k8s.io/111122223333.dkr.ecr.region-code.amazonaws.com/' ./deploy/admission-controller-deployment.yaml
 sed -i.bak -e 's/registry.k8s.io/111122223333.dkr.ecr.region-code.amazonaws.com/' ./deploy/recommender-deployment.yaml
 sed -i.bak -e 's/registry.k8s.io/111122223333.dkr.ecr.region-code.amazonaws.com/' ./deploy/updater-deployment.yaml
 
  
-
 Deploy the Vertical Pod Autoscaler to your cluster with the following command.
-
 ./hack/vpa-up.sh
 
 Verify that the Vertical Pod Autoscaler Pods have been created successfully.
-
 kubectl get pods -n kube-system
