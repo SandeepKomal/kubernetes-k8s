@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: todo-api
+  template:
+    metadata:
+      name: todo-api-pod
+      labels:
+        app: todo-api
+    spec:
+      containers:
+        - name: todo-api
+          image: pavanelthepu/todo-api:1.0.2
+          ports:
+            - containerPort: 8082
+          env:
+            - name: "spring.data.mongodb.uri"
+              value: "mongodb+srv://root:321654@cluster0.p9jq2.mongodb.net/todo?retryWrites=true&w=majority"
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - "todo-ui"
+              topologyKey: kubernetes.io/hostname
