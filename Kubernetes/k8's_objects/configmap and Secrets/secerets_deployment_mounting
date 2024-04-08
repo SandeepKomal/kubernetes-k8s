@@ -28,13 +28,25 @@ spec:
       - name: customer
         image: 637423236688.dkr.ecr.us-east-1.amazonaws.com/spring:11
         imagePullPolicy: Always
+        env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: customer-secrets
+              key: db-username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: customer-secrets
+              key: db-password
         volumeMounts:
-        - name: secret-volume
+        - name: customer-secrets
           mountPath: "/etc/secrets"
           readOnly: true
         ports:
         - containerPort: 8081
       volumes:
-      - name: secret-volume
+      - name: customer-secrets
         secret:
           secretName: customer-secrets
+
