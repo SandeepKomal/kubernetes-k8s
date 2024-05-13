@@ -15,7 +15,7 @@ metadata:
 spec:
   ingressClassName: alb
   rules:
-    - host: todo-ui.com
+    - host: customer.hpm.com
       http:
         paths:
           - path: /customer*
