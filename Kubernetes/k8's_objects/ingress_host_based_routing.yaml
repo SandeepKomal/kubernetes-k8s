@@ -12,7 +12,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: todo-ui-service
+                name: customer-service
                 port:
                   number: 3001
     - host: todo-api.com
