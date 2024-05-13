@@ -28,10 +28,10 @@ spec:
     - host: todo-api.com
       http:
         paths:
-          - path: /
+          - path: /driver*
             pathType: Prefix
             backend:
               service:
-                name: todo-api-service
+                name: driver-service
                 port:
-                  number: 8080
+                  number: 8081
