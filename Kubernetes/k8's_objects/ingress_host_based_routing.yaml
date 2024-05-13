@@ -15,7 +15,7 @@ metadata:
 spec:
   ingressClassName: alb
   rules:
-    - host: customer.hpm.com
+    - host: customer.hpm.in
       http:
         paths:
           - path: /customer*
@@ -25,7 +25,7 @@ spec:
                 name: customer-service
                 port:
                   number: 8081
-    - host: todo-api.com
+    - host: driver.hpm.in
       http:
         paths:
           - path: /driver*
