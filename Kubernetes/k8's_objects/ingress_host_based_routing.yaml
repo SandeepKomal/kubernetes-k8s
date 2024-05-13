@@ -8,13 +8,13 @@ spec:
     - host: todo-ui.com
       http:
         paths:
-          - path: /
+          - path: /customer*
             pathType: Prefix
             backend:
               service:
                 name: customer-service
                 port:
-                  number: 3001
+                  number: 8081
     - host: todo-api.com
       http:
         paths:
