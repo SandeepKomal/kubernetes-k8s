@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   name: todo-ingress-host-based
 spec:
+  ingressClassName: alb
   rules:
     - host: todo-ui.com
       http:
