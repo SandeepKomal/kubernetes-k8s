@@ -143,6 +143,34 @@ Contributions, corrections, and practical examples are welcome.
 3. Make your changes
 4. Open a pull request
 
+
+## Additional practical guides
+
+The repository now also includes focused operational guides:
+
+- [Kubernetes Health Probes](./docs/probes.md) — startup, readiness, and liveness probes
+- [Network Policies](./docs/network-policies.md) — namespace isolation and traffic controls
+- [Pod Disruption Budgets](./docs/pod-disruption-budgets.md) — availability during voluntary disruptions
+- [Troubleshooting Guide](./docs/troubleshooting.md) — a practical diagnostic workflow
+- [Contributing Guide](./CONTRIBUTING.md)
+- [Security Policy](./SECURITY.md)
+
+## Kubernetes roadmap
+
+Planned areas for future examples include:
+
+- Helm and reusable charts
+- GitOps with Argo CD
+- Prometheus and Grafana observability
+- Cluster Autoscaler and node autoscaling
+- Secrets management and workload identity
+- Pod Security Standards
+- Network security and service-to-service controls
+- Cost optimization
+- Backup, disaster recovery, and production operations
+
+If you have a topic you'd like to see added, open a discussion or issue with the use case.
+
 ## Support the project
 
 If this repository helps you learn Kubernetes, troubleshoot an issue, prepare for an interview, or build a DevOps project, consider giving it a **star**.
