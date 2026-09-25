@@ -132,6 +132,14 @@ AWS
       └── Kubernetes workloads
 ```
 
+## Related repository
+
+For a focused CKA command reference, see the companion repository:
+
+**[Imperative Commands for CKA](https://github.com/SandeepKomal/Imperative-commands-for-CKA)** — a quick-reference collection of imperative `kubectl` commands, YAML generation patterns, troubleshooting commands, and CKA speed tips.
+
+This repository provides the broader Kubernetes learning path, while the companion repo is designed for fast command lookup and CKA practice.
+
 ## Contributing
 
 Found something that can be improved or want to add a useful Kubernetes example?
