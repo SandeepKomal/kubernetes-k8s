@@ -277,7 +277,39 @@ window.QUEST_QUIZ_BANK = {
         "`db` is a headless Service (`clusterIP: None`), so DNS returns the ready Pod IPs and there is no kube-proxy load balancing",
         "The CoreDNS cache is stale"
       ], answer: 2,
-      why: "A normal Service resolves to one stable ClusterIP. A headless Service returns a record per ready endpoint and leaves the choice to the client, which is what StatefulSets and client-side load balancers want." }
+      why: "A normal Service resolves to one stable ClusterIP. A headless Service returns a record per ready endpoint and leaves the choice to the client, which is what StatefulSets and client-side load balancers want." },
+    { q: "An Ingress for menu.example.com has no `ingressClassName`, and the cluster has no default IngressClass. `kubectl get ingress` shows an empty ADDRESS, and every request returns 404 from nginx. Why?",
+      options: [
+        "The backend Service has no endpoints",
+        "No ingress controller claims an Ingress without a class, so no rule for that host was ever loaded; the controller answers 404 for hosts it does not know",
+        "DNS for menu.example.com is wrong",
+        "Ingresses take an hour to become active"
+      ], answer: 1,
+      why: "Set `spec.ingressClassName` to a class from `kubectl get ingressclass`, or mark one class as the default. An empty ADDRESS column is the giveaway that no controller has picked the Ingress up." },
+    { q: "An Ingress returns 503 for its host, but 404 for any other host. What does that tell you?",
+      options: [
+        "The controller is down",
+        "A rule matched this host, but its backend has no Ready endpoints: a wrong Service name or port, or Pods that are not Ready",
+        "TLS is misconfigured",
+        "The NetworkPolicy blocks the controller from the client"
+      ], answer: 1,
+      why: "404 means no rule matched; 503 means the rule matched and the backend failed. `kubectl describe ingress` shows each backend with its endpoints or an error." },
+    { q: "A Pod in namespace kitchen calls `http://payments-svc:8080`, but the Service lives in namespace payments. What happens, and what is the fix?",
+      options: [
+        "It works, because Service names are cluster-wide",
+        "DNS search domains start with the Pod's own namespace, so the bare name does not resolve; use `payments-svc.payments` (or the full `payments-svc.payments.svc.cluster.local`)",
+        "It works only with a NetworkPolicy",
+        "You must create an ExternalName Service in every namespace"
+      ], answer: 1,
+      why: "A Pod's /etc/resolv.conf searches `<ns>.svc.cluster.local`, then `svc.cluster.local`, then `cluster.local`. `<service>.<namespace>` therefore resolves from any namespace." },
+    { q: "From your laptop, `curl http://menu-svc/` fails with `Could not resolve host`, though the Service exists. Why?",
+      options: [
+        "The Service is broken",
+        "Cluster DNS names only resolve inside the cluster; from outside, use an Ingress host, a NodePort or LoadBalancer, or `kubectl port-forward`",
+        "curl does not support Kubernetes",
+        "You need to restart CoreDNS"
+      ], answer: 1,
+      why: "ClusterIP Services and their names are internal. To test from inside, run the request in a Pod with `kubectl exec`; to reach them from outside, expose them." }
   ],
 
   "05": [
@@ -494,7 +526,23 @@ window.QUEST_QUIZ_BANK = {
         "A Burstable Pod requesting 200Mi and using 150Mi",
         "Whichever Pod started most recently"
       ], answer: 1,
-      why: "The kubelet first picks Pods whose usage exceeds their request, then ranks by priority, then by how far usage exceeds the request. Pods within their requests, Guaranteed ones included, are evicted last." }
+      why: "The kubelet first picks Pods whose usage exceeds their request, then ranks by priority, then by how far usage exceeds the request. Pods within their requests, Guaranteed ones included, are evicted last." },
+    { q: "A Deployment shows 0/1 with no Pods, and its ReplicaSet's events say `exceeded quota: kitchen-quota, requested: requests.memory=256Mi, used: requests.memory=320Mi, limited: requests.memory=512Mi`. The app really uses 90Mi. What is the best fix?",
+      options: [
+        "Delete the ResourceQuota",
+        "Lower the Deployment's memory request to match its real use, so it fits the namespace budget",
+        "Remove the memory request entirely",
+        "Raise the node's memory"
+      ], answer: 1,
+      why: "Quotas count requests, not usage. Right-sizing requests frees budget. A quota on requests.memory also forces every Pod to set a memory request, so removing it gets the Pod rejected." },
+    { q: "Why can a rolling update get stuck in a namespace whose quota is almost full?",
+      options: [
+        "Quotas block all updates",
+        "During the update the new Pods are created before the old ones are removed (maxSurge), so for a moment both count against the quota",
+        "Quotas only allow one ReplicaSet per Deployment",
+        "The scheduler ignores quotas during rollouts"
+      ], answer: 1,
+      why: "Leave headroom for maxSurge, or set maxSurge: 0 with maxUnavailable: 1, so old Pods go before new ones come." }
   ],
 
   "08": [
@@ -545,7 +593,31 @@ window.QUEST_QUIZ_BANK = {
         "The CSI driver has crashed",
         "The `kubernetes.io/pvc-protection` finalizer keeps the claim until no Pod uses it, so storage is not pulled from under a running app"
       ], answer: 3,
-      why: "Once the Pod is deleted, the claim finishes deleting by itself. The reclaim policy decides what happens to the volume after the claim is gone, not whether the claim can be deleted." }
+      why: "Once the Pod is deleted, the claim finishes deleting by itself. The reclaim policy decides what happens to the volume after the claim is gone, not whether the claim can be deleted." },
+    { q: "A PVC with no `storageClassName` has been Pending for an hour, and its events say `no persistent volumes available for this claim and no storage class is set`. What is the most likely cause?",
+      options: [
+        "The node is out of disk",
+        "No StorageClass is marked as the default, so the claim has no class to provision from",
+        "The Pod that uses it has crashed",
+        "PVCs need a restart to bind"
+      ], answer: 1,
+      why: "`kubectl get storageclass` shows the default with `(default)`. Mark one with the annotation `storageclass.kubernetes.io/is-default-class: \"true\"`; since Kubernetes 1.28, claims without a class get the new default automatically." },
+    { q: "You try to change a Pending PVC's `storageClassName` with `kubectl patch`. What happens?",
+      options: [
+        "It works, and the claim rebinds",
+        "It is rejected: a PVC's spec is immutable after creation, except for resources.requests (to expand) and volumeAttributesClassName",
+        "It works only if the Pod is deleted first",
+        "The claim is duplicated with the new class"
+      ], answer: 1,
+      why: "To change the class you create a new claim (and move the data, if any). For an empty Pending claim, delete it and create it again with the right class." },
+    { q: "You delete a PVC while a Pod still uses it. It shows `Terminating` and does not go away. Why?",
+      options: [
+        "The API server is overloaded",
+        "The `kubernetes.io/pvc-protection` finalizer keeps a claim that is in use until no Pod uses it, so data is not pulled out from under a running app",
+        "PVCs can never be deleted",
+        "The StorageClass has reclaimPolicy Retain"
+      ], answer: 1,
+      why: "Delete or scale down the Pods that use it and the deletion completes. Whether the disk itself survives then depends on the PersistentVolume's reclaimPolicy." }
   ],
 
   "09": [
@@ -596,7 +668,31 @@ window.QUEST_QUIZ_BANK = {
         "`OnFailure` is not allowed in Jobs",
         "`Never` makes each attempt start faster"
       ], answer: 0,
-      why: "Both policies are valid for Jobs and both retry up to `backoffLimit`; they differ in where the retries happen. With `OnFailure` one Pod is reused, so the logs of earlier attempts are mostly gone." }
+      why: "Both policies are valid for Jobs and both retry up to `backoffLimit`; they differ in where the retries happen. With `OnFailure` one Pod is reused, so the logs of earlier attempts are mostly gone." },
+    { q: "A Job shows `BackoffLimitExceeded`. Where do you find out why it failed?",
+      options: [
+        "Nowhere; failed Jobs delete their Pods",
+        "In the logs of its failed Pods, which the Job keeps: `kubectl logs job/<name>` or `kubectl get pods -l job-name=<name>`",
+        "In the CronJob's events only",
+        "In the kubelet logs on every node"
+      ], answer: 1,
+      why: "Failed Pods remain, unless ttlSecondsAfterFinished removes the Job, so their logs and exit codes explain the failure." },
+    { q: "You need to fix the command of a failed Job. What works?",
+      options: [
+        "`kubectl edit job` and change the command",
+        "Delete the Job and create it again with the corrected command; a Job's Pod template is immutable",
+        "`kubectl rollout restart job/<name>`",
+        "Increase backoffLimit with kubectl patch, and it retries with a new command"
+      ], answer: 1,
+      why: "Jobs, unlike Deployments, do not roll out template changes. Recreate it, or for a CronJob fix the template and run `kubectl create job <name> --from=cronjob/<cronjob>`." },
+    { q: "What does `backoffLimit: 3` mean for a Job?",
+      options: [
+        "It runs at most 3 Pods at the same time",
+        "It retries failed Pods with growing delays, and marks the Job failed after 3 retries (4 failures in total)",
+        "It must succeed 3 times",
+        "It waits 3 seconds between retries"
+      ], answer: 1,
+      why: "parallelism sets concurrency and completions sets the required successes. backoffLimit counts retries before giving up (6 by default)." }
   ],
 
   "10": [
@@ -919,7 +1015,23 @@ window.QUEST_QUIZ_BANK = {
         "VPAs and HPAs use different metrics servers",
         "It is fine and recommended"
       ], answer: 1,
-      why: "Use HPA on CPU or memory, and VPA only for the resource the HPA does not use (or VPA in Off mode for sizing advice), or have the HPA scale on custom or external metrics instead." }
+      why: "Use HPA on CPU or memory, and VPA only for the resource the HPA does not use (or VPA in Off mode for sizing advice), or have the HPA scale on custom or external metrics instead." },
+    { q: "`kubectl drain worker-2 --ignore-daemonsets` keeps printing `Cannot evict pod as it would violate the pod's disruption budget`. The web PDB has minAvailable: 2 and web has 2 replicas. What should you do?",
+      options: [
+        "Delete the PodDisruptionBudget",
+        "Drain with --disable-eviction",
+        "Scale web to 3 (or change the budget to maxUnavailable: 1) so one Pod may be disrupted, then drain again",
+        "Reboot the node without draining"
+      ], answer: 2,
+      why: "A budget equal to the replica count allows zero voluntary disruptions, so no drain can ever finish. Deleting the PDB or bypassing eviction removes the protection it exists to give." },
+    { q: "Why does `kubectl drain` fail without `--ignore-daemonsets` on a typical node?",
+      options: [
+        "DaemonSet Pods cannot be stopped",
+        "Every node runs DaemonSet Pods (CNI, kube-proxy, log agents); deleting them is pointless because the DaemonSet recreates them on the same node, so drain refuses unless told to skip them",
+        "DaemonSets have a built-in PDB",
+        "The flag is needed for nodes with taints"
+      ], answer: 1,
+      why: "--ignore-daemonsets tells drain to leave DaemonSet Pods running. They tolerate the unschedulable taint that cordon adds." }
   ],
 
   "14": [

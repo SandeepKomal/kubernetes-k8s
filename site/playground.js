@@ -34,6 +34,11 @@
       logs: (x) => [`orders: starting version 2.3`, `orders: menu loaded from ${x.env.MENU_FILE}`, "orders: listening on :8080"],
       crashLogs: ["orders: starting version 2.3", "orders: fatal: MENU_FILE is not set (the path of the menu to serve)"]
     },
+    checkout: {
+      mem: 40, port: 8080, health: ["/healthz"], body: "checkout: ok", needsDep: "PAYMENTS_URL",
+      logs: (x) => ["checkout: starting", `checkout: payments reachable at ${x.env.PAYMENTS_URL}`, "checkout: listening on :8080"],
+      crashLogs: (x) => ["checkout: starting", `checkout: fatal: cannot reach payments at ${x.env.PAYMENTS_URL}: ${x.pod.last.dep}`]
+    },
     oven: { mem: 300, port: 8080, health: ["/healthz"], body: "oven: ok", logs: ["oven: warming up", "oven: ready on :8080"] },
     reports: {
       mem: 400, port: 8080, health: ["/healthz"], body: "reports: ok",
@@ -41,7 +46,7 @@
       crashLogs: ["reports: building the daily report", "reports: loading every order into memory..."]
     }
   };
-  const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2"]);
+  const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1"]);
 
   function appOf(image) {
     if (LOCAL_IMAGES.has(image)) return image.split("/")[1].split(":")[0];
@@ -109,7 +114,15 @@
     rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets",
     hpa: "hpas", horizontalpodautoscaler: "hpas", horizontalpodautoscalers: "hpas",
     vpa: "vpas", verticalpodautoscaler: "vpas", verticalpodautoscalers: "vpas",
-    ns: "namespaces", namespace: "namespaces", namespaces: "namespaces"
+    ns: "namespaces", namespace: "namespaces", namespaces: "namespaces",
+    pvc: "pvcs", persistentvolumeclaim: "pvcs", persistentvolumeclaims: "pvcs",
+    pv: "pvs", persistentvolume: "pvs", persistentvolumes: "pvs",
+    sc: "storageclasses", storageclass: "storageclasses", storageclasses: "storageclasses",
+    ing: "ingresses", ingress: "ingresses", ingresses: "ingresses",
+    ingressclass: "ingressclasses", ingressclasses: "ingressclasses",
+    quota: "quotas", resourcequota: "quotas", resourcequotas: "quotas",
+    job: "jobs", jobs: "jobs",
+    pdb: "pdbs", poddisruptionbudget: "pdbs", poddisruptionbudgets: "pdbs"
   };
   // CPU quantities in millicores: 100m, 0.5, 1.
   function parseCpu(q) {
@@ -449,13 +462,153 @@
       ],
       lesson: "Pod Security rejects Pods before they exist, so the error is on the ReplicaSet, not a Pod. runAsNonRoot also needs a non-root user.",
       tries: ["kubectl get deploy,rs", "kubectl describe deployment menu"]
+    },
+    {
+      id: "pvc",
+      title: "PVC Pending",
+      done: "The claim is Bound and the uploads Pod is Running.",
+      level: { id: "08", text: "Level 08 · Data that survives" },
+      story: "During a storage migration someone changed the StorageClass. Since then the uploads Pod has been Pending.",
+      goal: "Get uploads Running with its PersistentVolumeClaim Bound.",
+      deployments: [web(), { name: "uploads", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 30 * MIN, pvc: "uploads-data" }],
+      storageClasses: [{ name: "standard", isDefault: false }],
+      pvcs: [{ name: "uploads-data", size: "1Gi", class: null }],
+      won: (c) => c.deploymentReady("uploads") && c.pvcs.some((v) => v.name === "uploads-data" && v.bound),
+      hints: [
+        "kubectl describe the uploads Pod: unbound PersistentVolumeClaims. Then kubectl get pvc.",
+        "kubectl describe pvc uploads-data: no storage class is set. kubectl get storageclass: is any class marked (default)?",
+        `Mark standard as the default again; claims without a class pick it up: kubectl patch storageclass standard -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'`
+      ],
+      lesson: "A claim with no storageClassName waits for a default class. Its class cannot be edited later, but a new default is applied to waiting claims.",
+      tries: ["kubectl get pvc", "kubectl get storageclass"]
+    },
+    {
+      id: "ingress404",
+      title: "Ingress 404",
+      done: "menu.kitchen.example answers through the ingress.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "The new menu Ingress was applied an hour ago. Every request to menu.kitchen.example returns 404 from nginx.",
+      goal: "Make http://menu.kitchen.example/ return the menu.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      ingresses: [{ name: "menu", class: null, host: "menu.kitchen.example", path: "/", svc: "menu-svc", port: 80 }],
+      won: (c) => c.viaIngress("menu.kitchen.example", "/").ok,
+      check: (c) => { const r = c.viaIngress("menu.kitchen.example", "/"); return { label: "curl menu.kitchen.example", ok: r.ok, text: String(r.code) }; },
+      hints: [
+        "Reproduce it: curl -i http://menu.kitchen.example/  Then kubectl get ingress. Look at CLASS and ADDRESS.",
+        "No class and no address: no controller has picked this Ingress up. kubectl get ingressclass shows which controller exists.",
+        `Give it the class: kubectl patch ingress menu -p '{"spec":{"ingressClassName":"nginx"}}'`
+      ],
+      lesson: "An Ingress without an ingressClassName (and no default class) is ignored. No controller, no address, and nginx answers 404 for every host.",
+      tries: ["curl -i http://menu.kitchen.example/", "kubectl get ingress"]
+    },
+    {
+      id: "ingress503",
+      title: "Ingress 503",
+      done: "menu.kitchen.example answers through the ingress.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "The ingress has an address and the menu Pods are Ready, but menu.kitchen.example returns 503.",
+      goal: "Make http://menu.kitchen.example/ return the menu.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      ingresses: [{ name: "menu", class: "nginx", host: "menu.kitchen.example", path: "/", svc: "menu-service", port: 80 }],
+      won: (c) => c.viaIngress("menu.kitchen.example", "/").ok,
+      check: (c) => { const r = c.viaIngress("menu.kitchen.example", "/"); return { label: "curl menu.kitchen.example", ok: r.ok, text: String(r.code) }; },
+      hints: [
+        "curl -i http://menu.kitchen.example/ gives 503: the controller matched the rule but has nowhere to send it.",
+        "kubectl describe ingress menu and read the Backends column. Compare with kubectl get svc.",
+        `The backend is menu-service; the Service is menu-svc. kubectl patch ingress menu -p '{"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"menu-svc","port":{"number":80}}}}]}}]}}'`
+      ],
+      lesson: "404 means no rule matched; 503 means a rule matched but its backend has no endpoints. describe ingress shows which backend is broken.",
+      tries: ["curl -i http://menu.kitchen.example/", "kubectl describe ingress menu"]
+    },
+    {
+      id: "dns",
+      title: "DNS across namespaces",
+      done: "checkout reaches payments in its own namespace.",
+      level: { id: "04", text: "Level 04 · Connection refused" },
+      story: "The payments team moved their service to its own namespace. Since then checkout crash-loops.",
+      goal: "Get checkout Running and talking to payments.",
+      deployments: [web(), { name: "checkout", replicas: 1, image: "localhost:5000/checkout:3.1", req: 64, lim: 128, age: 20 * MIN, restarts: 5, env: { PAYMENTS_URL: "http://payments-svc:8080" } }],
+      services: [{ name: "payments-svc", ns: "payments", static: true, body: "payments: ok", ip: "10.96.88.20", port: 8080, selector: {}, age: 30 * MIN }],
+      won: (c) => c.deploymentReady("checkout"),
+      hints: [
+        "kubectl logs deployment/checkout: no such host. Does payments-svc exist in this namespace? kubectl get svc",
+        "kubectl get svc -A finds it in namespace payments. Test from a Pod: kubectl exec <web-pod> -- nslookup payments-svc.payments",
+        "A bare name only searches your own namespace. kubectl set env deployment/checkout PAYMENTS_URL=http://payments-svc.payments:8080"
+      ],
+      lesson: "Service names resolve in your own namespace first. Across namespaces use <service>.<namespace> (or the full .svc.cluster.local name).",
+      tries: ["kubectl logs deployment/checkout", "kubectl get svc -A"]
+    },
+    {
+      id: "quota",
+      title: "Quota exceeded",
+      done: "orders runs within the namespace's memory budget.",
+      level: { id: "07", text: "Level 07 · Requests, limits and quotas" },
+      story: "orders was deployed to the kitchen namespace an hour ago. It shows 0/1 and has no Pod.",
+      goal: "Get orders Running without raising or removing the quota.",
+      deployments: [web(), api(), { name: "orders", replicas: 1, image: "localhost:5000/orders:2.3", req: 256, lim: 512, age: HOUR, env: { MENU_FILE: "/etc/menu/menu.json" } }],
+      quota: { name: "kitchen-quota", memory: 512 },
+      won: (c) => c.deploymentReady("orders") && !!c.quota && c.quota.memory === 512,
+      hints: [
+        "No Pod means admission refused it. kubectl describe deployment orders, then kubectl get rs and describe the orders ReplicaSet.",
+        "exceeded quota: kubectl describe quota kitchen-quota. How much is used, and how much does orders ask for? kubectl top pods shows what it really uses.",
+        "orders uses about 90Mi but requests 256Mi. Right-size it: kubectl set resources deployment/orders --requests=memory=128Mi"
+      ],
+      lesson: "A ResourceQuota counts requests, not real use. Oversized requests use up the budget long before memory runs out.",
+      tries: ["kubectl get deploy", "kubectl get quota"]
+    },
+    {
+      id: "job",
+      title: "Failed Job",
+      done: "The import-menu Job completed.",
+      level: { id: "09", text: "Level 09 · The cleanup that never ran" },
+      story: "The nightly import-menu Job failed. Today's menu was never loaded.",
+      goal: "Get an import-menu Job to complete.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      jobs: [{ name: "import-menu", url: "http://menu-svc:8080/menu.json", backoffLimit: 3, age: 40 * MIN }],
+      won: (c) => c.jobs.some((j) => j.name === "import-menu" && j.status === "Complete"),
+      hints: [
+        "kubectl get jobs, then kubectl describe job import-menu: BackoffLimitExceeded. kubectl logs job/import-menu shows why.",
+        "Connection refused on port 8080. kubectl get svc menu-svc: which port does it listen on? A Job's template cannot be edited (try kubectl patch).",
+        "Delete it and create it again with the right URL: kubectl delete job import-menu, then kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc/menu.json"
+      ],
+      lesson: "A failed Job keeps its Pods so you can read their logs. Its template is immutable: fix the cause, delete it, and create it again.",
+      tries: ["kubectl get jobs", "kubectl logs job/import-menu"]
+    },
+    {
+      id: "drain",
+      title: "Drain blocked",
+      done: "worker-2 is drained, and the web budget held throughout.",
+      level: { id: "13", text: "Level 13 · PodDisruptionBudgets" },
+      story: "worker-2 needs a kernel update. The drain hangs on a web Pod.",
+      goal: "Drain worker-2 without breaking the web PodDisruptionBudget.",
+      deployments: [web(), api()],
+      pdbs: [{ name: "web-pdb", selector: { app: "web" }, minAvailable: 2 }],
+      won: (c) => c.cordoned["worker-2"] && !c.pods.some((p) => p.node === "worker-2" && !p.job) && c.pdbs.length === 1 && !c.drainBypassedPdb &&
+        c.pods.filter((p) => p.ready && p.labels.app === "web").length >= 2,
+      hints: [
+        "Try it: kubectl drain worker-2 --ignore-daemonsets. Which Pod blocks it, and why?",
+        "kubectl get pdb: web-pdb needs 2 web Pods available and there are exactly 2, so ALLOWED DISRUPTIONS is 0.",
+        "Make room for one disruption first: kubectl scale deployment/web --replicas=3, then drain again."
+      ],
+      lesson: "A drain evicts, and evictions respect PodDisruptionBudgets. With minAvailable equal to the replica count, nothing may ever move.",
+      tries: ["kubectl get pods -o wide", "kubectl get pdb"]
     }
   ];
 
   // Easiest first: one object, then config, scheduling, networking, security.
-  const ORDER = ["image", "crash", "configmap", "pending", "oom", "liveness", "init", "nodeselector", "taint", "probe", "service",
-    "netpol", "rbac", "podsecurity", "rollout", "hpa", "vpa"];
+  const GROUPS = [
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "pvc"]],
+    ["Networking", ["probe", "service", "dns", "ingress404", "ingress503", "netpol"]],
+    ["Security and operations", ["rbac", "podsecurity", "quota", "job", "rollout", "drain"]],
+    ["Autoscaling", ["hpa", "vpa"]]
+  ];
+  const ORDER = GROUPS.flatMap(([, ids]) => ids);
   SCENARIOS.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+  for (const [group, ids] of GROUPS) for (const id of ids) SCENARIOS.find((x) => x.id === id).group = group;
 
   // --- the simulated cluster ---------------------------------------------------
 
@@ -485,6 +638,16 @@
       this.vpas = JSON.parse(JSON.stringify(scenario.vpas || []));
       this.load = { ...(scenario.load || {}) }; // total CPU use per Deployment, in millicores
       this.rsEvents = [];
+      this.storageClasses = JSON.parse(JSON.stringify(scenario.storageClasses || [{ name: "standard", isDefault: true }]));
+      this.pvcs = JSON.parse(JSON.stringify(scenario.pvcs || []));
+      this.ingresses = JSON.parse(JSON.stringify(scenario.ingresses || []));
+      this.ingressClasses = ["nginx"];
+      this.quota = scenario.quota ? { ...scenario.quota } : null;
+      this.pdbs = JSON.parse(JSON.stringify(scenario.pdbs || []));
+      this.cordoned = {};
+      this.drainBypassedPdb = false;
+      this.jobs = [];
+      this.bindPvcs();
       for (const d of scenario.deployments || []) {
         const dep = {
           name: d.name, replicas: d.replicas, created: this.now() - d.age, history: [],
@@ -492,7 +655,7 @@
             image: d.image, env: { ...(d.env || {}) }, req: d.req, lim: d.lim, envFrom: d.envFrom || null, probe: d.probe || null,
             nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default", cpuReq: d.cpu || 0,
             tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
-            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }
+            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null
           },
           hash: this.rand(10)
         };
@@ -504,10 +667,11 @@
           name: p.name, age: p.age, settled: true, node: p.node,
           spec: {
             image: p.image, env: {}, req: p.req, lim: p.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default",
-            cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}
+            cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null
           }
         });
       }
+      for (const j of scenario.jobs || []) this.runJob({ ...j, created: this.now() - (j.age || 0) });
       if (scenario.setup) scenario.setup(this);
       this.reconcileHpas();
     }
@@ -525,15 +689,18 @@
     get dirty() {
       return this.retry || this.pods.some((p) => p.creating || p.terminating || p.old) ||
         this.deployments.some((d) => !this.podsOf(d.name).some((p) => p.old) &&
-          this.podsOf(d.name).filter((p) => p.hash === d.hash).length < d.replicas && !this.admissionErrors(d.spec).length);
+          this.podsOf(d.name).filter((p) => p.hash === d.hash).length < d.replicas && !this.blocked(d.spec));
     }
 
     addPod(dep, opts) {
       const spec = dep ? JSON.parse(JSON.stringify(dep.spec)) : opts.spec;
       const denied = this.admissionErrors(spec);
-      if (dep && denied.length) {
+      const overQuota = dep && !denied.length && this.quotaError(spec);
+      if (dep && (denied.length || overQuota)) {
         const name = `${dep.name}-${dep.hash}-${this.rand(5)}`;
-        const msg = `Error creating: pods "${name}" is forbidden: violates PodSecurity "restricted:latest": ${denied.join(", ")}`;
+        const msg = overQuota
+          ? `Error creating: pods "${name}" is forbidden: exceeded quota: ${this.quota.name}, ${overQuota}`
+          : `Error creating: pods "${name}" is forbidden: violates PodSecurity "restricted:latest": ${denied.join(", ")}`;
         this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
         this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate", msg });
         return null;
@@ -563,19 +730,52 @@
       return errors;
     }
 
+    // ResourceQuota on requests.memory for the namespace.
+    quotaUsed() { return this.pods.filter((p) => !p.terminating && !p.job).reduce((t, p) => t + (p.spec.req || 0), 0); }
+    quotaError(spec) {
+      if (!this.quota) return null;
+      const used = this.quotaUsed();
+      if (used + (spec.req || 0) <= this.quota.memory) return null;
+      return `requested: requests.memory=${fmtMem(spec.req)}, used: requests.memory=${fmtMem(used)}, limited: requests.memory=${fmtMem(this.quota.memory)}`;
+    }
+    blocked(spec) { return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec); }
+
+    // PersistentVolumeClaims bind when their StorageClass exists. A claim with
+    // no class gets the default class, even after it was created.
+    defaultClass() { return this.storageClasses.find((x) => x.isDefault); }
+    bindPvcs() {
+      for (const v of this.pvcs) {
+        if (v.bound || v.terminating) continue;
+        if (!v.class && this.defaultClass()) v.class = this.defaultClass().name;
+        if (v.class && this.storageClasses.some((x) => x.name === v.class)) {
+          v.bound = true;
+          v.volume = `pvc-${this.rand(8)}-${this.rand(4)}-${this.rand(4)}`;
+        }
+      }
+    }
+    pvcEvents(v) {
+      if (v.bound) return [["Normal", "ProvisioningSucceeded", "rancher.io/local-path", `Successfully provisioned volume ${v.volume}`]];
+      if (!v.class) return [["Normal", "FailedBinding", "persistentvolume-controller", "no persistent volumes available for this claim and no storage class is set"]];
+      return [["Warning", "ProvisioningFailed", "persistentvolume-controller", `storageclass.storage.k8s.io "${v.class}" not found`]];
+    }
+
     tolerates(pod, node) {
       return this.taints[node].every((t) => t.effect !== "NoSchedule" || (pod.spec.tolerations || []).some((tol) =>
         tol.key === t.key && (tol.operator === "Exists" || tol.value === t.value) && (!tol.effect || tol.effect === t.effect)));
     }
 
     freeOn(node) {
-      return NODE_MEMORY - this.pods.filter((p) => p.node === node && !p.terminating).reduce((t, p) => t + (p.spec.req || 0), 0);
+      return NODE_MEMORY - this.pods.filter((p) => p.node === node && !p.terminating && !p.job).reduce((t, p) => t + (p.spec.req || 0), 0);
     }
 
     nodesFor(pod) { return NODES.filter((n) => selects(pod.spec.nodeSelector, this.nodeLabels[n])); }
 
+    pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
+
     place(pod) {
-      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n)).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
+      const claim = this.pvcOf(pod);
+      if (pod.spec.pvc && (!claim || !claim.bound)) return null;
+      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n]).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
       if (!fits.length) return null;
       fits.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return fits[0][0];
@@ -593,9 +793,18 @@
         const n = NODES.length;
         // One reason per node, counted the way the scheduler reports them.
         const reasons = {};
+        const claim = this.pvcOf(pod);
+        if (pod.spec.pvc && (!claim || !claim.bound)) {
+          pod.state = "Pending";
+          pod.events = [["Warning", "FailedScheduling", "default-scheduler", claim
+            ? `0/${n} nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/${n} nodes are available: ${n} Preemption is not helpful for scheduling.`
+            : `0/${n} nodes are available: persistentvolumeclaim "${pod.spec.pvc}" not found. preemption: 0/${n} nodes are available: ${n} Preemption is not helpful for scheduling.`]];
+          return;
+        }
         for (const node of NODES) {
           let r = `Insufficient memory`;
-          if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
+          if (this.cordoned[node]) r = "node(s) were unschedulable";
+          else if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
           else if (!this.tolerates(pod, node)) r = `node(s) had untolerated taint {${this.taints[node].map((t) => `${t.key}: ${t.value}`).join(", ")}}`;
           reasons[r] = (reasons[r] || 0) + 1;
         }
@@ -644,6 +853,7 @@
         ["Normal", "Created", "kubelet", `Created container: ${c}`],
         ["Normal", "Started", "kubelet", `Started container ${c}`]];
       if (app.needsEnv && !pod.env[app.needsEnv]) pod.last = { reason: "Error", code: 1 };
+      else if (app.needsDep && !this.dependencyOk(pod, app)) pod.last = { reason: "Error", code: 1, dep: this.dependencyOk(pod, app, true) };
       else if (pod.spec.lim && app.mem > pod.spec.lim) pod.last = { reason: "OOMKilled", code: 137 };
       else if (pod.spec.liveness && pod.spec.liveness !== app.port) pod.last = { reason: "Completed", code: 0, liveness: true };
       if (pod.last) {
@@ -665,9 +875,38 @@
     }
 
     // What an HTTP request from a Pod to a Service name sees.
+    // Resolve a name the way cluster DNS does from namespace kitchen.
+    resolve(host) {
+      const parts = host.replace(/\.svc(\.cluster\.local)?$/, "").split(".");
+      if (parts.length > 2) return null;
+      const [name, ns] = [parts[0], parts[1] || NS];
+      return this.services.find((x) => x.name === name && (x.ns || NS) === ns) || null;
+    }
+    dependencyOk(pod, app, why) {
+      const url = this.envOf(pod)[app.needsDep];
+      if (!url) return why ? `${app.needsDep} is not set` : false;
+      const m = /^(?:https?:\/\/)?([^/:]+)(?::(\d+))?/.exec(url);
+      const res = this.reach(pod, m[1], m[2] ? Number(m[2]) : 80);
+      if (why) return res.ok ? "" : res.text.replace(/^wget: bad address '([^:']+).*$/, "dial tcp: lookup $1 on 10.96.0.10:53: no such host");
+      return res.ok;
+    }
+
+    // An HTTP request through the ingress controller, by host name.
+    viaIngress(host, path) {
+      const rule = this.ingresses.find((x) => x.host === host && this.ingressClasses.includes(x.class) && (path || "/").startsWith(x.path));
+      const page = (code, text) => ({ ok: false, code, text: `<html><head><title>${code} ${text}</title></head><body><center><h1>${code} ${text}</h1></center><hr><center>nginx</center></body></html>` });
+      if (!rule) return page(404, "Not Found");
+      const svc = this.resolve(rule.svc);
+      if (!svc || svc.port !== rule.port || !this.endpointsOf(svc.name).length) return page(503, "Service Temporarily Unavailable");
+      const app = APPS[appOf(this.endpointsOf(svc.name)[0].spec.image)];
+      return { ok: true, code: 200, text: app.body };
+    }
+
     reach(src, host, port) {
-      const svc = this.services.find((x) => x.name === host.split(".")[0]);
+      if (this.ingresses.some((x) => x.host === host)) return this.viaIngress(host, "/");
+      const svc = this.resolve(host);
       if (!svc) return { ok: false, text: `wget: bad address '${host}:${port}'` };
+      if (svc.static) return port === svc.port ? { ok: true, text: svc.body } : { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       if (port !== svc.port) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       const eps = this.endpointsOf(svc.name);
       if (!eps.length) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
@@ -705,6 +944,7 @@
     // Finish every transition in flight: what happens a few seconds later.
     settle() {
       this.retry = false;
+      this.bindPvcs();
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
       const retrying = (x) => !x.node || /^(CreateContainerConfigError|CrashLoopBackOff|Init:)/.test(x.state || "");
@@ -728,6 +968,7 @@
         if (!this.podsOf(d.name).some((p) => p.old)) {
           const have = this.podsOf(d.name).filter((p) => p.hash === d.hash && !p.terminating).length;
           for (let i = have; i < d.replicas; i++) if (!this.addPod(d, {})) break;
+        if (this.podsOf(d.name).filter((p) => p.hash === d.hash).length >= d.replicas) this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${d.name}-${d.hash}`);
         }
       }
       this.reconcileHpas();
@@ -769,7 +1010,7 @@
       for (const p of this.pods) if (p.state === "CrashLoopBackOff") p.restarts++;
     }
 
-    podsOf(owner) { return this.pods.filter((p) => (p.owner || p.name) === owner); }
+    podsOf(owner) { return this.pods.filter((p) => !p.job && (p.owner || p.name) === owner); }
     deploymentReady(name) {
       const d = this.deployments.find((x) => x.name === name);
       const pods = this.podsOf(name).filter((p) => p.hash === d.hash && !p.terminating);
@@ -778,7 +1019,8 @@
     }
     endpointsOf(svcName) {
       const s = this.services.find((x) => x.name === svcName);
-      return this.pods.filter((p) => p.ready && !p.terminating && !p.creating && selects(s.selector, p.labels));
+      if (!s || s.static) return [];
+      return this.pods.filter((p) => p.ready && !p.terminating && !p.creating && !p.job && selects(s.selector, p.labels));
     }
 
     status(p) {
@@ -786,6 +1028,41 @@
       if (!p.node) return "Pending";
       if (p.creating) return p.spec.init ? "Init:0/1" : "ContainerCreating";
       return p.state;
+    }
+
+    // A Job runs its command until it succeeds or reaches backoffLimit.
+    runJob(job) {
+      const m = /^(?:https?:\/\/)?([^/:]+)(?::(\d+))?/.exec(job.url);
+      const host = m[1];
+      const port = m[2] ? Number(m[2]) : 80;
+      const svc = this.resolve(host);
+      const res = this.reach({ labels: { "job-name": job.name } }, host, port);
+      const ok = res.ok;
+      const attempts = ok ? 1 : job.backoffLimit + 1;
+      job.pods = [];
+      for (let i = 0; i < attempts; i++) {
+        const podName = `${job.name}-${this.rand(5)}`;
+        const pod = {
+          name: podName, owner: null, job: job.name, hash: null, labels: { "job-name": job.name },
+          spec: { image: "busybox:1.36", env: {}, req: 0, lim: 0, envFrom: null, probe: null, nodeSelector: {}, sa: "default", cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null },
+          created: job.created + i * 20000, restarts: 0, node: NODES[i % NODES.length], creating: false, ready: false,
+          state: ok ? "Completed" : "Error", last: null,
+          logs: [`Connecting to ${host}:${port} (${svc ? svc.ip : "?"}:${port})`, ok ? "[menu.json saved, 42 items]" : res.text.replace(/^wget: bad address.*/, `wget: bad address '${host}:${port}'`)],
+          events: [["Normal", "Scheduled", "default-scheduler", `Successfully assigned ${NS}/${podName} to ${NODES[i % NODES.length]}`], ["Normal", "Started", "kubelet", "Started container " + job.name]]
+        };
+        job.pods.push(pod.name);
+        this.pods.push(pod);
+      }
+      job.status = ok ? "Complete" : "Failed";
+      job.events = [...job.pods.map((n) => ["Normal", "SuccessfulCreate", "job-controller", `Created pod: ${n}`]),
+        ok ? ["Normal", "Completed", "job-controller", "Job completed"] : ["Warning", "BackoffLimitExceeded", "job-controller", "Job has reached the specified backoff limit"]];
+      this.jobs = this.jobs.filter((x) => x.name !== job.name).concat([job]);
+    }
+
+    // PodDisruptionBudget: how many matching Pods may be evicted right now.
+    allowedDisruptions(b) {
+      const ready = this.pods.filter((p) => p.ready && !p.terminating && selects(b.selector, p.labels)).length;
+      return Math.max(0, ready - b.minAvailable);
     }
 
     rollout(d, newSpec) {
@@ -815,12 +1092,29 @@
     "kubectl label node|namespace <name> key=value      kubectl taint node <name> key=value:NoSchedule",
     "kubectl auth can-i <verb> <resource> --as=...      kubectl expose deployment <name> --port=N [--name=svc]",
     "kubectl get hpa | vpa | ns       kubectl logs <pod> -c <init-container>",
+    "kubectl get pvc | pv | sc | ingress | ingressclass | quota | jobs | pdb",
+    "kubectl cordon | uncordon | drain <node> [--ignore-daemonsets]",
+    "kubectl create job <name> --image=busybox:1.36 -- wget -qO- <url>",
+    "curl -i http://<ingress host>/     (from your machine, through the ingress)",
     "kubectl exec <pod> -- wget -qO- -T 2 http://<service>:<port>   (also curl, env)",
     "kubectl rollout status | history | restart | undo deployment/<name>",
     "kubectl scale deployment/<name> --replicas=N",
     "kubectl delete pod | configmap | networkpolicy | rolebinding <name>",
     "hint, reset, clear, help        ('k' works as kubectl, Tab completes names)"
   ];
+
+  // curl from your own machine: only names served by the ingress answer.
+  function curl(c, words, say) {
+    const url = words.slice(1).reverse().find((x) => !x.startsWith("-") && /[a-z]/.test(x));
+    if (!url) return say("curl: no URL specified", "warn");
+    const m = /^(?:https?:\/\/)?([^/:]+)(?::\d+)?(\/[^\s]*)?/.exec(url);
+    if (!c.ingresses.some((x) => x.host === m[1])) {
+      return say(`curl: (6) Could not resolve host: ${m[1]}${c.resolve(m[1]) ? "  (cluster Service names only resolve inside the cluster; use kubectl exec)" : ""}`, "warn");
+    }
+    const res = c.viaIngress(m[1], m[2] || "/");
+    if (words.includes("-i") || words.includes("-I")) say(`HTTP/1.1 ${res.code} ${res.code === 200 ? "OK" : res.code === 404 ? "Not Found" : "Service Temporarily Unavailable"}`, res.ok ? "" : "warn");
+    say(res.text, res.ok ? "" : "warn");
+  }
 
   // securityContext fields from a patch, container or Pod level.
   function mergeSec(sec, sc) {
@@ -882,7 +1176,8 @@
     const notFound = (kind, name) => say(`Error from server (NotFound): ${kind.replace(/s$/, "") === "deployment" ? "deployments.apps" : kind} "${name}" not found`, "warn");
     const podByName = (name) => c.pods.find((p) => p.name === name);
     const depByName = (name) => c.deployments.find((d) => d.name === name);
-    const svcByName = (name) => c.services.find((s) => s.name === name);
+    const svcByName = (name) => c.services.find((s) => s.name === name && (s.ns || NS) === NS);
+    if (all[0] === "curl") return curl(c, all, say), out;
     if (ns !== NS && verb !== "get") return notFound("pods", args[args.length - 1] || ""), out;
 
     const ipOf = (p) => `10.244.${NODES.indexOf(p.node) + 1}.${10 + c.pods.indexOf(p)}`;
@@ -931,7 +1226,7 @@
     if (verb === "get") {
       const { kind, name } = target(null);
       if (!kind) return say('error: say what to get, for example "kubectl get pods"', "warn"), out;
-      if (ns !== NS && !flags["all-namespaces"]) return say(`No resources found in ${ns} namespace.`), out;
+      if (ns !== NS && !flags["all-namespaces"] && kind !== "services") return say(`No resources found in ${ns} namespace.`), out;
       if (kind === "pods") {
         if (name && flags.o === "yaml") {
           const p = podByName(name);
@@ -981,11 +1276,15 @@
         return out;
       }
       if (kind === "services") {
-        const svcs = c.services.filter((s) => !name || s.name === name);
+        const everywhere = !!flags["all-namespaces"];
+        const svcs = c.services.filter((s) => (!name || s.name === name) && (everywhere || (s.ns || NS) === ns));
         if (name && !svcs.length) return notFound("services", name), out;
-        if (!svcs.length) return say(`No resources found in ${NS} namespace.`), out;
-        table([["NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"],
-          ...svcs.map((s) => [s.name, "ClusterIP", s.ip, "<none>", `${s.port}/TCP`, age(nowMs - s.created)])]);
+        if (!svcs.length) return say(`No resources found in ${ns} namespace.`), out;
+        const head = ["NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"];
+        table([everywhere ? ["NAMESPACE", ...head] : head, ...svcs.map((s) => {
+          const row = [s.name, "ClusterIP", s.ip, "<none>", `${s.port}/TCP`, age(nowMs - s.created)];
+          return everywhere ? [s.ns || NS, ...row] : row;
+        })]);
         return out;
       }
       if (kind === "endpoints") {
@@ -1004,7 +1303,7 @@
         const head = ["NAME", "STATUS", "ROLES", "AGE", "VERSION", ...extra.map((x) => x.toUpperCase())];
         if (flags["show-labels"]) head.push("LABELS");
         table([head, ...NODES.filter((n) => !name || n === name).map((n) => {
-          const row = [n, "Ready", "<none>", "12d", "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
+          const row = [n, c.cordoned[n] ? "Ready,SchedulingDisabled" : "Ready", "<none>", "12d", "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
           if (flags["show-labels"]) row.push(sel(c.nodeLabels[n]));
           return row;
         })]);
@@ -1046,6 +1345,58 @@
         const list = kind === "rolebindings" ? c.bindings : c.clusterBindings;
         if (!list.length) return say(kind === "rolebindings" ? `No resources found in ${NS} namespace.` : "No resources found"), out;
         table([["NAME", "ROLE", "AGE"], ...list.map((b) => [b.name, `${b.kind}/${b.role}`, age(b.age || 0)])]);
+        return out;
+      }
+      if (kind === "pvcs") {
+        const list = c.pvcs.filter((v) => !name || v.name === name);
+        if (name && !list.length) return notFound("persistentvolumeclaims", name), out;
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESS MODES", "STORAGECLASS", "VOLUMEATTRIBUTESCLASS", "AGE"], ...list.map((v) => [
+          v.name, v.terminating ? "Terminating" : v.bound ? "Bound" : "Pending", v.bound ? v.volume : "", v.bound ? v.size : "",
+          v.bound ? "RWO" : "", v.class || "<unset>", "<unset>", "25m"])]);
+        return out;
+      }
+      if (kind === "pvs") {
+        const list = c.pvcs.filter((v) => v.bound);
+        if (!list.length) return say("No resources found"), out;
+        table([["NAME", "CAPACITY", "ACCESS MODES", "RECLAIM POLICY", "STATUS", "CLAIM", "STORAGECLASS", "AGE"],
+          ...list.map((v) => [v.volume, v.size, "RWO", "Delete", "Bound", `${NS}/${v.name}`, v.class, "1m"])]);
+        return out;
+      }
+      if (kind === "storageclasses") {
+        table([["NAME", "PROVISIONER", "RECLAIMPOLICY", "VOLUMEBINDINGMODE", "ALLOWVOLUMEEXPANSION", "AGE"],
+          ...c.storageClasses.map((x) => [x.name + (x.isDefault ? " (default)" : ""), "rancher.io/local-path", "Delete", "Immediate", "false", "12d"])]);
+        return out;
+      }
+      if (kind === "ingresses") {
+        const list = c.ingresses.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("ingresses.networking.k8s.io", name), out;
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "CLASS", "HOSTS", "ADDRESS", "PORTS", "AGE"],
+          ...list.map((x) => [x.name, x.class || "<none>", x.host, c.ingressClasses.includes(x.class) ? "localhost" : "", "80", "2h"])]);
+        return out;
+      }
+      if (kind === "ingressclasses") {
+        table([["NAME", "CONTROLLER", "PARAMETERS", "AGE"], ...c.ingressClasses.map((x) => [x, "k8s.io/ingress-nginx", "<none>", "12d"])]);
+        return out;
+      }
+      if (kind === "quotas") {
+        if (!c.quota) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "AGE", "REQUEST", "LIMIT"], [c.quota.name, "30d", `requests.memory: ${fmtMem(c.quotaUsed())}/${fmtMem(c.quota.memory)}`, ""]]);
+        return out;
+      }
+      if (kind === "jobs") {
+        const list = c.jobs.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("jobs.batch", name), out;
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "STATUS", "COMPLETIONS", "DURATION", "AGE"],
+          ...list.map((x) => [x.name, x.status, x.status === "Complete" ? "1/1" : "0/1", x.status === "Complete" ? "4s" : "71s", age(nowMs - x.created)])]);
+        return out;
+      }
+      if (kind === "pdbs") {
+        if (!c.pdbs.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "MIN AVAILABLE", "MAX UNAVAILABLE", "ALLOWED DISRUPTIONS", "AGE"],
+          ...c.pdbs.map((b) => [b.name, b.minAvailable, "N/A", c.allowedDisruptions(b), "2d"])]);
         return out;
       }
       if (kind === "hpas") {
@@ -1220,6 +1571,93 @@
         for (const e of evs) say(`  ${e.type}  ${e.reason}  replicaset-controller  ${e.msg}`, "warn");
         return out;
       }
+      if (kind === "pvcs") {
+        const v = c.pvcs.find((x) => x.name === name);
+        if (!v) return notFound("persistentvolumeclaims", name), out;
+        say(`Name:          ${v.name}`);
+        say(`Namespace:     ${NS}`);
+        say(`StorageClass:  ${v.class || ""}`);
+        say(`Status:        ${v.terminating ? "Terminating" : v.bound ? "Bound" : "Pending"}`, v.bound ? "" : "warn");
+        say(`Volume:        ${v.bound ? v.volume : ""}`);
+        say(`Finalizers:    [kubernetes.io/pvc-protection]`);
+        say(`Capacity:      ${v.bound ? v.size : ""}`);
+        say(`Access Modes:  ${v.bound ? "RWO" : ""}`);
+        say(`Used By:       ${c.pods.filter((p) => p.spec.pvc === v.name).map((p) => p.name).join(", ") || "<none>"}`);
+        say("Events:");
+        for (const e of c.pvcEvents(v)) say(`  ${e[0].padEnd(9)}${e[1].padEnd(22)}${e[3]}`, e[0] === "Warning" || e[1] === "FailedBinding" ? "warn row" : "row");
+        return out;
+      }
+      if (kind === "storageclasses") {
+        const x = c.storageClasses.find((y) => y.name === name);
+        if (!x) return notFound("storageclasses.storage.k8s.io", name), out;
+        say(`Name:            ${x.name}`);
+        say(`IsDefaultClass:  ${x.isDefault ? "Yes" : "No"}`, x.isDefault ? "" : "warn");
+        say(`Annotations:     storageclass.kubernetes.io/is-default-class=${x.isDefault ? "true" : "false"}`);
+        say("Provisioner:     rancher.io/local-path");
+        say("ReclaimPolicy:   Delete");
+        say("VolumeBindingMode: Immediate");
+        return out;
+      }
+      if (kind === "ingresses") {
+        const x = c.ingresses.find((y) => y.name === name);
+        if (!x) return notFound("ingresses.networking.k8s.io", name), out;
+        const svc = c.resolve(x.svc);
+        const eps = svc ? c.endpointsOf(svc.name) : [];
+        let backend;
+        if (!svc) backend = `(<error: endpoints "${x.svc}" not found>)`;
+        else if (svc.port !== x.port) backend = `(<error: service ${x.svc} has no port ${x.port}>)`;
+        else backend = `(${eps.map((p) => ipOf(p) + ":" + APPS[appOf(p.spec.image)].port).join(",") || "<none>"})`;
+        say(`Name:             ${x.name}`);
+        say(`Namespace:        ${NS}`);
+        say(`Address:          ${c.ingressClasses.includes(x.class) ? "localhost" : ""}`);
+        say(`Ingress Class:    ${x.class || "<none>"}`, c.ingressClasses.includes(x.class) ? "" : "warn");
+        say("Default backend:  <default>");
+        say("Rules:");
+        say("  Host                  Path  Backends", "head");
+        say("  ----                  ----  --------", "head");
+        say(`  ${x.host}`);
+        say(`                        ${x.path.padEnd(5)} ${x.svc}:${x.port} ${backend}`, /error|none/.test(backend) ? "warn" : "");
+        say("Events:           <none>");
+        return out;
+      }
+      if (kind === "quotas") {
+        if (!c.quota || c.quota.name !== name) return notFound("resourcequotas", name), out;
+        say(`Name:            ${c.quota.name}`);
+        say(`Namespace:       ${NS}`);
+        say("Resource         Used   Hard");
+        say("--------         ----   ----");
+        say(`requests.memory  ${fmtMem(c.quotaUsed()).padEnd(6)} ${fmtMem(c.quota.memory)}`);
+        return out;
+      }
+      if (kind === "jobs") {
+        const j = c.jobs.find((x) => x.name === name);
+        if (!j) return notFound("jobs.batch", name), out;
+        const failed = j.status === "Failed" ? j.pods.length : 0;
+        say(`Name:             ${j.name}`);
+        say(`Namespace:        ${NS}`);
+        say(`Parallelism:      1`);
+        say(`Completions:      1`);
+        say(`Backoff Limit:    ${j.backoffLimit}`);
+        say(`Pods Statuses:    0 Active (0 Ready) / ${j.status === "Complete" ? 1 : 0} Succeeded / ${failed} Failed`, failed ? "warn" : "");
+        say("Pod Template:");
+        say(`  Containers:\n   ${j.name}:\n    Image:      busybox:1.36\n    Command:    wget -qO- ${j.url}`);
+        say("Events:");
+        for (const e of j.events) say(`  ${e[0].padEnd(9)}${e[1].padEnd(22)}${e[3]}`, e[0] === "Warning" ? "warn row" : "row");
+        return out;
+      }
+      if (kind === "pdbs") {
+        const b = c.pdbs.find((x) => x.name === name);
+        if (!b) return notFound("poddisruptionbudgets.policy", name), out;
+        say(`Name:           ${b.name}`);
+        say(`Namespace:      ${NS}`);
+        say(`Min available:  ${b.minAvailable}`);
+        say(`Selector:       ${sel(b.selector)}`);
+        say("Status:");
+        say(`    Allowed disruptions:  ${c.allowedDisruptions(b)}`, c.allowedDisruptions(b) ? "" : "warn");
+        say(`    Current:              ${c.pods.filter((p) => p.ready && selects(b.selector, p.labels)).length}`);
+        say(`    Desired:              ${b.minAvailable}`);
+        return out;
+      }
       if (kind === "hpas") {
         const x = c.hpas.find((y) => y.name === name);
         if (!x) return notFound("horizontalpodautoscalers.autoscaling", name), out;
@@ -1320,10 +1758,16 @@
         if (!p) return say(`error: no Pods for deployment/${name}`, "warn"), out;
         name = p.name;
       } else if (kind !== "pods") {
-        return say(`This playground shows logs for Pods and Deployments only.`, "dim"), out;
+        if (kind === "jobs") {
+          const j = c.jobs.find((x) => x.name === name);
+          if (!j) return notFound("jobs.batch", name), out;
+          name = j.pods[j.pods.length - 1];
+          say(`Found ${j.pods.length} pods, using pod/${name}`, "dim");
+        } else return say(`This playground shows logs for Pods, Deployments and Jobs.`, "dim"), out;
       }
       const p = podByName(name);
       if (!p) return notFound("pods", name), out;
+      if (p.job) return p.logs.forEach((l) => say(l)), out;
       const cname = p.owner || p.name;
       const app = APPS[appOf(p.spec.image)];
       const st = c.status(p);
@@ -1336,6 +1780,7 @@
       }
       if (flags.c && flags.c !== cname) return say(`error: container ${flags.c} is not valid for pod ${p.name}`, "warn"), out;
       if (st.startsWith("Init:")) return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: PodInitializing`, "warn"), out;
+      const crashLogsOf = () => (typeof app.crashLogs === "function" ? app.crashLogs({ env: c.envOf(p), c, pod: p }) : app.crashLogs || []);
       const runLogs = () => (typeof app.logs === "function" ? app.logs({ env: c.envOf(p), c, pod: p }) : app.logs);
       if ((flags.previous || st === "CrashLoopBackOff") && p.last && p.last.liveness) {
         [...runLogs(), "2026/10/30 10:41:07 [notice] 1#1: signal 15 (SIGTERM) received, exiting", "2026/10/30 10:41:07 [notice] 1#1: exit"].forEach((l) => say(l));
@@ -1343,11 +1788,11 @@
       }
       if (flags.previous) {
         if (!p.last) return say(`Error from server (BadRequest): previous terminated container "${cname}" in pod "${p.name}" not found`, "warn"), out;
-        (app.crashLogs || []).forEach((l) => say(l));
+        crashLogsOf().forEach((l) => say(l));
         return out;
       }
       if (st === "CrashLoopBackOff") {
-        (app.crashLogs || []).forEach((l) => say(l));
+        crashLogsOf().forEach((l) => say(l));
         return out;
       }
       if (st !== "Running") return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: ${st === "Pending" ? "ContainerCreating" : st === "ImagePullBackOff" ? "trying and failing to pull image" : st}`, "warn"), out;
@@ -1505,6 +1950,40 @@
 
     if (verb === "delete") {
       const { kind, name } = target(null);
+      if (kind === "pvcs") {
+        const v = c.pvcs.find((x) => x.name === name);
+        if (!v) return notFound("persistentvolumeclaims", name), out;
+        say(`persistentvolumeclaim "${name}" deleted`);
+        if (c.pods.some((p) => p.spec.pvc === name)) {
+          v.terminating = true;
+          say("(it stays Terminating: the kubernetes.io/pvc-protection finalizer keeps a claim while a Pod uses it)", "warn");
+        } else c.pvcs = c.pvcs.filter((x) => x !== v);
+        return out;
+      }
+      if (kind === "jobs") {
+        const j = c.jobs.find((x) => x.name === name);
+        if (!j) return notFound("jobs.batch", name), out;
+        c.jobs = c.jobs.filter((x) => x !== j);
+        c.pods = c.pods.filter((p) => p.job !== name);
+        say(`job.batch "${name}" deleted`);
+        return out;
+      }
+      if (kind === "quotas") {
+        if (!c.quota || c.quota.name !== name) return notFound("resourcequotas", name), out;
+        c.quota = null;
+        c.retry = true;
+        say(`resourcequota "${name}" deleted`);
+        say("(the namespace now has no memory budget at all)", "warn");
+        return out;
+      }
+      if (kind === "pdbs") {
+        const b = c.pdbs.find((x) => x.name === name);
+        if (!b) return notFound("poddisruptionbudgets.policy", name), out;
+        c.pdbs = c.pdbs.filter((x) => x !== b);
+        say(`poddisruptionbudget.policy "${name}" deleted`);
+        say("(nothing now stops a drain from taking every web Pod at once)", "warn");
+        return out;
+      }
       if (kind === "networkpolicies") {
         const np = c.policies.find((x) => x.name === name);
         if (!np) return notFound("networkpolicies.networking.k8s.io", name), out;
@@ -1580,6 +2059,52 @@
       return out;
     }
 
+    if (verb === "cordon" || verb === "uncordon") {
+      const { name } = target("nodes");
+      if (!NODES.includes(name)) return say(`Error from server (NotFound): nodes "${name}" not found`, "warn"), out;
+      c.cordoned[name] = verb === "cordon";
+      if (verb === "uncordon") c.retry = true;
+      say(`node/${name} ${verb}ed`);
+      return out;
+    }
+
+    if (verb === "drain") {
+      const { name } = target("nodes");
+      if (!NODES.includes(name)) return say(`Error from server (NotFound): nodes "${name}" not found`, "warn"), out;
+      c.cordoned[name] = true;
+      say(`node/${name} cordoned`);
+      if (!flags["ignore-daemonsets"]) {
+        say(`error: unable to drain node "${name}" due to error: cannot delete DaemonSet-managed Pods (use --ignore-daemonsets to ignore): kube-system/kindnet-${c.rand(5)}, kube-system/kube-proxy-${c.rand(5)}`, "warn");
+        return out;
+      }
+      say(`Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-${c.rand(5)}, kube-system/kube-proxy-${c.rand(5)}`, "dim");
+      // Evict one Pod at a time; the ReplicaSet replaces it elsewhere before
+      // the next eviction, which is what lets a budget allow the next one.
+      for (const p of c.pods.filter((x) => x.node === name && !x.terminating && !x.job)) {
+        const budget = c.pdbs.find((b) => selects(b.selector, p.labels));
+        say(`evicting pod ${NS}/${p.name}`);
+        if (budget && c.allowedDisruptions(budget) < 1 && !flags["disable-eviction"]) {
+          say(`error when evicting pods/"${p.name}" -n "${NS}" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.`, "warn");
+          if (c.pods.some((x) => (x.creating || !x.ready) && !x.job && selects(budget.selector, x.labels))) {
+            say("(a matching Pod is still starting; once it is Ready the budget allows one eviction. Try the drain again in a moment.)", "dim");
+          } else {
+            say("(a real drain keeps retrying until the budget allows it; press Ctrl+C there. Here it stops so you can make room first.)", "dim");
+          }
+          return out;
+        }
+        if (budget && flags["disable-eviction"] && c.allowedDisruptions(budget) < 1) c.drainBypassedPdb = true;
+        c.pods = c.pods.filter((x) => x !== p);
+        say(`pod/${p.name} ${flags["disable-eviction"] ? "deleted" : "evicted"}`);
+        const d = p.owner && depByName(p.owner);
+        if (d) {
+          const fresh = c.addPod(d, {});
+          if (fresh) { fresh.hash = p.hash; c.evaluate(fresh, true); }
+        }
+      }
+      say(`node/${name} drained`);
+      return out;
+    }
+
     if (verb === "taint") {
       const { kind, name } = target("nodes");
       if (kind !== "nodes" || !NODES.includes(name)) return say(`error: use the form  kubectl taint node <node> key=value:NoSchedule`, "warn"), out;
@@ -1646,7 +2171,16 @@
         }
         return out;
       }
-      return say("This playground creates configmaps, rolebindings and clusterrolebindings. There are no files to create from.", "dim"), out;
+      if (what === "jobs") {
+        if (!name) return say("error: name the Job: kubectl create job <name> --image=busybox:1.36 -- wget -qO- <url>", "warn"), out;
+        if (c.jobs.some((x) => x.name === name)) return say(`error: failed to create job: jobs.batch "${name}" already exists`, "warn"), out;
+        const url = inner.find((x) => /[a-z]/.test(x) && !x.startsWith("-") && x !== "wget" && x !== "curl");
+        if (!flags.image || !url) return say("error: give --image and a command, for example: kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc/menu.json", "warn"), out;
+        c.runJob({ name, url, backoffLimit: 6, created: c.now() });
+        say(`job.batch/${name} created`);
+        return out;
+      }
+      return say("This playground creates configmaps, jobs, rolebindings and clusterrolebindings. There are no files to create from.", "dim"), out;
     }
 
     if (verb === "auth") {
@@ -1720,6 +2254,56 @@
         say(`deployment.apps/${name} patched`);
         return out;
       }
+      if (kind === "storageclasses") {
+        const x = c.storageClasses.find((y) => y.name === name);
+        if (!x) return notFound("storageclasses.storage.k8s.io", name), out;
+        const flag = (((patch.metadata || {}).annotations) || {})["storageclass.kubernetes.io/is-default-class"];
+        if (flag === undefined) return say("(this playground patches the storageclass.kubernetes.io/is-default-class annotation)", "dim"), out;
+        x.isDefault = String(flag) === "true";
+        c.retry = true;
+        say(`storageclass.storage.k8s.io/${name} patched`);
+        return out;
+      }
+      if (kind === "pvcs") {
+        const v = c.pvcs.find((x) => x.name === name);
+        if (!v) return notFound("persistentvolumeclaims", name), out;
+        const keys = Object.keys(spec).filter((k) => k !== "resources");
+        if (keys.length) {
+          return say(`The PersistentVolumeClaim "${name}" is invalid: spec: Forbidden: spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims`, "warn"), out;
+        }
+        return say(`persistentvolumeclaim/${name} patched (no change)`, "dim"), out;
+      }
+      if (kind === "ingresses") {
+        const x = c.ingresses.find((y) => y.name === name);
+        if (!x) return notFound("ingresses.networking.k8s.io", name), out;
+        if (spec.ingressClassName !== undefined) x.class = spec.ingressClassName;
+        const rule = (spec.rules || [])[0];
+        if (rule) {
+          if (rule.host) x.host = rule.host;
+          const path = (((rule.http || {}).paths) || [])[0];
+          if (path) {
+            if (path.path) x.path = path.path;
+            const bs = (path.backend || {}).service || {};
+            if (bs.name) x.svc = bs.name;
+            if (bs.port && bs.port.number) x.port = Number(bs.port.number);
+          }
+        }
+        say(`ingress.networking.k8s.io/${name} patched`);
+        return out;
+      }
+      if (kind === "quotas") {
+        if (!c.quota || c.quota.name !== name) return notFound("resourcequotas", name), out;
+        const hard = ((spec.hard || {})["requests.memory"]);
+        if (!hard || parseMem(hard) === null) return say("(this playground patches spec.hard[\"requests.memory\"])", "dim"), out;
+        c.quota.memory = parseMem(hard);
+        c.retry = true;
+        say(`resourcequota/${name} patched`);
+        return out;
+      }
+      if (kind === "jobs") {
+        if (!c.jobs.some((x) => x.name === name)) return notFound("jobs.batch", name), out;
+        return say(`The Job "${name}" is invalid: spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable`, "warn"), out;
+      }
       if (kind === "vpas") {
         const v = c.vpas.find((x) => x.name === name);
         if (!v) return notFound("verticalpodautoscalers.autoscaling.k8s.io", name), out;
@@ -1760,6 +2344,23 @@
         Object.entries({ HOSTNAME: p.name, ...c.envOf(p) }).forEach(([k, v]) => say(`${k}=${v}`));
         return out;
       }
+      if (cmd === "nslookup") {
+        const host = inner[1];
+        if (!host) return say("nslookup: missing host name", "warn"), out;
+        const svc = c.resolve(host);
+        say("Server:    10.96.0.10");
+        say("Address:   10.96.0.10:53");
+        say("");
+        const fq = host.includes(".") && !host.endsWith(".svc.cluster.local") ? `${host}.svc.cluster.local` : host.endsWith(".svc.cluster.local") ? host : `${host}.${NS}.svc.cluster.local`;
+        if (!svc) {
+          say(`** server can't find ${fq}: NXDOMAIN`, "warn");
+          say("command terminated with exit code 1", "dim");
+        } else {
+          say(`Name:      ${svc.name}.${svc.ns || NS}.svc.cluster.local`);
+          say(`Address:   ${svc.ip}`);
+        }
+        return out;
+      }
       if (cmd === "wget" || cmd === "curl") {
         const url = inner.slice(1).reverse().find((x) => !x.startsWith("-") && /[a-z]/.test(x) && !/^\d+$/.test(x));
         if (!url) return say(`${cmd}: missing URL`, "warn"), out;
@@ -1769,7 +2370,7 @@
         if (!res.ok) say("command terminated with exit code 1", "dim");
         return out;
       }
-      return say("kubectl exec runs wget, curl and env in this playground. For a shell, use the course: ./quest start 0", "dim"), out;
+      return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./quest start 0", "dim"), out;
     }
     if (verb === "edit") return say("kubectl edit opens an editor, which this playground does not have. Use kubectl set ... instead.", "dim"), out;
     if (verb === "apply") return say("There are no files in this playground. Use kubectl set, create, label or patch to change live objects.", "dim"), out;
@@ -1826,7 +2427,7 @@
 
   function renderPicker() {
     const done = new Set(saved.get());
-    picker.replaceChildren(...SCENARIOS.map((s) => {
+    const button = (s) => {
       const b = el("button", "pg-scn", null);
       b.type = "button";
       b.setAttribute("aria-pressed", String(s === scenario));
@@ -1835,6 +2436,14 @@
       b.title = done.has(s.id) ? `${s.title} (solved)` : s.title;
       b.addEventListener("click", () => load(s.id));
       return b;
+    };
+    picker.replaceChildren(...GROUPS.map(([group, ids]) => {
+      const row = el("div", "pg-group", null);
+      const solved = ids.filter((id) => done.has(id)).length;
+      const items = el("div", "pg-group-items", null);
+      items.append(...ids.map((id) => button(SCENARIOS.find((x) => x.id === id))));
+      row.append(el("span", "pg-group-name", `${group} · ${solved}/${ids.length}`), items);
+      return row;
     }));
   }
 
@@ -1911,7 +2520,7 @@
     renderMap();
     // On phones the picker scrolls sideways; keep the current one in view.
     const current = picker.querySelector('[aria-pressed="true"]');
-    if (current && picker.scrollWidth > picker.clientWidth) picker.scrollLeft = current.offsetLeft - picker.firstElementChild.offsetLeft - 48;
+    if (current && picker.scrollWidth > picker.clientWidth) picker.scrollLeft = current.offsetLeft - picker.querySelector(".pg-group-name").offsetLeft - 48;
   }
 
   function check() {
@@ -1944,7 +2553,7 @@
       return load(next.id);
     }
     if (cmd === "hint") return print(scenario.hints[Math.min(hintLevel++, scenario.hints.length - 1)], "dim");
-    if (words[0] !== "kubectl") return print(`${words[0]}: command not found. This playground understands kubectl; type 'help'.`, "warn");
+    if (words[0] !== "kubectl" && words[0] !== "curl") return print(`${words[0]}: command not found. This playground understands kubectl (and curl); type 'help'.`, "warn");
     for (const [text, cls] of kubectl(cluster, cmd)) print(text, cls);
     renderMap();
     if (cluster.dirty) settleSoon(4);
@@ -1978,12 +2587,15 @@
       services: cluster.services.map((s) => s.name), endpoints: cluster.services.map((s) => s.name), nodes: NODES,
       configmaps: Object.keys(cluster.configMaps), networkpolicies: cluster.policies.map((x) => x.name),
       rolebindings: cluster.bindings.map((b) => b.name), roles: Object.keys(cluster.roles), serviceaccounts: cluster.serviceAccounts,
-      hpas: cluster.hpas.map((x) => x.name), vpas: cluster.vpas.map((x) => x.name), namespaces: [NS]
+      hpas: cluster.hpas.map((x) => x.name), vpas: cluster.vpas.map((x) => x.name), namespaces: [NS],
+      pvcs: cluster.pvcs.map((x) => x.name), storageclasses: cluster.storageClasses.map((x) => x.name),
+      ingresses: cluster.ingresses.map((x) => x.name), quotas: cluster.quota ? [cluster.quota.name] : [],
+      jobs: cluster.jobs.map((x) => x.name), pdbs: cluster.pdbs.map((x) => x.name)
     };
     const names = byKind[kind] || [...Object.values(byKind).flat(),
       "get", "describe", "logs", "exec", "patch", "label", "create", "auth", "can-i", "pods", "deployment", "service",
       "endpoints", "nodes", "events", "configmap", "networkpolicy", "rolebinding", "rollout", "kubectl", "taint", "expose",
-      "hpa", "vpa", "namespace"];
+      "hpa", "vpa", "namespace", "pvc", "storageclass", "ingress", "ingressclass", "quota", "job", "pdb", "cordon", "uncordon", "drain", "curl"];
     const hits = [...new Set(names)].filter((n) => n.startsWith(stem) && n !== stem);
     if (hits.length === 1) input.value = v.slice(0, start) + prefix + hits[0] + " ";
     else if (hits.length > 1) {
