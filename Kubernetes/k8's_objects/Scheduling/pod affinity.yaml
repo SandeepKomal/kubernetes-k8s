@@ -1,39 +1,51 @@
+# Pod affinity: place Pods near other Pods.
+#
+# The cache should run on the same node as the web Pods it serves, so reads
+# never cross the network. topologyKey decides what "near" means:
+#   kubernetes.io/hostname       same node
+#   topology.kubernetes.io/zone  same availability zone
+#
+# This uses the soft (preferred) form, so the cache still starts when no web
+# Pod exists yet. With requiredDuringScheduling... it would stay Pending until
+# a web Pod is running.
+#
+# Try it:
+#   kubectl apply -f nodeaffinity.yaml -f "pod affinity.yaml"
+#   kubectl get pods -l 'app in (web,cache)' -o wide      # compare the NODE column
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: todo-api
+  name: cache
+  labels:
+    app: cache
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: todo-api
+      app: cache
   template:
     metadata:
-      name: todo-api-pod
       labels:
-        app: todo-api
+        app: cache
     spec:
-      containers:
-        - name: todo-api
-          image: pavanelthepu/todo-api:1.0.2
-          ports:
-            - containerPort: 8082
-          env:
-            # Never put connection strings with passwords in a manifest.
-            # Create the Secret first:
-            #   kubectl create secret generic todo-api-secrets --from-literal=mongodb-uri='mongodb+srv://...'
-            - name: "spring.data.mongodb.uri"
-              valueFrom:
-                secretKeyRef:
-                  name: todo-api-secrets
-                  key: mongodb-uri
       affinity:
         podAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - "todo-ui"
-              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: web
+                topologyKey: kubernetes.io/hostname
+      containers:
+        # A stand-in for a local cache or sidecar-style helper service.
+        - name: cache
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi

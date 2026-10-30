@@ -1,43 +1,60 @@
+# Taints and tolerations: reserve nodes for one kind of work.
+#
+# A taint on a node pushes Pods away; a toleration on a Pod lets it in anyway.
+# A toleration alone does not pull the Pod onto that node, so dedicated
+# workloads usually pair it with node affinity to prefer (or require) it.
+#
+# Taint effects:
+#   NoSchedule        new Pods without a toleration are not scheduled there
+#   PreferNoSchedule  the scheduler avoids the node when it can
+#   NoExecute         also evicts running Pods that do not tolerate it
+#
+# Try it:
+#   kubectl taint node <node> dedicated=batch:NoSchedule
+#   kubectl label node <node> workload=batch
+#   kubectl apply -f taintsandtolerants.yaml
+#   kubectl get pods -l app=batch-worker -o wide     # lands on the reserved node
+#   kubectl taint node <node> dedicated=batch:NoSchedule-   # remove the taint again
+#
+# Without the taint and label it still runs on any node, so the file applies
+# cleanly on a fresh cluster. Hands-on version: labs/12-scheduling.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: todo-api
+  name: batch-worker
+  labels:
+    app: batch-worker
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: todo-api
+      app: batch-worker
   template:
     metadata:
-      name: todo-api-pod
       labels:
-        app: todo-api
+        app: batch-worker
     spec:
-      containers:
-        - name: todo-api
-          image: pavanelthepu/todo-api:1.0.2
-          ports:
-            - containerPort: 8082
-          env:
-            # Never put connection strings with passwords in a manifest.
-            # Create the Secret first:
-            #   kubectl create secret generic todo-api-secrets --from-literal=mongodb-uri='mongodb+srv://...'
-            - name: "spring.data.mongodb.uri"
-              valueFrom:
-                secretKeyRef:
-                  name: todo-api-secrets
-                  key: mongodb-uri
       tolerations:
-        - key: "env"
-          operator: "Equal"
-          value: "production"
-          effect: "NoSchedule"
+        - key: dedicated
+          operator: Equal
+          value: batch
+          effect: NoSchedule
       affinity:
         nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: rank
-                    operator: Lt
-                    values:
-                      - "5"
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: workload
+                    operator: In
+                    values: ["batch"]
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["sh", "-c", "while true; do echo processing batch on $(hostname); sleep 30; done"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

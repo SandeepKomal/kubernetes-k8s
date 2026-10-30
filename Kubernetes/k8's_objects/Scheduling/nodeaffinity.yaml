@@ -1,48 +1,61 @@
+# Node affinity: choose nodes by their labels.
+#
+# required...  is a hard rule: Pods stay Pending until a node matches.
+# preferred... is a soft rule: the scheduler favours matching nodes, by weight,
+#              but still places the Pod somewhere else if none match.
+#
+# Try it:
+#   kubectl apply -f nodeaffinity.yaml
+#   kubectl get pods -l app=web -o wide          # spread over any Linux node
+#   kubectl label node <node> disktype=ssd       # then delete a Pod and watch
+#   kubectl delete pod -l app=web                # the new ones prefer that node
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: todo-ui
+  name: web
+  labels:
+    app: web
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: todo-ui
+      app: web
   template:
     metadata:
-      name: todo-ui-pod
       labels:
-        app: todo-ui
+        app: web
     spec:
-      # nodeName: minikube-m02
-      # nodeSelector:
-      #   team: analytics
       affinity:
         nodeAffinity:
+          # Hard rule: only Linux nodes. Matters in clusters that also run Windows nodes.
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  - key: rank
-                    operator: Lt
-                    values:
-                      - "5"
+                  - key: kubernetes.io/os
+                    operator: In
+                    values: ["linux"]
+          # Soft rules: SSD nodes score 80, nodes of the web team score 20.
           preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 40
+            - weight: 80
               preference:
                 matchExpressions:
-                - key: "team"
-                  operator: In
-                  values: ["analytics"]
-            - weight: 60
+                  - key: disktype
+                    operator: In
+                    values: ["ssd"]
+            - weight: 20
               preference:
                 matchExpressions:
-                - key: "rank"
-                  operator: Gt
-                  values: ["4"]
+                  - key: team
+                    operator: In
+                    values: ["web"]
       containers:
-        - name: todo-ui
-          image: pavanelthepu/todo-ui:1.0.2
+        - name: web
+          image: nginx:1.27
           ports:
             - containerPort: 80
-          env:
-            - name: "REACT_APP_BACKEND_SERVER_URL"
-              value: "http://todo.com/api"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
