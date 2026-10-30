@@ -38,6 +38,10 @@ kubectl get pods     # investigate; kubectl already points at quest-03
 
 Every level is independent: start anywhere, restart any time.
 
+Prefer buttons? `./quest ui` opens a local dashboard with the mission,
+Start / Check / Hint / Solution buttons and a live view of the namespace.
+Its code is in [`ui/`](ui/).
+
 ## Inside a level folder
 
 | File | Purpose |

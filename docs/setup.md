@@ -11,6 +11,13 @@ no cost.
 
 About 4 GB of free memory is enough for the 3-node quest cluster.
 
+## No install: GitHub Codespaces
+
+Open the repository on GitHub and choose **Code → Codespaces → Create
+codespace on main**, or use the badge in the README. Docker, kind, kubectl
+and Python are installed for you. This uses your own GitHub account's free
+Codespaces allowance; stop the codespace when you are done.
+
 ## macOS
 
 ```bash
@@ -49,6 +56,7 @@ Linux steps inside WSL. `./quest` is a bash script, so run it from WSL.
 ./quest up         # creates the k8s-quest cluster (1-2 minutes)
 ./quest list
 ./quest start 0
+./quest ui         # optional: practice dashboard in your browser (needs python3)
 ```
 
 When you are done for the day, `./quest down` deletes the cluster.

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kubernetes Quest · Practice</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 8v16L16 30 4 24V8z' fill='%23326ce5'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 8v16L16 30 4 24V8z"/></svg>
+      Kubernetes Quest <span class="muted">· practice</span>
+    </div>
+    <div id="context" class="context" title="Current kubectl context"></div>
+  </header>
+
+  <div id="token-missing" class="banner" hidden>
+    Open this page with the full link that <code>./quest ui</code> printed in your terminal (it ends in <code>#token=…</code>).
+  </div>
+
+  <div class="layout">
+    <nav class="levels" aria-label="Levels">
+      <ol id="level-list"></ol>
+      <p id="progress" class="muted small"></p>
+    </nav>
+
+    <main id="mission" class="mission" tabindex="-1" aria-live="polite">
+      <p class="muted">Choose a level.</p>
+    </main>
+
+    <aside class="panel" aria-label="Practice controls">
+      <div class="actions">
+        <button id="btn-start" type="button" class="primary">Start level</button>
+        <button id="btn-check" type="button">Check</button>
+        <button id="btn-hint" type="button">Hint</button>
+        <button id="btn-solution" type="button" class="quiet">Solution</button>
+      </div>
+      <p class="muted small">Start resets the level to its broken state. Fix it with <code>kubectl</code> in your terminal, then press Check.</p>
+
+      <section>
+        <h2>Checks</h2>
+        <ul id="checks" class="checks"><li class="muted">Not checked yet.</li></ul>
+        <p id="check-summary" class="summary" aria-live="polite"></p>
+      </section>
+
+      <section id="hint-box" hidden>
+        <h2>Hint</h2>
+        <pre id="hint" class="out"></pre>
+      </section>
+
+      <section>
+        <div class="row">
+          <h2>Namespace</h2>
+          <label class="small"><input id="auto" type="checkbox" checked> Refresh every 5s</label>
+        </div>
+        <pre id="state" class="out state">Start a level to see its resources.</pre>
+      </section>
+
+      <section id="log-box" hidden>
+        <h2>Output</h2>
+        <pre id="log" class="out"></pre>
+      </section>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

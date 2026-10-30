@@ -6,6 +6,7 @@
 #   ./quest start 0       set up level 0 in its own namespace
 #   ./quest check         check your work on the current level
 #   ./quest hint          reveal the next hint
+#   ./quest ui            open the practice dashboard in your browser
 #
 # Run ./quest help for everything else.
 set -euo pipefail
@@ -73,6 +74,11 @@ cmd_doctor() {
       printf '  %s✘%s %s  (see docs/setup.md)\n' "$BAD" "$END" "$t"; missing=1
     fi
   done
+  if command -v python3 >/dev/null 2>&1; then
+    printf '  %s✔%s python3  (optional, for ./quest ui)\n' "$OK" "$END"
+  else
+    printf '  %s-%s python3  (optional, only needed for ./quest ui)\n' "$DIM" "$END"
+  fi
   if [ $missing -eq 0 ] && ! docker info >/dev/null 2>&1; then
     printf '  %s!%s docker is installed but not running\n' "$WARN" "$END"; missing=1
   fi
@@ -193,6 +199,11 @@ cmd_solve() {
   NS=$(level_ns "$d") "$d/solution.sh"
 }
 
+cmd_ui() {
+  command -v python3 >/dev/null 2>&1 || die "the dashboard needs python3. Everything else works without it."
+  exec python3 "$LEVELS/ui/server.py" "$@"
+}
+
 cmd_reset() {
   rm -f "$STATE_DIR/done" "$STATE_DIR/current" "$STATE_DIR"/hint-*
   echo "Progress cleared."
@@ -210,6 +221,7 @@ ${B}Kubernetes Quest${END}: learn Kubernetes by fixing a practice cluster.
   ${B}./quest hint [n]${END}       next hint, one at a time
   ${B}./quest solution [n]${END}   print the reference solution
   ${B}./quest solve [n]${END}      apply the reference solution
+  ${B}./quest ui${END}             practice dashboard in your browser (needs python3)
   ${B}./quest reset${END}          forget your progress
   ${B}./quest down${END}           delete the practice cluster
 
@@ -227,6 +239,7 @@ case "${1:-help}" in
   hint) cmd_hint "${2:-}" ;;
   solution) cmd_solution "${2:-}" ;;
   solve) cmd_solve "${2:-}" ;;
+  ui) shift; cmd_ui "$@" ;;
   reset) cmd_reset ;;
   help|-h|--help) cmd_help ;;
   *) die "unknown command '$1'. Run ./quest help" ;;

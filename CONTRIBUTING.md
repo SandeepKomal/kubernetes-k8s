@@ -20,7 +20,7 @@ explanations, new levels and new examples are all welcome.
 ## Running the checks locally
 
 ```bash
-shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh
+shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
 find Kubernetes labs -name '*.yaml' -not -name kind.yaml -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
 ./quest up
 tests/run-level.sh 6      # starts level 6, expects failure, solves it, expects success

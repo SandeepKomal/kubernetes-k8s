@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: shellcheck
-        run: shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh
+        run: shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
 
       - name: Install kubeconform
         run: |
@@ -42,8 +42,11 @@ jobs:
             test -x "${d}solution.sh" || { echo "${d}solution.sh is not executable"; exit 1; }
           done
 
-      - name: Site scripts parse
-        run: node --check site/app.js && node --check site/data.js
+      - name: Site and dashboard scripts parse
+        run: |
+          node --check site/app.js && node --check site/data.js && node --check labs/ui/app.js
+          python3 -m py_compile labs/ui/server.py
+          python3 -c "import json; json.load(open('.devcontainer/devcontainer.json'))"
 
   levels:
     name: Level ${{ matrix.level }} on kind
