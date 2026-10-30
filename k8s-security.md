@@ -344,42 +344,110 @@ This should fail.
 
 ---
 
-# 4. Kyverno (Policy as Code)
+# 4. Policy as Code
 
-## What is Kyverno?
+## What is admission control?
 
-Kyverno is a **Kubernetes-native policy engine**.
+Every request to create or change an object passes through **admission
+control** before it is stored. Policies there can reject objects that break
+your rules, such as images without a pinned version, missing resource
+limits, or containers running as root.
 
-It can:
-
-* Validate manifests
-* Mutate resources
-* Generate resources
-
-No new language. Uses YAML.
-
----
-
-## Install Kyverno
-
-```
-kubectl apply --server-side -f https://github.com/kyverno/kyverno/releases/latest/download/install.yaml
-```
-
-Verify:
-
-```
-kubectl get pods -n kyverno
-```
+You have already met one built-in admission policy: Pod Security Admission
+(level 17 of the course). Kubernetes also has a general built-in engine,
+**ValidatingAdmissionPolicy**, stable since Kubernetes 1.30. Rules are short
+CEL expressions, and nothing has to be installed.
 
 ---
 
-## Hands-On: Enforce No Latest Tag
+## Hands-On: Require Pinned Image Versions
 
-Policy:
+This policy rejects Pods in the `payments` namespace whose images use
+`:latest` or no tag at all. A version tag or a digest (`@sha256:...`)
+passes.
 
 ```
 kubectl apply -f - <<EOF
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: require-pinned-images
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: >-
+        object.spec.containers.all(c,
+          c.image.contains('@sha256:') ||
+          (c.image.split('/')[c.image.split('/').size() - 1].contains(':') &&
+           !c.image.endsWith(':latest')))
+      message: "Pin every container image to a version tag or digest; ':latest' and untagged images are not allowed."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: require-pinned-images
+spec:
+  policyName: require-pinned-images
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: payments
+EOF
+```
+
+The **policy** says what to check. The **binding** says where it applies
+and what to do on failure (`Deny`, `Warn` or `Audit`).
+
+---
+
+## Test the Policy
+
+This is rejected:
+
+```
+kubectl run bad-pod --image=nginx:latest -n payments
+```
+
+This is rejected too, because no tag means `latest`:
+
+```
+kubectl run untagged-pod --image=nginx -n payments
+```
+
+This is allowed:
+
+```
+kubectl run good-pod --image=nginx:1.27 -n payments
+```
+
+Tip: start new policies with `validationActions: ["Warn"]` or `["Audit"]`
+to see what would break, then switch to `Deny`.
+
+---
+
+## Kyverno and Gatekeeper (Reading Only)
+
+> Nothing in this section is installed. It explains tools you will meet at
+> work.
+
+Many teams add a dedicated policy engine on top of the built-in features:
+
+| Tool | Policies written in | Adds over the built-in engine |
+| --- | --- | --- |
+| **Kyverno** | Kubernetes-style YAML | Mutating objects (adding defaults), generating objects (for example a default NetworkPolicy per namespace), verifying image signatures, reports on existing objects |
+| **OPA Gatekeeper** | Rego | A general policy language shared with other systems, policy libraries, audit of existing objects |
+
+For comparison, the same rule written as a Kyverno policy looks like this
+(illustrative only, not applied):
+
+```yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -387,35 +455,23 @@ metadata:
 spec:
   validationFailureAction: Enforce
   rules:
-  - name: require-image-tag
-    match:
-      resources:
-        kinds:
-        - Pod
-    validate:
-      message: "Image tag 'latest' is not allowed"
-      pattern:
-        spec:
-          containers:
-          - image: "!*:latest"
-EOF
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: "Image tag 'latest' is not allowed"
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
 ```
 
----
-
-## Test Kyverno Policy
-
-This should fail:
-
-```
-kubectl run bad-pod --image=nginx:latest -n payments
-```
-
-This should succeed:
-
-```
-kubectl run good-pod --image=nginx:1.25 -n payments
-```
+How to choose: start with ValidatingAdmissionPolicy and Pod Security
+Admission, which are built in. Add a policy engine when you need to mutate
+or generate objects, verify image signatures, or manage many policies
+across clusters.
 
 ---
 
@@ -494,7 +550,11 @@ kubectl logs secret-demo -n dev
 
 ---
 
-# 6. Git-Safe Secret Management (External Secrets Operator)
+# 6. Git-Safe Secret Management (Reading Only)
+
+> Nothing in this section is installed. It explains how real teams keep
+> secrets out of Git, so you recognise the pattern at work. The hands-on
+> part of this guide ends with section 5.
 
 ## The Real Problem
 
@@ -509,123 +569,43 @@ Real teams need:
 * Secrets stored **outside** the cluster
 * Automatic sync into Kubernetes
 
-This is where **External Secrets Operator (ESO)** fits perfectly.
-
 ---
 
-## What is External Secrets Operator (ESO)?
+## The Pattern: External Secrets Operator (ESO)
 
-ESO allows Kubernetes to:
+ESO is a controller that reads secrets from an external secret store and
+writes them into the cluster as ordinary Kubernetes Secrets.
 
-* Read secrets from external secret stores
-* Inject them as native Kubernetes Secrets
+Common secret stores:
 
-Common backends:
-
-* AWS Secrets Manager
+* AWS Secrets Manager or Parameter Store
 * HashiCorp Vault
-* Azure Key Vault
+* Azure Key Vault, Google Secret Manager
 
-For learning purposes, we will use **Vault** (simple and widely used).
+The flow:
+
+```text
+secret store (Vault, AWS Secrets Manager)      Git repository
+        |  holds the real value                  |  holds only a reference
+        v                                        v
+   External Secrets Operator  <--- reads --- ExternalSecret object
+        |
+        v  creates it and keeps it in sync
+   Kubernetes Secret ---> Pods use it like any other Secret
+```
+
+1. The secret is stored in the secret store, by a person or a pipeline
+2. Git contains only an `ExternalSecret`, which names the secret, not its value
+3. ESO syncs the value into a Kubernetes Secret and refreshes it on a schedule
+4. Pods consume it like a normal Secret; the application does not change
 
 ---
 
-## High-Level Flow (Very Important)
+## What the Objects Look Like (Illustrative)
 
-1. Secret is stored securely in Vault
-2. Git contains only a reference (not the secret)
-3. ESO syncs the secret into Kubernetes
-4. Pods consume it like a normal Secret
+A **SecretStore** tells ESO how to reach the secret store. With Vault:
 
-Git stays clean. Secrets stay safe.
-
----
-
-## Install External Secrets Operator
-
-```
-helm repo add external-secrets https://charts.external-secrets.io
-helm repo update
-```
-
-Verify:
-
-```
-kubectl get pods -n external-secrets
-```
-
----
-
-## Install Vault
-
-```
-kubectl create namespace vault
-
-kubectl apply -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: vault
-  namespace: vault
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: vault
-  template:
-    metadata:
-      labels:
-        app: vault
-    spec:
-      containers:
-      - name: vault
-        image: hashicorp/vault:1.15
-        args: ["server", "-dev"]
-        env:
-        - name: VAULT_DEV_ROOT_TOKEN_ID
-          value: root
-        - name: VAULT_DEV_LISTEN_ADDRESS
-          value: 0.0.0.0:8200
-        ports:
-        - containerPort: 8200
-EOF
-```
-
-Expose Vault:
-
-```
-kubectl port-forward -n vault deploy/vault 8200:8200
-```
-
----
-
-## Store a Secret in Vault
-
-In another terminal:
-
-```
-kubectl exec -it -n vault deploy/vault -- sh
-
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=root
-
-vault kv put secret/payments/db username=admin password=SuperSecret123
-```
-
-Create Vault Token Secret
-
-```
-kubectl create secret generic vault-token \
-  --from-literal=token=root \
-  -n payments
-```
-
----
-
-## Create a SecretStore (Vault Connection)
-
-```
-kubectl apply -f - <<EOF
+```yaml
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
@@ -634,28 +614,22 @@ metadata:
 spec:
   provider:
     vault:
-      server: "http://vault.vault.svc.cluster.local:8200"
+      server: "https://vault.example.internal:8200"
       path: "secret"
       version: "v2"
       auth:
-        tokenSecretRef:
-          name: vault-token
-          key: token
-EOF
+        kubernetes:              # Pods prove who they are with their ServiceAccount
+          mountPath: "kubernetes"
+          role: "payments"
 ```
 
----
+An **ExternalSecret** is the part that lives in Git:
 
-## Create ExternalSecret (Git-Safe)
-
-This is what goes into Git:
-
-```
-kubectl apply -f - <<EOF
+```yaml
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: db-secret
+  name: payments-api
   namespace: payments
 spec:
   refreshInterval: 1h
@@ -663,40 +637,38 @@ spec:
     name: vault-backend
     kind: SecretStore
   target:
-    name: db-secret
-    creationPolicy: Owner
+    name: payments-api           # the Kubernetes Secret ESO creates
   data:
-  - secretKey: username
-    remoteRef:
-      key: payments/db
-      property: username
-  - secretKey: password
-    remoteRef:
-      key: payments/db
-      property: password
-EOF
+    - secretKey: api-token
+      remoteRef:
+        key: payments/api
+        property: token
 ```
 
-Verify:
+The application reads the resulting Secret exactly as in section 5:
 
-```
-kubectl get secrets -n payments
+```yaml
+env:
+  - name: API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: payments-api
+        key: api-token
 ```
 
 ---
 
-## Consume the Secret (No Changes for App)
+## Good Practice
 
-Pods consume it like any Kubernetes Secret:
-
-```
-env:
-- name: DB_USER
-  valueFrom:
-    secretKeyRef:
-      name: db-secret
-      key: username
-```
+* Authenticate to the secret store with the workload's identity (its
+  ServiceAccount, or IRSA / EKS Pod Identity on AWS), not a long-lived
+  token stored in a Secret.
+* Give each namespace or application access to its own secrets only.
+* Turn on encryption at rest for Secrets in etcd, since ESO still writes
+  ordinary Kubernetes Secrets.
+* Alternatives with the same goal: the Secrets Store CSI Driver (mounts
+  secrets as files without creating Kubernetes Secrets), and Sealed Secrets
+  or SOPS (encrypted secrets committed to Git).
 
 ---
 
