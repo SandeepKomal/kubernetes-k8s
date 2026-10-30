@@ -1,0 +1,34 @@
+{
+  "name": "Kubernetes Quest",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "helm": "none",
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "installTools": false
+    }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
+  "postCreateCommand": "bash .devcontainer/install-kind.sh",
+  "forwardPorts": [8765],
+  "portsAttributes": {
+    "8765": {
+      "label": "Practice dashboard",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["labs/00-hello-cluster/README.md"]
+    },
+    "vscode": {
+      "extensions": ["redhat.vscode-yaml", "ms-kubernetes-tools.vscode-kubernetes-tools"]
+    }
+  }
+}

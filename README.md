@@ -7,13 +7,16 @@ result against the live cluster.
 
 [![ci](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml/badge.svg)](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/SandeepKomal/kubernetes-k8s?quickstart=1)
 
 ## Contents
 
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
+- [Practise in the browser (no install)](#practise-in-the-browser-no-install)
 - [Installation](#installation)
 - [Your first level](#your-first-level)
+- [Practice dashboard](#practice-dashboard)
 - [Command reference](#command-reference)
 - [Levels](#levels)
 - [Companion site](#companion-site)
@@ -53,12 +56,32 @@ solution.
 | [kind](https://kind.sigs.k8s.io/) | 0.24 or later | Creates the local Kubernetes cluster |
 | [kubectl](https://kubernetes.io/docs/tasks/tools/) | Within one minor version of the cluster | Kubernetes command-line client |
 | Bash | 4 or later | Runs the `quest` script (macOS, Linux, or WSL 2 on Windows) |
+| Python 3 | 3.8 or later, optional | Runs the practice dashboard (`./quest ui`) |
 
 Allow about 4 GB of free memory for the three-node cluster. No cloud
 account is needed and nothing in the course incurs cost.
 
 Installation steps for each operating system are in
 [docs/setup.md](docs/setup.md).
+
+## Practise in the browser (no install)
+
+Select **Open in GitHub Codespaces** above. GitHub starts a cloud
+workspace with VS Code, a terminal, Docker, kind and kubectl already set
+up. In its terminal run:
+
+```bash
+./quest up
+./quest ui
+```
+
+Ctrl+click (Cmd+click on macOS) the link `./quest ui` prints to open the practice dashboard.
+
+Codespaces runs on the learner's own GitHub account. Personal accounts
+include a free monthly allowance, and the default spending limit of $0
+means it stops rather than charging when the allowance is used up. It
+never bills the repository owner. Stop the codespace when you finish
+(**Codespaces** menu, **Stop current codespace**) to save the allowance.
 
 ## Installation
 
@@ -110,6 +133,24 @@ When every check passes, the level is recorded as complete and the next
 one is suggested. To start a level again from its broken state, run
 `./quest start <n>` again.
 
+## Practice dashboard
+
+```bash
+./quest ui
+```
+
+This opens a local web page, served from your machine only, that shows
+each level's mission next to **Start**, **Check**, **Hint** and
+**Solution** buttons. Check results update in place, and a panel lists the
+resources in the level's namespace every few seconds. You still fix things
+with `kubectl` in your terminal, which is the skill the course teaches.
+
+The dashboard needs Python 3 (included on macOS and most Linux
+distributions) and uses no third-party packages. It listens on
+`127.0.0.1:8765` and accepts requests only with the token in the link it
+prints. Use `./quest ui --port <n>` to change the port. Stop it with
+Ctrl+C.
+
 ## Command reference
 
 | Command | Description |
@@ -122,6 +163,7 @@ one is suggested. To start a level again from its broken state, run
 | `./quest hint [n]` | Show the next hint; repeat for more detail |
 | `./quest solution [n]` | Print the reference solution (asks for confirmation) |
 | `./quest solve [n]` | Apply the reference solution |
+| `./quest ui [--port n]` | Open the practice dashboard (needs Python 3) |
 | `./quest reset` | Clear saved progress |
 | `./quest down` | Delete the cluster |
 
@@ -204,7 +246,8 @@ Values such as `<AWS_ACCOUNT_ID>` and `<REGION>` are placeholders.
 ```text
 kubernetes-k8s/
 ├── quest                  Command-line tool for the course
-├── labs/                  One directory per level, plus shared check helpers
+├── labs/                  One directory per level, shared check helpers, and the dashboard (labs/ui)
+├── .devcontainer/         GitHub Codespaces environment
 ├── site/                  Companion web application (GitHub Pages)
 ├── docs/                  Guides and the production readiness checklist
 ├── Kubernetes/            Reference manifests and AWS notes
@@ -222,6 +265,8 @@ kubernetes-k8s/
 | Image pulls are slow or fail with `429 Too Many Requests` | Docker Hub limits anonymous pulls. Run `docker login` and retry |
 | A check fails although the fix looks right | Checks wait up to 45 seconds for rollouts. Run `./quest check` again, or raise `QUEST_WAIT` (seconds) |
 | You want to start a level from scratch | `./quest start <n>` restores its original broken state |
+| The dashboard says the token is missing | Open the full link printed by `./quest ui`, including `#token=…` |
+| `cannot listen on 127.0.0.1:8765` | Another program uses the port: `./quest ui --port 8766` |
 
 For anything else, open an [issue](https://github.com/SandeepKomal/kubernetes-k8s/issues/new/choose)
 with the output of `./quest check`, `kind version` and `kubectl version`.
@@ -229,8 +274,9 @@ with the output of `./quest check`, `kind version` and `kubectl version`.
 ## FAQ
 
 **Does this need a cloud account or cost money?**
-No. Everything runs locally in kind. Only the optional EKS guide uses AWS,
-and it states the costs involved.
+No. Everything runs locally in kind. Codespaces, if you choose it, uses
+your own free GitHub allowance. Only the optional EKS guide uses AWS, and
+it states the costs involved.
 
 **Can I use minikube, k3d or Docker Desktop's Kubernetes?**
 Set `QUEST_ANY_CONTEXT=1` and most levels will work. The project is tested
