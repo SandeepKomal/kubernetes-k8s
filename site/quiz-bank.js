@@ -148,7 +148,15 @@ window.QUEST_QUIZ_BANK = {
         "Add `privileged: true`",
         "Restart the kubelet"
       ], answer: 1,
-      why: "The binary was compiled for arm64 and the nodes are amd64. `docker buildx imagetools inspect` shows an image's platforms; a nodeSelector on kubernetes.io/arch only helps if nodes of that architecture exist." }
+      why: "The binary was compiled for arm64 and the nodes are amd64. `docker buildx imagetools inspect` shows an image's platforms; a nodeSelector on kubernetes.io/arch only helps if nodes of that architecture exist." },
+    { q: "New nodes cannot pull `nginx:1.27`: `429 Too Many Requests ... toomanyrequests`. What is the lasting fix?",
+      options: [
+        "Retry with `kubectl rollout restart` until it works",
+        "Pull through a registry mirror (or authenticate the pulls with an imagePullSecret)",
+        "Change the tag to `latest`",
+        "Set `imagePullPolicy: Always`"
+      ], answer: 1,
+      why: "Docker Hub limits anonymous pulls per public IP, and a whole cluster behind NAT shares one. A mirror or authenticated pulls avoid the limit; retries only use it up faster." }
   ],
 
   "02": [
@@ -282,7 +290,15 @@ window.QUEST_QUIZ_BANK = {
         "Every Pod template change creates a new ReplicaSet; old ones are kept at 0 replicas as rollout history for `rollout undo`, up to revisionHistoryLimit",
         "The scheduler creates one ReplicaSet per node"
       ], answer: 2,
-      why: "A Deployment manages ReplicaSets, one per Pod template it has had. The old ones are its revision history; revisionHistoryLimit (10 by default) decides how many are kept." }
+      why: "A Deployment manages ReplicaSets, one per Pod template it has had. The old ones are its revision history; revisionHistoryLimit (10 by default) decides how many are kept." },
+    { q: "A Deployment shows the new image, but UP-TO-DATE is 0 and the Pods keep the old one. Deleting a Pod brings back the old version. What do you check first?",
+      options: [
+        "Whether the rollout is paused: `kubectl describe deploy` shows DeploymentPaused; `kubectl rollout resume` starts it",
+        "The image pull secret",
+        "The node's disk space",
+        "The HPA"
+      ], answer: 0,
+      why: "A paused Deployment records changes but creates no new ReplicaSet, so the old ReplicaSet keeps replacing deleted Pods. Pause exists to batch several changes into one rollout." }
   ],
 
   "04": [
@@ -437,7 +453,15 @@ window.QUEST_QUIZ_BANK = {
         "Plain HTTP on 443",
         "An error page"
       ], answer: 1,
-      why: "Like every Secret reference, spec.tls is namespaced. Copy the Secret into the Ingress's namespace, or configure a default certificate on the controller itself." }
+      why: "Like every Secret reference, spec.tls is namespaced. Copy the Secret into the Ingress's namespace, or configure a default certificate on the controller itself." },
+    { q: "On a kind cluster a Service of type LoadBalancer has shown `EXTERNAL-IP <pending>` for a day. Why, and how do you reach it now?",
+      options: [
+        "DNS is slow; wait longer",
+        "No controller provisions load balancers there; every LoadBalancer Service also has a NodePort, reachable on any node IP",
+        "The Service needs a readiness probe",
+        "kube-proxy is down"
+      ], answer: 1,
+      why: "Cloud controllers (or MetalLB, cloud-provider-kind) assign the address. Without one it stays pending, but the NodePort works: `curl http://<node-ip>:<nodePort>/`." }
   ],
 
   "05": [
@@ -718,7 +742,15 @@ window.QUEST_QUIZ_BANK = {
         "Quotas only allow one ReplicaSet per Deployment",
         "The scheduler ignores quotas during rollouts"
       ], answer: 1,
-      why: "Leave headroom for maxSurge, or set maxSurge: 0 with maxUnavailable: 1, so old Pods go before new ones come." }
+      why: "Leave headroom for maxSurge, or set maxSurge: 0 with maxUnavailable: 1, so old Pods go before new ones come." },
+    { q: "The cluster is full and a critical Pod stays Pending with \"Preemption is not helpful\". Batch jobs fill the nodes. What lets the critical Pod in without shrinking the batch by hand?",
+      options: [
+        "A ResourceQuota",
+        "Give it a PriorityClass with a higher value; the scheduler then evicts lower-priority Pods",
+        "Set its limits equal to requests",
+        "Add a toleration"
+      ], answer: 1,
+      why: "Preemption only evicts Pods of lower priority. When everything runs at the default 0, nothing can be preempted. Give critical services a PriorityClass and leave batch work at the default." }
   ],
 
   "08": [
@@ -1153,7 +1185,15 @@ window.QUEST_QUIZ_BANK = {
         "It works, but now any Pod can land on the expensive GPU node; the right fix is a toleration on this workload",
         "Removing taints requires a node reboot"
       ], answer: 2,
-      why: "The taint was doing its job: keeping general workloads off the GPU node. Add a toleration to the Pods that are meant to run there." }
+      why: "The taint was doing its job: keeping general workloads off the GPU node. Add a toleration to the Pods that are meant to run there." },
+    { q: "A Deployment with required pod anti-affinity on `kubernetes.io/hostname` has 4 replicas on 3 nodes. What happens to the fourth?",
+      options: [
+        "It shares a node with another replica",
+        "It stays Pending: \"didn't match pod anti-affinity rules\"",
+        "It runs on a control-plane node",
+        "The Deployment scales back to 3"
+      ], answer: 1,
+      why: "Required anti-affinity is a hard rule: one per node. Use preferred anti-affinity, or topologySpreadConstraints with ScheduleAnyway, to spread without capping replicas." }
   ],
 
   "13": [
@@ -1505,7 +1545,15 @@ window.QUEST_QUIZ_BANK = {
         "Switch to a ClusterIP Service",
         "Set `publishNotReadyAddresses: true` on the headless Service, so DNS records exist before the Pods are Ready"
       ], answer: 3,
-      why: "Normally a headless Service only publishes ready endpoints, but peer discovery often has to happen first, and this field exists for that. Removing readiness would also send client traffic to Pods that are not ready." }
+      why: "Normally a headless Service only publishes ready endpoints, but peer discovery often has to happen first, and this field exists for that. Removing readiness would also send client traffic to Pods that are not ready." },
+    { q: "A new 3-replica StatefulSet has only `db-0`, in CreateContainerConfigError. Where are `db-1` and `db-2`?",
+      options: [
+        "They are on another node",
+        "Not created yet: with the default OrderedReady policy each Pod waits for the one before to be Ready",
+        "They were evicted",
+        "StatefulSets create one Pod per node"
+      ], answer: 1,
+      why: "Fix `db-0` and the rest follow in order. `podManagementPolicy: Parallel` starts them together when order does not matter." }
   ],
 
   "16": [
