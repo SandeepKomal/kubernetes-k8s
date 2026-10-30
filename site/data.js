@@ -259,16 +259,17 @@ window.QUEST = {
     playground: {
       what: "A simulated Kubernetes cluster that runs entirely in your browser. Each scenario is a real incident: something is broken, and you find out why with kubectl, the same way you would at work. The terminal on the left takes commands; the cluster map on the right shows every node and Pod and changes as you work.",
       steps: [
-        "Pick a scenario above the terminal. Start with ImagePullBackOff if you are new; the others get harder from left to right.",
+        "Pick a scenario above the terminal. They run from easiest to hardest: Pods that will not start, then configuration, scheduling, networking, security (NetworkPolicy, RBAC) and finally a broken rollout. Start with ImagePullBackOff if you are new.",
         "Read the story and the goal. The goal pill turns green when you have fixed it.",
         "Look before you touch: `kubectl get pods`, then `kubectl describe pod <name>` and `kubectl logs <name>`. The answer is always in what Kubernetes tells you.",
-        "Fix the cause with a `kubectl set ...` command. Changes roll out like on a real cluster: new Pods start, old ones go once the new ones are Running.",
+        "Fix the cause with `kubectl set`, `patch`, `create`, `label` or `rollout undo`. Changes behave like on a real cluster: a Deployment rolls out new Pods and removes old ones once the new ones are Ready, and the scheduler and kubelet retry on their own.",
         "Stuck? Type `hint`. Three hints per scenario, each more direct than the last. `reset` starts the scenario again, `help` lists every command."
       ],
       uses: [
         "Practise the debugging loop (look, read the events, fix the cause, verify) without installing anything.",
         "Learn what each failure looks like in `get pods`, `describe` and `logs`, so you recognise it instantly at work.",
-        "See why the obvious move is often wrong: restarting or deleting a crashing Pod changes nothing, because its Deployment recreates it from the same broken template."
+        "See why the obvious move is often wrong: restarting or deleting a crashing Pod changes nothing, because its Deployment recreates it from the same broken template.",
+        "Practise the security fixes safely: test connections with `kubectl exec ... -- wget`, test permissions with `kubectl auth can-i --as`, and see why deleting the default deny or granting cluster-admin is not a fix."
       ],
       tips: [
         "Tab completes Pod, Deployment and Service names. Click a Pod on the map to insert its name.",

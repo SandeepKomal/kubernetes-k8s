@@ -427,6 +427,8 @@ kbd {
 .pg-pod.ok .pg-dot { background: var(--ok); }
 .pg-pod.bad { background: var(--bad-soft); color: var(--bad); }
 .pg-pod.bad .pg-dot { background: var(--bad); }
+.pg-pod.notready { background: var(--warn-soft); color: var(--warn-text); }
+.pg-pod.notready .pg-dot { background: var(--warn); }
 .pg-pod.wait .pg-dot { background: var(--muted); animation: pg-pulse 1s ease-in-out infinite; }
 @keyframes pg-pulse { 50% { opacity: .35; } }
 .pg-scenarios { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
@@ -469,6 +471,9 @@ kbd {
   .kbd-btn { padding: 5px; }
   .pg-goal { margin-bottom: 16px; }
   .pg-out, .pg-form { font-size: 12px; padding-left: 14px; padding-right: 14px; }
+  .pg-scenarios { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -22px 14px; padding: 2px 22px; scroll-snap-type: x proximity; }
+  .pg-scenarios::-webkit-scrollbar { display: none; }
+  .pg-scn { flex: none; scroll-snap-align: start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
