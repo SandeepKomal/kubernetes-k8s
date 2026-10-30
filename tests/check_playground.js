@@ -661,6 +661,84 @@ assert.match(step(c, "kubectl get pods"), /menu-\S+\s+1\/1\s+Running/, "editing 
 assert.match(step(c, "kubectl -n kube-system get pods"), /kube-scheduler-control-plane\s+1\/1\s+Running/);
 assert.ok(won(c), "scheduler: fixed in its static Pod manifest");
 
+// Missing Secret key: the reference, not the value, is wrong.
+c = fresh("secretkey");
+assert.match(step(c, "kubectl get pods"), /payments-\S+\s+0\/1\s+CreateContainerConfigError/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "payments")), /couldn't find key password in Secret kitchen\/db-credentials/);
+assert.match(step(c, "kubectl describe secret db-credentials"), /db-password:\s+18 bytes/);
+step(c, "kubectl set env deployment/payments DB_PASSWORD=practice-only-pass");
+assert.ok(c.deploymentReady("payments") && !won(c), "a plain value in the Deployment does not count");
+c = fresh("secretkey");
+step(c, `kubectl patch deployment payments -p '{"spec":{"template":{"spec":{"containers":[{"name":"payments","env":[{"name":"DB_PASSWORD","valueFrom":{"secretKeyRef":{"name":"db-credential","key":"db-password"}}}]}]}}}}'`);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "payments")), /secret "db-credential" not found/);
+step(c, `kubectl patch deployment payments -p '{"spec":{"template":{"spec":{"containers":[{"name":"payments","env":[{"name":"DB_PASSWORD","valueFrom":{"secretKeyRef":{"name":"db-credentials","key":"db-password"}}}]}]}}}}'`);
+assert.match(step(c, "kubectl get deploy payments -o yaml"), /key: db-password/);
+assert.ok(won(c), "secretkey: fixed by referencing the key that exists");
+
+// Ingress TLS: the fake certificate means no usable Secret.
+c = fresh("ingresstls");
+assert.match(step(c, "curl -s http://menu.kitchen.example/"), /Welcome to nginx/);
+assert.match(step(c, "curl https://menu.kitchen.example/"), /self-signed certificate/);
+assert.match(step(c, "curl -v https://menu.kitchen.example/"), /CN=Kubernetes Ingress Controller Fake Certificate/);
+assert.match(step(c, "kubectl -n ingress-nginx logs deploy/ingress-nginx-controller"), /Using default certificate/);
+assert.match(step(c, "curl -k https://menu.kitchen.example/"), /Welcome to nginx/);
+assert.ok(!won(c), "-k only skips the check");
+step(c, "kubectl create secret generic menu-tls --from-literal=tls.crt=x");
+assert.match(step(c, "kubectl -n ingress-nginx logs deploy/ingress-nginx-controller"), /not of type kubernetes.io\/tls/);
+step(c, "kubectl delete secret menu-tls");
+assert.match(step(c, "kubectl create secret tls menu-tls --cert=/opt/certs/menu.kitchen.example.crt --key=/opt/certs/staging-wildcard.key"), /does not match/);
+step(c, "kubectl create secret tls menu-tls --cert=/opt/certs/staging-wildcard.crt --key=/opt/certs/staging-wildcard.key");
+assert.match(step(c, "curl https://menu.kitchen.example/"), /no alternative certificate subject name matches/);
+assert.ok(!won(c), "a certificate for another name does not count");
+step(c, "kubectl delete secret menu-tls");
+assert.match(step(c, "kubectl create secret tls menu-tls --cert=/opt/certs/menu.kitchen.example.crt --key=/opt/certs/menu.kitchen.example.key"), /secret\/menu-tls created/);
+assert.match(step(c, "kubectl get secrets"), /menu-tls\s+kubernetes.io\/tls/);
+assert.match(step(c, "curl -v https://menu.kitchen.example/"), /CN=menu.kitchen.example[\s\S]*Welcome to nginx/);
+assert.ok(won(c), "ingresstls: fixed with a TLS Secret for the host");
+
+// Stuck Terminating: a finalizer nobody removes.
+c = fresh("finalizer");
+assert.match(step(c, "kubectl get pods"), /report-runner\s+0\/1\s+Terminating/);
+assert.match(step(c, "kubectl get pod report-runner -o yaml"), /deletionTimestamp[\s\S]*finalizers:\n  - kitchen.example\/archive-logs/);
+assert.match(step(c, "kubectl delete pod report-runner"), /wait/);
+assert.match(step(c, "kubectl delete pod report-runner --force --grace-period=0"), /force deleted/);
+assert.match(step(c, "kubectl get pods"), /report-runner\s+0\/1\s+Terminating/);
+assert.ok(!won(c), "--force does not remove finalizers");
+step(c, `kubectl patch pod report-runner -p '{"metadata":{"finalizers":null}}'`);
+assert.doesNotMatch(step(c, "kubectl get pods"), /report-runner/);
+assert.ok(won(c), "finalizer: removed by hand");
+
+// Certificates expired: renew, restart the static Pods, refresh the kubeconfig.
+c = fresh("certs");
+assert.match(step(c, "kubectl get nodes"), /x509: certificate has expired/);
+assert.match(step(c, "kubeadm certs check-expiration"), /apiserver\s+Oct 30, 2026 07:42 UTC\s+<invalid>/);
+assert.match(step(c, "openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -enddate"), /notAfter=Oct 30 07:42:10 2026/);
+step(c, "mv /etc/kubernetes/manifests/*.yaml /tmp/");
+step(c, "mv /tmp/*.yaml /etc/kubernetes/manifests/");
+assert.match(step(c, "kubectl get nodes"), /x509|refused/, "restarting before renewing changes nothing");
+assert.match(step(c, "kubeadm certs renew all"), /You must restart the kube-apiserver/);
+assert.match(step(c, "kubectl get nodes"), /x509/, "the API server still holds the old certificate");
+step(c, "mv /etc/kubernetes/manifests/*.yaml /tmp/");
+assert.match(step(c, "ls /etc/kubernetes/manifests"), /\(empty\)/);
+assert.match(step(c, "kubectl get nodes"), /refused/);
+step(c, "mv /tmp/*.yaml /etc/kubernetes/manifests/");
+step(c, "kubectl get nodes");
+assert.match(step(c, "kubectl get nodes"), /You must be logged in/);
+assert.ok(!won(c), "the kubeconfig still has the old client certificate");
+assert.match(step(c, "kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes"), /worker-1\s+Ready/);
+step(c, "cp /etc/kubernetes/admin.conf ~/.kube/config");
+assert.match(step(c, "kubectl get nodes"), /worker-1\s+Ready/);
+assert.match(step(c, "kubeadm certs check-expiration"), /apiserver\s+Oct 30, 2027 09:20 UTC\s+364d/);
+assert.ok(won(c), "certs: renewed, restarted, kubeconfig refreshed");
+c = fresh("certs");
+step(c, "kubeadm certs renew all");
+step(c, "mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/");
+step(c, "mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/");
+step(c, "kubectl get nodes");
+step(c, "export KUBECONFIG=/etc/kubernetes/admin.conf");
+assert.match(step(c, "kubectl get nodes"), /worker-1\s+Ready/);
+assert.ok(!won(c), "etcd, the scheduler and the controller manager still run on the old certificates");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);

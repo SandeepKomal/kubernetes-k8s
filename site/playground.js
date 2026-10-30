@@ -149,6 +149,8 @@
   const web = (extra) => ({ name: "web", replicas: 2, image: "nginx:1.27", req: 128, lim: 256, age: 4 * HOUR, ...extra });
   const api = () => ({ name: "api", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 2 * HOUR });
 
+  const PEM_CRT = ["-----BEGIN CERTIFICATE-----", "MIIDLzCCAhegAwIBAgIUQ2tpdGNoZW4tcHJhY3RpY2UtY2VydDANBgkqhkiG9w0BAQsF", "(a practice file; the playground does not read its contents)", "-----END CERTIFICATE-----"];
+  const PEM_KEY = ["-----BEGIN PRIVATE KEY-----", "MIIDLzCCAhegAwIBAgIUQ2tpdGNoZW4tcHJhY3RpY2UtY2VydDANBgkqhkiG9w0BAQsF", "(a practice file; the playground does not read its contents)", "-----END PRIVATE KEY-----"];
   const SCENARIOS = [
     {
       id: "image",
@@ -861,6 +863,92 @@
       tries: ["kubectl get pods", "kubectl -n kube-system get pods"]
     },
     {
+      id: "secretkey",
+      title: "Missing Secret key",
+      done: "payments starts with DB_PASSWORD read from the db-credentials Secret.",
+      level: { id: "05", text: "Level 05 · Missing configuration" },
+      story: "The payments team moved its database password into a Secret this morning. The new Pods never start.",
+      goal: "Get payments Running, with DB_PASSWORD still coming from the db-credentials Secret.",
+      deployments: [web(), { name: "payments", replicas: 2, image: "busybox:1.36", req: 64, lim: 128, age: 40 * MIN, secretEnv: { env: "DB_PASSWORD", secret: "db-credentials", key: "password" } }],
+      secrets: [{ name: "db-credentials", data: { "db-password": "practice-only-pass" } }],
+      won: (c) => { const d = c.deployments.find((x) => x.name === "payments"); return !!d.spec.secretEnv && c.deploymentReady("payments"); },
+      check: (c) => ({ label: "payments", ok: c.deploymentReady("payments"), text: `${c.podsOf("payments").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "kubectl get pods: CreateContainerConfigError, so the container could not even be created. kubectl describe pod on a payments Pod names the Secret and the key.",
+        "kubectl describe secret db-credentials lists the keys it really has. The Deployment asks for password; the Secret stores db-password.",
+        `Point the Deployment at the right key: kubectl patch deployment payments -p '{"spec":{"template":{"spec":{"containers":[{"name":"payments","env":[{"name":"DB_PASSWORD","valueFrom":{"secretKeyRef":{"name":"db-credentials","key":"db-password"}}}]}]}}}}'`
+      ],
+      lesson: "couldn't find key means the Secret exists but not with that key; secret not found means the name is wrong. Compare kubectl describe secret with the Pod's env, and keep the value in the Secret, never in the Deployment.",
+      tries: ["kubectl get pods", "kubectl describe secret db-credentials"]
+    },
+    {
+      id: "ingresstls",
+      title: "Ingress TLS",
+      done: "https://menu.kitchen.example serves the company certificate for its name.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "menu.kitchen.example moved to HTTPS. Browsers now warn that the connection is not private and curl refuses it. Plain HTTP still works.",
+      goal: "Make https://menu.kitchen.example serve a valid certificate for its name.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      ingresses: [{ name: "menu", class: "nginx", host: "menu.kitchen.example", path: "/", svc: "menu-svc", port: 80, tls: "menu-tls" }],
+      files: {
+        "/opt/certs/menu.kitchen.example.crt": PEM_CRT, "/opt/certs/menu.kitchen.example.key": PEM_KEY,
+        "/opt/certs/staging-wildcard.crt": PEM_CRT, "/opt/certs/staging-wildcard.key": PEM_KEY
+      },
+      dirs: { "/opt/certs": ["menu.kitchen.example.crt", "menu.kitchen.example.key", "staging-wildcard.crt", "staging-wildcard.key"] },
+      certFiles: {
+        "/opt/certs/menu.kitchen.example.crt": { cn: "menu.kitchen.example", pair: "menu" }, "/opt/certs/menu.kitchen.example.key": { key: true, pair: "menu" },
+        "/opt/certs/staging-wildcard.crt": { cn: "*.staging.kitchen.example", pair: "staging" }, "/opt/certs/staging-wildcard.key": { key: true, pair: "staging" }
+      },
+      won: (c) => { const t = c.tlsFor("menu.kitchen.example"); return !t.fake && t.cn === "menu.kitchen.example" && c.viaIngress("menu.kitchen.example", "/").ok; },
+      check: (c) => { const t = c.tlsFor("menu.kitchen.example"); return { label: "https certificate", ok: !t.fake && t.cn === "menu.kitchen.example", text: t.fake ? "fake, self-signed" : t.cn }; },
+      hints: [
+        "curl -v https://menu.kitchen.example/ shows the certificate served. Kubernetes Ingress Controller Fake Certificate means the controller has no usable certificate for this host.",
+        "kubectl describe ingress menu names the TLS Secret; kubectl get secret menu-tls says whether it exists. kubectl -n ingress-nginx logs deploy/ingress-nginx-controller says why it fell back.",
+        "Create it from the files in /opt/certs, for this host: kubectl create secret tls menu-tls --cert=/opt/certs/menu.kitchen.example.crt --key=/opt/certs/menu.kitchen.example.key"
+      ],
+      lesson: "The fake certificate means no usable TLS Secret: missing, misnamed, in another namespace or not of type kubernetes.io/tls. The certificate must name the host, and the key must match the certificate.",
+      tries: ["curl -v https://menu.kitchen.example/", "kubectl describe ingress menu"]
+    },
+    {
+      id: "finalizer",
+      title: "Stuck Terminating",
+      done: "The stuck report-runner Pod is gone.",
+      level: { id: "14", text: "Level 14 · Incident response" },
+      story: "report-runner was deleted two hours ago and still shows Terminating, although its container stopped long ago. The archiver that used to clean up after it was uninstalled last week.",
+      goal: "Get rid of the report-runner Pod for good.",
+      deployments: [web()],
+      pods: [{ name: "report-runner", image: "busybox:1.36", req: 32, lim: 64, age: 3 * HOUR, node: "worker-2", finalizers: ["kitchen.example/archive-logs"], stuck: true }],
+      won: (c) => !c.pods.some((p) => p.name === "report-runner"),
+      check: (c) => ({ label: "report-runner", ok: !c.pods.some((p) => p.name === "report-runner"), text: c.pods.some((p) => p.name === "report-runner") ? "Terminating" : "gone" }),
+      hints: [
+        "kubectl get pod report-runner -o yaml: metadata has a deletionTimestamp, so deletion has started, and a finalizer.",
+        "A finalizer is a promise that a controller will clean up first. The archiver that made it is gone, so nobody will. Deleting again, even with --force --grace-period=0, does not remove a finalizer.",
+        `Nothing needs archiving any more, so remove it yourself: kubectl patch pod report-runner -p '{"metadata":{"finalizers":null}}'`
+      ],
+      lesson: "Terminating forever with the container already stopped means a finalizer nobody removes. Find the controller that owns it; only when it is gone for good, remove the finalizer by hand.",
+      tries: ["kubectl get pods", "kubectl get pod report-runner -o yaml"]
+    },
+    {
+      id: "certs",
+      title: "Certificates expired",
+      done: "kubectl works again: the certificates are renewed and the control plane runs on them.",
+      level: { id: "14", text: "Level 14 · Incident response" },
+      story: "Monday morning, a year to the day after this cluster was built with kubeadm. kubectl refuses to connect, while the apps keep serving traffic. You are on the control-plane node.",
+      goal: "Renew the expired certificates, restart the control plane on them, and get kubectl working again.",
+      deployments: [web(), api()],
+      certsExpired: true,
+      won: (c) => ["kube-apiserver", "kube-controller-manager", "kube-scheduler", "etcd"].every((x) => c.certs.restarted[x]) && !c.controlPlaneError() && !c.authError(),
+      check: (c) => { const e = c.authError(); return { label: "kubectl", ok: !e, text: !e ? "connected" : /x509/.test(e) ? "x509: expired" : "Unauthorized" }; },
+      hints: [
+        "kubectl get nodes: x509, certificate has expired. kubeadm issues certificates for one year. Here on the node: kubeadm certs check-expiration (or openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -enddate).",
+        "kubeadm certs renew all. The running components keep the old certificates in memory, so restart the static Pods: mv /etc/kubernetes/manifests/*.yaml /tmp/ and, once kubectl is refused, mv /tmp/*.yaml /etc/kubernetes/manifests/",
+        "Your kubeconfig embeds an expired client certificate too. Take the renewed one: cp /etc/kubernetes/admin.conf ~/.kube/config"
+      ],
+      lesson: "kubeadm certificates last a year, and every kubeadm upgrade renews them. Renew with kubeadm certs renew all, restart the control-plane static Pods, and refresh your kubeconfig from admin.conf.",
+      tries: ["kubectl get nodes", "kubeadm certs check-expiration"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -1030,12 +1118,12 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "pullsecret", "cmreload"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "pullsecret", "cmreload", "secretkey"]],
     ["Scheduling and storage", ["pending", "nodeselector", "taint", "pvc"]],
-    ["Networking", ["probe", "service", "svcport", "dns", "coredns", "ingress404", "ingress503", "gateway", "netpol"]],
+    ["Networking", ["probe", "service", "svcport", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
-    ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain"]],
-    ["Cluster administration", ["context", "nodenotready", "scheduler", "etcd", "etcdrestore", "kubeadm"]],
+    ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain", "finalizer"]],
+    ["Cluster administration", ["context", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
     ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
     ["Autoscaling", ["hpa", "vpa"]]
   ];
@@ -1102,6 +1190,9 @@
       this.coredns = scenario.coredns === undefined ? 2 : scenario.coredns; // CoreDNS replicas
       this.registryAuth = scenario.registryAuth || null; // a private registry: { server, user, token }
       this.saPullSecrets = {};
+      // Expired control-plane certificates: what has been renewed and restarted since.
+      this.certs = scenario.certsExpired ? { renewed: new Set(), out: {}, restarted: {}, kubeconfig: false, useAdmin: false } : null;
+      this.certFiles = scenario.certFiles || {}; // TLS files on disk: path → { cn, pair }
       this.lost = { deployments: [], services: [] };
       this.secrets = JSON.parse(JSON.stringify(scenario.secrets || []));
       this.vaps = JSON.parse(JSON.stringify(scenario.vaps || []));
@@ -1116,7 +1207,8 @@
             image: d.image, env: { ...(d.env || {}) }, req: d.req, lim: d.lim, envFrom: d.envFrom || null, probe: d.probe || null,
             nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default", cpuReq: d.cpu || 0,
             tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
-            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null
+            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null,
+            secretEnv: d.secretEnv ? { ...d.secretEnv } : null
           },
           hash: this.rand(10)
         };
@@ -1124,13 +1216,14 @@
         for (let i = 0; i < d.replicas; i++) this.addPod(dep, { age: d.age, restarts: d.restarts, settled: true });
       }
       for (const p of scenario.pods || []) {
-        this.addPod(null, {
+        const bare = this.addPod(null, {
           name: p.name, age: p.age, settled: true, node: p.node,
           spec: {
             image: p.image, env: {}, req: p.req, lim: p.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default",
             cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null, apparmor: null
           }
         });
+        if (bare) { bare.finalizers = [...(p.finalizers || [])]; bare.stuck = !!p.stuck; }
       }
       for (const j of scenario.jobs || []) this.runJob({ ...j, created: this.now() - (j.age || 0) });
       if (scenario.setup) scenario.setup(this);
@@ -1255,7 +1348,7 @@
     // The kube-scheduler static Pod fails to start when a kubeconfig it names is missing.
     schedulerError() {
       const f = this.files["/etc/kubernetes/manifests/kube-scheduler.yaml"];
-      if (!f) return null;
+      if (!f) return `E1030 09:02:11.418273       1 kube-scheduler is not running: its manifest is not in /etc/kubernetes/manifests`;
       for (const l of f) {
         const m = /--(?:authentication-|authorization-)?kubeconfig=(\S+)/.exec(l);
         if (m && !(m[1].startsWith("/etc/kubernetes/") && (this.dirs["/etc/kubernetes"] || []).includes(m[1].slice(16)))) {
@@ -1265,8 +1358,37 @@
       return null;
     }
     dnsDown() { return this.coredns < 1; }
+    // What kubectl sees while certificates are expired, or null when it can connect.
+    authError(admin) {
+      const k = this.certs;
+      if (!k) return null;
+      if (!k.renewed.has("apiserver") || !k.restarted["kube-apiserver"]) {
+        return "Unable to connect to the server: tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2026-10-30T09:14:02Z is after 2026-10-30T07:42:10Z";
+      }
+      if (!(admin || k.useAdmin || k.kubeconfig)) return "error: You must be logged in to the server (the server has asked for the client to provide credentials)";
+      return null;
+    }
+    // A file was moved or copied on the control-plane node.
+    fileMoved(src, dst, how) {
+      const comp = (f) => (/^\/etc\/kubernetes\/manifests\/([\w-]+)\.yaml$/.exec(f) || [])[1];
+      const k = this.certs;
+      if (k && how === "mv" && comp(src) && !comp(dst)) k.out[comp(src)] = true;
+      if (k && comp(dst) && k.out[comp(dst)]) {
+        k.out[comp(dst)] = false;
+        const cert = { "kube-apiserver": "apiserver", "kube-controller-manager": "controller-manager.conf", "kube-scheduler": "scheduler.conf", etcd: "etcd-server" }[comp(dst)];
+        if (k.renewed.has(cert)) k.restarted[comp(dst)] = true;
+      }
+      if (k && src === "/etc/kubernetes/admin.conf" && dst === "/root/.kube/config") k.kubeconfig = k.renewed.has("admin.conf");
+      if (comp(dst) || comp(src)) this.fileChanged(dst);
+    }
+    // The certificate an HTTPS request to an Ingress host is answered with.
+    tlsFor(host) {
+      const ing = this.ingresses.find((x) => x.host === host);
+      const sec = ing && ing.tls && this.secrets.find((x) => x.name === ing.tls && x.tls);
+      return sec ? { ...sec.tls, issuer: "CN=Kitchen Internal CA" } : { cn: "Kubernetes Ingress Controller Fake Certificate", org: "Acme Co", fake: true };
+    }
     encryptionOn() {
-      const api = this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].join("\n");
+      const api = (this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"] || []).join("\n");
       const m = /--encryption-provider-config=(\S+)/.exec(api);
       return !!(m && this.files[m[1]]);
     }
@@ -1302,6 +1424,8 @@
       return !!this.controlPlaneError();
     }
     controlPlaneError() {
+      if (!this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"]) return "kube-apiserver is not running: its manifest is not in /etc/kubernetes/manifests";
+      if (!this.files["/etc/kubernetes/manifests/etcd.yaml"]) return "etcd is not running: its manifest is not in /etc/kubernetes/manifests";
       const api = this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].join("\n");
       const enc = /--encryption-provider-config=(\S+)/.exec(api);
       if (enc && !this.files[enc[1]]) return `kube-apiserver: open ${enc[1]}: no such file or directory`;
@@ -1310,7 +1434,7 @@
       return null;
     }
     etcdLayout() {
-      const lines = this.files["/etc/kubernetes/manifests/etcd.yaml"];
+      const lines = this.files["/etc/kubernetes/manifests/etcd.yaml"] || [];
       const dataDir = ((lines.find((l) => l.includes("--data-dir=")) || "").split("=")[1] || "").trim();
       const mi = lines.findIndex((l) => l.trim() === "name: etcd-data" && /mountPath/.test(lines[lines.indexOf(l) - 1] || ""));
       const mountPath = mi > 0 ? lines[mi - 1].split("mountPath:")[1].trim() : "";
@@ -1419,6 +1543,17 @@
           ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`],
           ["Warning", "Failed", "kubelet", `Error: container has runAsNonRoot and image will run as root (pod: "${pod.name}_${NS}", container: ${c})`]];
         return;
+      }
+      const se = pod.spec.secretEnv;
+      if (se) {
+        const sec = this.secrets.find((x) => x.name === se.secret);
+        if (!sec || !(se.key in sec.data)) {
+          pod.state = "CreateContainerConfigError";
+          pod.events = [scheduled,
+            ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`],
+            ["Warning", "Failed", "kubelet", sec ? `Error: couldn't find key ${se.key} in Secret ${NS}/${se.secret}` : `Error: secret "${se.secret}" not found`]];
+          return;
+        }
       }
       if (pod.spec.envFrom && !this.configMaps[pod.spec.envFrom]) {
         pod.state = "CreateContainerConfigError";
@@ -1625,7 +1760,7 @@
     }
 
     status(p) {
-      if (p.terminating) return "Terminating";
+      if (p.terminating || p.stuck) return "Terminating";
       if (!p.node) return "Pending";
       if (p.creating) return p.spec.init ? "Init:0/1" : "ContainerCreating";
       return p.state;
@@ -1721,6 +1856,8 @@
     "etcdctl snapshot save | status ...      ssh <node> sudo systemctl | journalctl | crictl ...",
     "ls <dir>   cat | grep | tail <file>     sed -i 's#old#new#' <file>   (files on the control-plane node)",
     "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
+    "kubeadm certs check-expiration | renew all     openssl x509 -in <crt> -noout -enddate     mv | cp <files> <dest>     export KUBECONFIG=<file>",
+    "kubectl create secret tls <name> --cert=<file> --key=<file>     curl -v https://<host>/  (-k skips the check)",
     "kubeadm upgrade plan | apply <version>     apt-get update | install <pkg>=<version>     apt-mark hold | unhold",
     "systemctl daemon-reload | restart kubelet     trivy image <image>     ssh <node> sudo aa-status | apparmor_parser <file>",
     "kubectl get secrets | validatingadmissionpolicy | validatingadmissionpolicybinding",
@@ -1740,6 +1877,19 @@
     const m = /^(?:https?:\/\/)?([^/:]+)(?::\d+)?(\/[^\s]*)?/.exec(url);
     if (!c.edgeHost(m[1])) {
       return say(`curl: (6) Could not resolve host: ${m[1]}${c.resolve(m[1]) ? "  (cluster Service names only resolve inside the cluster; use kubectl exec)" : ""}`, "warn");
+    }
+    if (/^https:\/\//.test(url)) {
+      const cert = c.tlsFor(m[1]);
+      const insecure = words.includes("-k") || words.includes("--insecure");
+      if (words.includes("-v")) {
+        say(`* Connected to ${m[1]} (127.0.0.1) port 443`, "dim");
+        say("* Server certificate:", "dim");
+        say(`*  subject: ${cert.fake ? `O=${cert.org}; CN=${cert.cn}` : `CN=${cert.cn}`}`, "dim");
+        say(`*  issuer: ${cert.fake ? `O=${cert.org}; CN=${cert.cn}` : cert.issuer}`, "dim");
+      }
+      const match = cert.cn === m[1] || (cert.cn.startsWith("*.") && m[1].endsWith(cert.cn.slice(1)) && m[1].split(".").length === cert.cn.split(".").length);
+      if (!insecure && cert.fake) return say("curl: (60) SSL certificate problem: self-signed certificate\nMore details here: https://curl.se/docs/sslcerts.html", "warn");
+      if (!insecure && !match) return say(`curl: (60) SSL: no alternative certificate subject name matches target host name '${m[1]}'`, "warn");
     }
     const res = c.viaEdge(m[1], m[2] || "/");
     if (words.includes("-i") || words.includes("-I")) say(`HTTP/1.1 ${res.code} ${res.code === 200 ? "OK" : res.code === 404 ? "Not Found" : res.code === 500 ? "Internal Server Error" : "Service Temporarily Unavailable"}`, res.ok ? "" : "warn");
@@ -1774,7 +1924,17 @@
     "    image: registry.k8s.io/kube-scheduler:v1.34.0", "    name: kube-scheduler", "    volumeMounts:", "    - mountPath: /etc/kubernetes/scheduler.conf",
     "      name: kubeconfig", "      readOnly: true", "  hostNetwork: true", "  volumes:", "  - hostPath:", "      path: /etc/kubernetes/scheduler.conf",
     "      type: FileOrCreate", "    name: kubeconfig"];
+  BASE_FILES["/etc/kubernetes/manifests/kube-controller-manager.yaml"] = [
+    "apiVersion: v1", "kind: Pod", "metadata:", "  name: kube-controller-manager", "  namespace: kube-system", "spec:", "  containers:", "  - command:",
+    "    - kube-controller-manager", "    - --kubeconfig=/etc/kubernetes/controller-manager.conf", "    - --leader-elect=true",
+    "    - --root-ca-file=/etc/kubernetes/pki/ca.crt", "    - --service-account-private-key-file=/etc/kubernetes/pki/sa.key",
+    "    image: registry.k8s.io/kube-controller-manager:v1.34.0", "    name: kube-controller-manager"];
+  BASE_FILES["/etc/kubernetes/admin.conf"] = ["apiVersion: v1", "kind: Config", "clusters:", "- cluster:", "    certificate-authority-data: (base64, not shown)",
+    "    server: https://172.18.0.2:6443", "  name: kubernetes", "users:", "- name: kubernetes-admin", "  user:",
+    "    client-certificate-data: (base64, not shown)", "    client-key-data: (base64, not shown)"];
+  BASE_FILES["/root/.kube/config"] = [...BASE_FILES["/etc/kubernetes/admin.conf"]];
   const BASE_DIRS = {
+    "/tmp": [],
     "/etc/kubernetes": ["admin.conf", "controller-manager.conf", "kubelet.conf", "manifests", "pki", "scheduler.conf", "super-admin.conf"],
     "/etc/kubernetes/pki/etcd": ["ca.crt", "ca.key", "healthcheck-client.crt", "healthcheck-client.key", "peer.crt", "peer.key", "server.crt", "server.key"],
     "/etc/kubernetes/pki": ["apiserver.crt", "apiserver.key", "ca.crt", "ca.key", "etcd/", "front-proxy-ca.crt", "sa.key", "sa.pub"],
@@ -1845,6 +2005,15 @@
       return;
     }
     if (cmd === "etcdctl" || cmd === "etcdutl") return etcd(c, words, say, opt);
+    if (cmd === "mv" || cmd === "cp") return moveFiles(c, cmd, words.slice(1).filter((x) => !x.startsWith("-")), say);
+    if (cmd === "export") {
+      const m = /^KUBECONFIG=(.+)$/.exec(words[1] || "");
+      if (!m) return say("export: this playground understands export KUBECONFIG=<file>", "dim");
+      if (c.certs) c.certs.useAdmin = m[1] === "/etc/kubernetes/admin.conf";
+      return;
+    }
+    if (cmd === "openssl") return openssl(c, words, say);
+    if (cmd === "kubeadm" && words[1] === "certs") return kubeadmCerts(c, words, say);
     if (["kubeadm", "apt-get", "apt", "apt-mark", "apt-cache", "systemctl", "journalctl"].includes(cmd)) {
       if (c.kadm) return kubeadmTools(c, words, say);
       if (cmd === "systemctl" || cmd === "journalctl") return say(`You are on the control-plane node. For a worker's kubelet: ssh <node> sudo ${cmd} ...`, "dim");
@@ -1912,6 +2081,87 @@
     }
     if (cmd === "helm") return helm(c, words, say, opt);
     return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, etcdctl, etcdutl, kubeadm, apt-get, trivy, ssh, ls, cat, grep and sed; type 'help'.`, "warn");
+  }
+
+  // mv and cp on the control-plane node, with *.yaml globs.
+  function moveFiles(c, cmd, args, say) {
+    if (args.length < 2) return say(`${cmd}: missing destination file operand. Usage: ${cmd} <source>... <destination>`, "warn");
+    const home = (x) => x.replace(/^(~|\$HOME)(?=\/|$)/, "/root");
+    const dest = home(args.pop()).replace(/(.)\/$/, "$1");
+    const isDir = (d) => !!c.dirs[d] || Object.keys(c.files).some((f) => f.startsWith(d + "/"));
+    const srcs = args.map(home).flatMap((a) => {
+      if (!a.includes("*")) return [a];
+      const dir = a.slice(0, a.lastIndexOf("/"));
+      const re = new RegExp("^" + a.slice(dir.length + 1).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*") + "$");
+      const hit = Object.keys(c.files).filter((f) => f.startsWith(dir + "/") && re.test(f.slice(dir.length + 1)));
+      return hit.length ? hit : [a];
+    });
+    for (const src of srcs) {
+      if (!c.files[src]) { say(`${cmd}: cannot stat '${src}': No such file or directory`, "warn"); continue; }
+      const base = src.split("/").pop();
+      const dst = isDir(dest) ? `${dest}/${base}` : dest;
+      c.files[dst] = [...c.files[src]];
+      const ddir = dst.slice(0, dst.lastIndexOf("/"));
+      if (c.dirs[ddir] && !c.dirs[ddir].includes(dst.split("/").pop())) c.dirs[ddir].push(dst.split("/").pop());
+      if (cmd === "mv") {
+        delete c.files[src];
+        const sdir = src.slice(0, src.lastIndexOf("/"));
+        if (c.dirs[sdir]) c.dirs[sdir] = c.dirs[sdir].filter((x) => x !== base);
+      }
+      c.fileMoved(src, dst, cmd);
+    }
+  }
+
+  const PKI_CERTS = ["admin.conf", "apiserver", "apiserver-etcd-client", "apiserver-kubelet-client", "controller-manager.conf", "etcd-healthcheck-client",
+    "etcd-peer", "etcd-server", "front-proxy-client", "scheduler.conf", "super-admin.conf"];
+  const certValid = (c, name) => !c.certs || c.certs.renewed.has(name);
+
+  function kubeadmCerts(c, words, say) {
+    if (words[2] === "check-expiration") {
+      say("[check-expiration] Reading configuration from the cluster...", "dim");
+      if (c.authError(true)) say("[check-expiration] Error reading configuration from the Cluster. Falling back to default configuration", "dim");
+      say("");
+      table3(say, [["CERTIFICATE", "EXPIRES", "RESIDUAL TIME", "CERTIFICATE AUTHORITY", "EXTERNALLY MANAGED"],
+        ...PKI_CERTS.map((n) => certValid(c, n) ? [n, "Oct 30, 2027 09:20 UTC", "364d", /^etcd/.test(n) ? "etcd-ca" : n === "front-proxy-client" ? "front-proxy-ca" : "ca", "no"]
+          : [n, "Oct 30, 2026 07:42 UTC", "<invalid>", /^etcd/.test(n) ? "etcd-ca" : n === "front-proxy-client" ? "front-proxy-ca" : "ca", "no"])]);
+      say("");
+      return table3(say, [["CERTIFICATE AUTHORITY", "EXPIRES", "RESIDUAL TIME", "EXTERNALLY MANAGED"],
+        ["ca", "Oct 28, 2035 07:41 UTC", "8y", "no"], ["etcd-ca", "Oct 28, 2035 07:41 UTC", "8y", "no"], ["front-proxy-ca", "Oct 28, 2035 07:41 UTC", "8y", "no"]]);
+    }
+    if (words[2] !== "renew") return say("This playground runs kubeadm certs check-expiration and kubeadm certs renew all | <certificate>.", "dim");
+    const which = words[3] === "all" ? PKI_CERTS : PKI_CERTS.filter((n) => n === words[3]);
+    if (!which.length) return say(`error: unknown certificate "${words[3] || ""}". Use kubeadm certs renew all, or one of: ${PKI_CERTS.join(", ")}`, "warn");
+    say("[renew] Reading configuration from the cluster...", "dim");
+    if (c.authError(true)) say("[renew] Error reading configuration from the Cluster. Falling back to default configuration", "dim");
+    say("");
+    const what = { "admin.conf": "certificate embedded in the kubeconfig file for the admin to use and for kubeadm itself", apiserver: "certificate for serving the Kubernetes API",
+      "apiserver-etcd-client": "certificate the apiserver uses to access etcd", "apiserver-kubelet-client": "certificate for the API server to connect to kubelet",
+      "controller-manager.conf": "certificate embedded in the kubeconfig file for the controller manager to use", "etcd-healthcheck-client": "certificate for liveness probes to healthcheck etcd",
+      "etcd-peer": "certificate for etcd nodes to communicate with each other", "etcd-server": "certificate for serving etcd",
+      "front-proxy-client": "certificate for the front proxy client", "scheduler.conf": "certificate embedded in the kubeconfig file for the scheduler manager to use",
+      "super-admin.conf": "certificate embedded in the kubeconfig file for the super-admin" };
+    for (const n of which) { say(`${what[n]} renewed`); if (c.certs) c.certs.renewed.add(n); }
+    say("");
+    say("Done renewing certificates. You must restart the kube-apiserver, kube-controller-manager, kube-scheduler and etcd, so that they can use the new certificates.");
+  }
+
+  function openssl(c, words, say) {
+    const i = words.indexOf("-in");
+    const file = i > 0 ? words[i + 1] : null;
+    if (words[1] !== "x509" || !file) return say("This playground runs: openssl x509 -in <certificate> -noout -subject -enddate", "dim");
+    const tls = c.certFiles[file];
+    const pki = /^\/etc\/kubernetes\/pki\/(?:etcd\/)?([\w-]+)\.crt$/.exec(file);
+    if (!tls && !(pki && (c.dirs["/etc/kubernetes/pki"].includes(pki[1] + ".crt") || c.dirs["/etc/kubernetes/pki/etcd"].includes(pki[1] + ".crt")))) {
+      return say(`Could not open file or uri for loading certificate from ${file}`, "warn");
+    }
+    if (tls && tls.key) return say("Could not find certificate from " + file + " (it is a private key)", "warn");
+    const name = pki ? (file.includes("/etcd/") ? "etcd-" + pki[1] : pki[1]) : null;
+    const ok = tls ? true : /^(ca|front-proxy-ca)$/.test(pki[1]) || certValid(c, name);
+    if (words.includes("-subject") || words.includes("-text")) say(`subject=CN = ${tls ? tls.cn : pki[1] === "apiserver" ? "kube-apiserver" : pki[1]}`);
+    if (words.includes("-issuer") || words.includes("-text")) say(`issuer=CN = ${tls ? "Kitchen Internal CA" : "kubernetes"}`);
+    if (words.includes("-enddate") || words.includes("-dates") || words.includes("-text") || words.length <= 4) {
+      say(`notAfter=${ok ? "Oct 30 09:20:00 2027 GMT" : "Oct 30 07:42:10 2026 GMT"}`, ok ? "" : "warn");
+    }
   }
 
   const APPARMOR_FILE = "/etc/apparmor.d/k8s-deny-write";
@@ -2393,6 +2643,8 @@
       say("The connection to the server 172.18.0.2:6443 was refused - did you specify the right host or port?", "warn");
       return out;
     }
+    const authErr = /^kubectl\b/.test(line.trim()) && c.authError(/--kubeconfig[= ]\/etc\/kubernetes\/admin\.conf/.test(line));
+    if (authErr) { say(authErr, "warn"); return out; }
     const table = (rows) => {
       const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
       rows.forEach((r, i) => say(r.map((x, j) => String(x).padEnd(widths[j] + 3)).join("").trimEnd(), i === 0 ? "head" : "row"));
@@ -2408,7 +2660,7 @@
       const w = words[i];
       const kv = /^--?([\w-]+)=(.*)$/.exec(w);
       if (kv) (many[kv[1]] = many[kv[1]] || []).push(kv[2]);
-      const takesValue = ["-n", "--namespace", "-o", "--output", "-l", "--selector", "-c", "--container", "-p", "--patch", "-L", "--type", "--as"];
+      const takesValue = ["-n", "--namespace", "-o", "--output", "-l", "--selector", "-c", "--container", "-p", "--patch", "-L", "--type", "--as", "--kubeconfig", "--context"];
       if (w === "-p" && words[1] === "logs") flags.previous = true;
       else if (takesValue.includes(w) && i + 1 < words.length) flags[w.replace(/^-+/, "")] = words[++i];
       else if (/^--?[\w-]+=/.test(w)) { const [k, ...v] = w.replace(/^-+/, "").split("="); flags[k] = v.join("="); }
@@ -2453,6 +2705,16 @@
         return out;
       }
     }
+    if (ns === "ingress-nginx" && verb === "logs") {
+      for (const x of c.ingresses.filter((i) => i.tls)) {
+        const sec = c.secrets.find((y) => y.name === x.tls);
+        if (!sec) say(`W1030 09:05:41.118302       7 backend_ssl.go:47] Error obtaining X.509 certificate: no object matching key "${NS}/${x.tls}" in local store`, "warn");
+        else if (!sec.tls) say(`W1030 09:05:41.118302       7 backend_ssl.go:47] Error obtaining X.509 certificate: secret "${NS}/${x.tls}" is not of type kubernetes.io/tls`, "warn");
+        if (!sec || !sec.tls) say(`W1030 09:05:41.118425       7 controller.go:1408] Error getting SSL certificate "${NS}/${x.tls}": local SSL certificate ${NS}/${x.tls} was not found. Using default certificate`, "warn");
+      }
+      say('I1030 09:05:41.201118       7 controller.go:213] "Backend successfully reloaded"');
+      return out;
+    }
     if (ns !== NS && !["get", "auth", "certificate"].includes(verb)) return notFound("pods", args[args.length - 1] || ""), out;
 
     const ipOf = (p) => `10.244.${NODES.indexOf(p.node) + 1}.${10 + c.pods.indexOf(p)}`;
@@ -2468,9 +2730,13 @@
       const pad = " ".repeat(indent);
       const lines = [`${pad}containers:`, `${pad}- name: ${name}`, `${pad}  image: ${spec.image}`];
       const env = Object.entries(spec.env);
-      if (env.length) {
+      if (env.length || spec.secretEnv) {
         lines.push(`${pad}  env:`);
         for (const [k, v] of env) lines.push(`${pad}  - name: ${k}`, `${pad}    value: ${v}`);
+        if (spec.secretEnv) {
+          lines.push(`${pad}  - name: ${spec.secretEnv.env}`, `${pad}    valueFrom:`, `${pad}      secretKeyRef:`,
+            `${pad}        name: ${spec.secretEnv.secret}`, `${pad}        key: ${spec.secretEnv.key}`);
+        }
       }
       if (spec.apparmor) {
         lines.push(`${pad}  securityContext:`, `${pad}    appArmorProfile:`,
@@ -2513,7 +2779,10 @@
           const p = podByName(name);
           if (!p) return notFound("pods", name), out;
           [
-            "apiVersion: v1", "kind: Pod", "metadata:", `  name: ${p.name}`, `  namespace: ${NS}`, "  labels:",
+            "apiVersion: v1", "kind: Pod", "metadata:", `  name: ${p.name}`, `  namespace: ${NS}`,
+            ...(p.stuck ? ["  deletionTimestamp: \"2026-10-30T07:12:40Z\"", "  deletionGracePeriodSeconds: 30"] : []),
+            ...(p.finalizers && p.finalizers.length ? ["  finalizers:", ...p.finalizers.map((f) => `  - ${f}`)] : []),
+            "  labels:",
             ...Object.entries(p.labels).map(([k, v]) => `    ${k}: ${v}`),
             ...(p.hash ? [`    pod-template-hash: ${p.hash}`, "  ownerReferences:", "  - kind: ReplicaSet", `    name: ${p.owner}-${p.hash}`] : []),
             "spec:", ...(p.node ? [`  nodeName: ${p.node}`] : []), ...containerYaml(p.spec, p.owner || p.name, 2),
@@ -2686,7 +2955,7 @@
         if (name && !list.length) return notFound("ingresses.networking.k8s.io", name), out;
         if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "CLASS", "HOSTS", "ADDRESS", "PORTS", "AGE"],
-          ...list.map((x) => [x.name, x.class || "<none>", x.host, c.ingressClasses.includes(x.class) ? "localhost" : "", "80", "2h"])]);
+          ...list.map((x) => [x.name, x.class || "<none>", x.host, c.ingressClasses.includes(x.class) ? "localhost" : "", x.tls ? "80, 443" : "80", "2h"])]);
         return out;
       }
       if (kind === "ingressclasses") {
@@ -2719,7 +2988,7 @@
           return out;
         }
         if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
-        table([["NAME", "TYPE", "DATA", "AGE"], ...list.map((x) => [x.name, x.docker ? "kubernetes.io/dockerconfigjson" : "Opaque", Object.keys(x.data).length, "6d"])]);
+        table([["NAME", "TYPE", "DATA", "AGE"], ...list.map((x) => [x.name, x.docker ? "kubernetes.io/dockerconfigjson" : x.tls ? "kubernetes.io/tls" : "Opaque", Object.keys(x.data).length, "6d"])]);
         return out;
       }
       if (kind === "vaps" || kind === "vapbindings") {
@@ -2793,7 +3062,8 @@
         say(`Namespace:        ${NS}`);
         say(`Node:             ${p.node ? p.node + "/172.18.0." + (NODES.indexOf(p.node) + 2) : "<none>"}`);
         say(`Labels:           ${labelsOf(p).split(",").join("\n                  ")}`);
-        say(`Status:           ${st === "Running" || st === "CrashLoopBackOff" ? "Running" : "Pending"}`);
+        say(`Status:           ${p.stuck ? "Terminating (lasts 2h)" : st === "Running" || st === "CrashLoopBackOff" ? "Running" : "Pending"}`, p.stuck ? "warn" : "");
+        if (p.stuck) say("Termination Grace Period:  30s");
         if (p.owner) say(`Controlled By:    ReplicaSet/${p.owner}-${p.hash}`);
         say(`Service Account:  ${p.spec.sa}`);
         if (Object.keys(p.spec.nodeSelector).length) say(`Node-Selectors:   ${sel(p.spec.nodeSelector)}`);
@@ -2823,6 +3093,7 @@
         const env = Object.entries(p.spec.env);
         say("    Environment:" + (env.length ? "" : "    <none>"));
         for (const [k, v] of env) say(`      ${k}:  ${v}`);
+        if (p.spec.secretEnv) say(`      ${p.spec.secretEnv.env}:  <set to the key '${p.spec.secretEnv.key}' in secret '${p.spec.secretEnv.secret}'>  Optional: false`);
         if (p.spec.tolerations.length) say(`Tolerations:      ${p.spec.tolerations.map((t) => `${t.key}${t.operator === "Exists" ? "" : "=" + t.value}:${t.effect}`).join(", ")}`);
         say("Events:" + (p.events.length ? "" : "           <none>"));
         if (p.events.length) {
@@ -3006,6 +3277,7 @@
         say(`Address:          ${c.ingressClasses.includes(x.class) ? "localhost" : ""}`);
         say(`Ingress Class:    ${x.class || "<none>"}`, c.ingressClasses.includes(x.class) ? "" : "warn");
         say("Default backend:  <default>");
+        if (x.tls) say(`TLS:\n  ${x.tls} terminates ${x.host}`);
         say("Rules:");
         say("  Host                  Path  Backends", "head");
         say("  ----                  ----  --------", "head");
@@ -3284,6 +3556,8 @@
         for (const x of pairs) {
           if (x.endsWith("-") && !x.includes("=")) delete spec.env[x.slice(0, -1)];
           else { const i = x.indexOf("="); spec.env[x.slice(0, i)] = x.slice(i + 1); }
+          // A plain value replaces a variable that came from a Secret.
+          if (spec.secretEnv && x.replace(/[=-].*$/, "") === spec.secretEnv.env) spec.secretEnv = null;
         }
       } else {
         const read = (v) => Object.fromEntries(String(v || "").split(",").filter(Boolean).map((x) => x.split("=")));
@@ -3363,6 +3637,12 @@
 
     if (verb === "delete") {
       const { kind, name } = target(null);
+      if (kind === "secrets") {
+        if (!c.secrets.some((x) => x.name === name)) return notFound("secrets", name), out;
+        c.secrets = c.secrets.filter((x) => x.name !== name);
+        c.retry = true;
+        return say(`secret "${name}" deleted`), out;
+      }
       if (kind === "vaps" || kind === "vapbindings") {
         const v = c.vaps.find((x) => (kind === "vaps" ? x.name : x.bound && x.binding) === name);
         if (!v) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
@@ -3432,6 +3712,18 @@
       if (kind !== "pods" || !name) return say("This playground deletes pods, configmaps, networkpolicies and rolebindings.", "dim"), out;
       const p = podByName(name);
       if (!p) return notFound("pods", name), out;
+      if (p.finalizers && p.finalizers.length) {
+        if (flags.force) {
+          say("Warning: Immediate deletion does not wait for confirmation that the running resource has been terminated. The resource may continue to run on the cluster indefinitely.", "warn");
+          say(`pod "${p.name}" force deleted`);
+          say("(still there: --force skips the grace period, not the finalizers. kubectl get pod shows it Terminating.)", "dim");
+        } else {
+          say(`pod "${p.name}" deleted`);
+          say("(kubectl would wait here: the Pod is marked for deletion but keeps waiting for its finalizers. Press Ctrl+C.)", "dim");
+        }
+        p.stuck = true;
+        return out;
+      }
       say(`pod "${p.name}" deleted`);
       if (p.owner) {
         p.terminating = true;
@@ -3587,6 +3879,19 @@
       if (what === "secrets") {
         const type = args[2];
         const sname = args[3];
+        if (type === "tls" && sname) {
+          if (c.secrets.some((x) => x.name === sname)) return say(`error: failed to create secret secrets "${sname}" already exists`, "warn"), out;
+          const crt = flags.cert;
+          const key = flags.key;
+          if (!crt || !key) return say("error: --cert and --key are required: kubectl create secret tls <name> --cert=<file> --key=<file>", "warn"), out;
+          for (const f of [crt, key]) if (!c.files[f]) return say(`error: open ${f}: no such file or directory`, "warn"), out;
+          const a = c.certFiles[crt] || {};
+          const b = c.certFiles[key] || {};
+          if (a.key || !b.key) return say("error: tls: failed to find any PEM data in certificate input (is --cert the .crt and --key the .key?)", "warn"), out;
+          if (a.pair !== b.pair) return say("error: tls: private key does not match public key", "warn"), out;
+          c.secrets.push({ name: sname, tls: { cn: a.cn }, data: { "tls.crt": c.files[crt].join("\n"), "tls.key": "(private key)" } });
+          return say(`secret/${sname} created`), out;
+        }
         if (!["generic", "docker-registry"].includes(type) || !sname) return say("error: use kubectl create secret generic <name> --from-literal=KEY=value, or kubectl create secret docker-registry <name> --docker-server=... --docker-username=... --docker-password=...", "warn"), out;
         if (c.secrets.some((x) => x.name === sname)) return say(`error: failed to create secret secrets "${sname}" already exists`, "warn"), out;
         if (type === "generic") {
@@ -3689,6 +3994,15 @@
         say(`networkpolicy.networking.k8s.io/${name} patched`);
         return out;
       }
+      if (kind === "pods") {
+        const p = podByName(name);
+        if (!p) return notFound("pods", name), out;
+        if (!patch.metadata || !("finalizers" in patch.metadata)) return say(`This playground patches a Pod's finalizers: -p '{"metadata":{"finalizers":null}}'. Change a Deployment for anything else.`, "dim"), out;
+        p.finalizers = [...(patch.metadata.finalizers || [])];
+        say(`pod/${name} patched`);
+        if (p.stuck && !p.finalizers.length) c.pods = c.pods.filter((x) => x !== p);
+        return out;
+      }
       if (kind === "serviceaccounts") {
         if (!c.serviceAccounts.includes(name)) return notFound("serviceaccounts", name), out;
         if (!Array.isArray(patch.imagePullSecrets)) return say(`This playground patches a ServiceAccount's imagePullSecrets: -p '{"imagePullSecrets":[{"name":"<secret>"}]}'`, "dim"), out;
@@ -3728,6 +4042,14 @@
             if (hp.port !== undefined) next.liveness = Number(hp.port) || (hp.port === "http" ? 80 : hp.port);
           }
           if (ctr.securityContext) mergeSec(next.sec, ctr.securityContext);
+          for (const e of Array.isArray(ctr.env) ? ctr.env : []) {
+            const ref = e.valueFrom && e.valueFrom.secretKeyRef;
+            if (ref) next.secretEnv = { env: e.name, secret: ref.name, key: ref.key };
+            else if (e.value !== undefined) {
+              next.env[e.name] = String(e.value);
+              if (next.secretEnv && next.secretEnv.env === e.name) next.secretEnv = null;
+            }
+          }
         }
         if (tpl.securityContext) mergeSec(next.sec, tpl.securityContext);
         for (const sc of [tpl.securityContext, ctr && ctr.securityContext]) {
@@ -3790,6 +4112,7 @@
         const x = c.ingresses.find((y) => y.name === name);
         if (!x) return notFound("ingresses.networking.k8s.io", name), out;
         if (spec.ingressClassName !== undefined) x.class = spec.ingressClassName;
+        if (Array.isArray(spec.tls) && spec.tls[0]) x.tls = spec.tls[0].secretName || null;
         const rule = (spec.rules || [])[0];
         if (rule) {
           if (rule.host) x.host = rule.host;

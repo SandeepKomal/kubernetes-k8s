@@ -365,7 +365,15 @@ window.QUEST_QUIZ_BANK = {
         "CoreDNS: `kubectl -n kube-system get pods,endpoints -l k8s-app=kube-dns`; a Pod's /etc/resolv.conf points at the kube-dns Service",
         "The Ingress controller"
       ], answer: 2,
-      why: "If the IP works, Service routing is fine and only name resolution is broken. With CoreDNS scaled to zero or crashing, kube-dns has no endpoints and nothing answers on port 53." }
+      why: "If the IP works, Service routing is fine and only name resolution is broken. With CoreDNS scaled to zero or crashing, kube-dns has no endpoints and nothing answers on port 53." },
+    { q: "`curl -v https://menu.example.com` shows `CN=Kubernetes Ingress Controller Fake Certificate`. What does that tell you?",
+      options: [
+        "The certificate expired",
+        "ingress-nginx has no usable TLS Secret for this host (missing, misnamed, wrong namespace or wrong type), so it serves its built-in default",
+        "The Service has no endpoints",
+        "DNS points at the wrong IP"
+      ], answer: 1,
+      why: "The controller falls back to its fake certificate whenever it cannot load the Secret named in spec.tls. Its logs say why; `kubectl create secret tls` from the right certificate and key fixes it." }
   ],
 
   "05": [
@@ -456,7 +464,15 @@ window.QUEST_QUIZ_BANK = {
         "envFrom only works with Secrets",
         "Delete and recreate the ConfigMap"
       ], answer: 1,
-      why: "env and envFrom are fixed when the container starts. Mounted ConfigMap files do update after a short delay, but only help if the app re-reads them." }
+      why: "env and envFrom are fixed when the container starts. Mounted ConfigMap files do update after a short delay, but only help if the app re-reads them." },
+    { q: "A Pod is CreateContainerConfigError with `couldn't find key password in Secret app/db-credentials`. What is wrong?",
+      options: [
+        "The Secret does not exist",
+        "The Secret exists, but has no key called password; compare `kubectl describe secret` with the Pod's secretKeyRef",
+        "The Pod lacks RBAC to read Secrets",
+        "The value is not base64"
+      ], answer: 1,
+      why: "`secret not found` would mean a wrong name. `couldn't find key` means the name is right and the key is not: fix the reference, or store the value under that key." }
   ],
 
   "06": [
@@ -1278,7 +1294,23 @@ window.QUEST_QUIZ_BANK = {
         "With `kubeadm reset`",
         "By deleting the Pod with kubectl"
       ], answer: 1,
-      why: "Control-plane components are static Pods owned by the kubelet, not by a Deployment. Deleting the mirror Pod changes nothing; the manifest file is the source of truth." }
+      why: "Control-plane components are static Pods owned by the kubelet, not by a Deployment. Deleting the mirror Pod changes nothing; the manifest file is the source of truth." },
+    { q: "A year after a kubeadm install, kubectl fails with `x509: certificate has expired`. In which order do you fix it?",
+      options: [
+        "Reinstall the cluster",
+        "`kubeadm certs renew all`, restart the control-plane static Pods, then refresh your kubeconfig from /etc/kubernetes/admin.conf",
+        "Restart the kubelet on every node",
+        "Delete ~/.kube/config"
+      ], answer: 1,
+      why: "Renewed files are not used until the static Pods restart, and your own kubeconfig embeds a client certificate that expired too. A kubeadm upgrade renews certificates, so upgrading at least yearly avoids this." },
+    { q: "A Pod has shown Terminating for hours; its container is stopped and `metadata.finalizers` lists a controller that was uninstalled. What does `kubectl delete pod --force --grace-period=0` do?",
+      options: [
+        "Removes it immediately",
+        "Skips the grace period, but the object stays until its finalizers are removed; patch them away once you know nothing needs the cleanup",
+        "Restarts the Pod",
+        "Deletes the node"
+      ], answer: 1,
+      why: "Finalizers are a promise that a controller will clean up first. With that controller gone, nobody removes them: `kubectl patch pod <pod> -p '{\"metadata\":{\"finalizers\":null}}'`." }
   ],
 
   "15": [
