@@ -828,6 +828,72 @@ step(c, `kubectl patch ds log-agent -p '{"spec":{"template":{"spec":{"toleration
 assert.match(step(c, "kubectl get ds"), /log-agent\s+3\s+3\s+3/);
 assert.ok(won(c), "daemonset: tolerates the GPU taint");
 
+// Paused rollout: the spec changed, the Pods did not.
+c = fresh("paused");
+assert.match(step(c, "kubectl get deploy menu -o wide"), /menu\s+0\/2|menu\s+2\/2\s+0/);
+assert.match(step(c, "kubectl describe deploy menu"), /DeploymentPaused/);
+step(c, `kubectl delete pod ${podOf(c, "menu")}`);
+assert.ok(c.podsOf("menu").every((p) => p.spec.image === "nginx:1.25"), "a deleted Pod comes back on the old image");
+step(c, "kubectl rollout restart deployment/menu");
+assert.ok(!won(c), "restarting a paused Deployment changes nothing");
+step(c, "kubectl rollout resume deployment/menu");
+assert.ok(won(c), "paused: resume rolls out 1.27");
+
+// Required anti-affinity caps replicas at the node count.
+c = fresh("antiaffinity");
+const stuck = c.podsOf("cache").find((p) => !p.node);
+assert.match(step(c, "kubectl describe pod " + stuck.name), /didn't match pod anti-affinity rules/);
+step(c, "kubectl scale deployment/cache --replicas=3");
+assert.ok(!won(c), "three replicas is not four");
+c = fresh("antiaffinity");
+step(c, `kubectl patch deployment cache -p '{"spec":{"template":{"spec":{"affinity":null}}}}'`);
+assert.ok(!won(c), "dropping the rule loses the spread");
+c = fresh("antiaffinity");
+step(c, `kubectl patch deployment cache -p '{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":null,"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"podAffinityTerm":{"labelSelector":{"matchLabels":{"app":"cache"}},"topologyKey":"kubernetes.io/hostname"}}]}}}}}}'`);
+assert.ok(won(c), "antiaffinity: preferred spreads without a cap");
+
+// LoadBalancer pending on kind: the NodePort works already.
+c = fresh("lbpending");
+assert.match(step(c, "kubectl get svc shop"), /LoadBalancer\s+10\.96\.77\.20\s+<pending>\s+80:31380\/TCP/);
+assert.match(step(c, "kubectl get nodes -o wide"), /172\.18\.0\.2/);
+assert.match(step(c, "curl http://172.18.0.2:31380/"), /Welcome to nginx/);
+assert.ok(!won(c), "still waiting for a load balancer");
+step(c, `kubectl patch svc shop -p '{"spec":{"type":"NodePort"}}'`);
+assert.ok(won(c), "lbpending: a NodePort Service, reached from outside");
+
+// Docker Hub rate limit: the mirror is not limited.
+c = fresh("ratelimit");
+assert.match(step(c, `kubectl describe pod ${podOf(c, "menu")}`), /toomanyrequests/);
+step(c, "kubectl rollout restart deployment/menu");
+assert.ok(!won(c), "retrying hits the same limit");
+assert.match(step(c, "cat /opt/registry/README"), /mirror\.kitchen\.example\/library/);
+step(c, "kubectl set image deployment/menu menu=mirror.kitchen.example/library/nginx:1.27");
+assert.ok(won(c), "ratelimit: pulled through the mirror");
+
+// Priority: a critical Pod preempts batch work.
+c = fresh("priority");
+assert.match(step(c, `kubectl describe pod ${podOf(c, "oven")}`), /Insufficient memory/);
+step(c, "kubectl scale deployment/reports --replicas=2");
+assert.ok(!won(c), "the batch must stay at 3");
+c = fresh("priority");
+assert.match(step(c, `kubectl patch deployment oven -p '{"spec":{"template":{"spec":{"priorityClassName":"kitchen-critical"}}}}'`), /patched/);
+assert.match(step(c, "kubectl get events"), /no PriorityClass with name kitchen-critical/);
+step(c, "kubectl create priorityclass kitchen-critical --value=100000");
+step(c, "kubectl rollout restart deployment/oven");
+assert.match(step(c, "kubectl get events"), /Preempted/);
+assert.ok(won(c), "priority: oven preempts a reports Pod");
+
+// StatefulSet: Pod N+1 waits for Pod N.
+c = fresh("statefulset");
+assert.match(step(c, "kubectl get sts"), /orders-db\s+0\/3/);
+assert.ok(!c.pods.some((p) => p.name === "orders-db-1"));
+step(c, "kubectl delete pod orders-db-0");
+assert.ok(c.pods.some((p) => p.name === "orders-db-0") && !won(c), "orders-db-0 comes back, still broken");
+step(c, "kubectl create configmap orders-db-config --from-literal=MENU_FILE=/etc/menu/menu.json");
+for (let i = 0; i < 6; i++) step(c, "kubectl get pods");
+assert.match(step(c, "kubectl get sts"), /orders-db\s+3\/3/);
+assert.ok(won(c), "statefulset: all three start in order");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);

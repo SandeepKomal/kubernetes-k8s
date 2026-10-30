@@ -23,15 +23,15 @@ nothing.
 | --- | --- |
 | Pods, kubectl, imperative and declarative | Level 00 |
 | kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace |
-| Deployments, rolling updates, rollback | Level 03 · Playground: Bad rollout |
+| Deployments, rolling updates, rollback, pause and resume | Level 03 · Playground: Bad rollout, Rollout paused |
 | ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key |
-| Requests, limits, QoS | Level 07 · Playground: Pending, OOMKilled |
+| Requests, limits, QoS, PriorityClass and preemption | Level 07 · Playground: Pending, OOMKilled, Critical Pod can't schedule |
 | Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe, Slow start killed · [probes.md](probes.md) |
 | Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running · [reference/manifests/jobs](../reference/manifests/jobs/) |
 | StatefulSets and headless Services | Level 15 · [reference/manifests/statefulsets](../reference/manifests/statefulsets/) |
 | DaemonSets | Level 19 · Playground: DaemonSet missing a node · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
 | Init containers and native sidecars | Level 16 · Playground: Init container |
-| nodeSelector, affinity, taints, tolerations, topology spread | Level 12 · Playground: Node selector, Untolerated taint · [reference/manifests/scheduling](../reference/manifests/scheduling/) |
+| nodeSelector, affinity, taints, tolerations, topology spread | Level 12 · Playground: Node selector, Untolerated taint, Anti-affinity blocks scaling · [reference/manifests/scheduling](../reference/manifests/scheduling/) |
 | HorizontalPodAutoscaler | Level 13 · Playground: HPA not scaling · [reference/manifests/autoscaling](../reference/manifests/autoscaling/) |
 | VerticalPodAutoscaler | Playground: VPA recommendation · reading in reference/manifests/autoscaling |
 | PodDisruptionBudgets, node drain | Level 13 · Playground: Drain blocked · [pod-disruption-budgets.md](pod-disruption-budgets.md) |
@@ -43,7 +43,7 @@ nothing.
 | Topic | Practise it |
 | --- | --- |
 | Labels and selectors | Level 02 · Playground: No endpoints, Canary leaking |
-| Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down · [reference/manifests/services](../reference/manifests/services/) |
+| Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down, LoadBalancer pending · [reference/manifests/services](../reference/manifests/services/) |
 | Ingress, IngressClass, TLS | Playground: Ingress 404, Ingress 503, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
 | NetworkPolicy | Level 11 · Playground: NetworkPolicy · [network-policies.md](network-policies.md) |
@@ -54,7 +54,7 @@ nothing.
 | --- | --- |
 | PersistentVolumes, claims, StorageClasses, default class | Level 08 · Playground: PVC Pending |
 | Access modes, Multi-Attach, Deployment strategy | Playground: Multi-Attach volume |
-| Volumes in StatefulSets | Level 15 |
+| StatefulSets: ordered start, volumes | Level 15 · Playground: StatefulSet stuck at 0 |
 
 ## Security (CKA, CKAD, CKS)
 
@@ -83,7 +83,7 @@ nothing.
 | Control-plane components (static Pods, scheduler) | Playground: Scheduler down |
 | Certificate expiry and renewal with kubeadm | Playground: Certificates expired |
 | Finalizers and objects stuck Terminating | Playground: Stuck Terminating |
-| Private registries and imagePullSecrets | Playground: Private registry |
+| Private registries, imagePullSecrets, Docker Hub rate limits | Playground: Private registry, Docker Hub rate limit |
 | Container command, image architecture | Playground: Wrong command, Wrong CPU architecture |
 | Backing up and restoring etcd | Playground: etcd backup, etcd restore |
 | Upgrading a cluster with kubeadm | Playground: kubeadm upgrade |

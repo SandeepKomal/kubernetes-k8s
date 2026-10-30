@@ -63,7 +63,7 @@
   const IMAGE_PLATFORMS = { "localhost:5000/invoice:2.0-arm64": ["linux/arm64"], "localhost:5000/invoice:2.0": ["linux/amd64", "linux/arm64"] };
 
   function appOf(image) {
-    image = String(image || "").replace(/^(registry\.kitchen\.example|docker\.io\/library)\//, "");
+    image = String(image || "").replace(/^(registry\.kitchen\.example|docker\.io\/library|mirror\.kitchen\.example\/library)\//, "");
     if (LOCAL_IMAGES.has(image)) return image.split("/")[1].split(":")[0];
     if (/^localhost:5000\/invoice:/.test(image)) return null;
     if (/^nginx(:1\.\d+(\.\d+)?(-alpine)?)?$/.test(image)) return "nginx";
@@ -129,6 +129,8 @@
     sa: "serviceaccounts", serviceaccount: "serviceaccounts", serviceaccounts: "serviceaccounts",
     rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets",
     ds: "daemonsets", daemonset: "daemonsets", daemonsets: "daemonsets",
+    sts: "statefulsets", statefulset: "statefulsets", statefulsets: "statefulsets",
+    pc: "priorityclasses", priorityclass: "priorityclasses", priorityclasses: "priorityclasses",
     secret: "secrets", secrets: "secrets",
     validatingadmissionpolicy: "vaps", validatingadmissionpolicies: "vaps",
     validatingadmissionpolicybinding: "vapbindings", validatingadmissionpolicybindings: "vapbindings",
@@ -1097,6 +1099,130 @@
       tries: ["kubectl get ds", "kubectl get pods -o wide"]
     },
     {
+      id: "paused",
+      title: "Rollout paused",
+      done: "menu runs nginx:1.27, and the Deployment is no longer paused.",
+      level: { id: "03", text: "Level 03 · A deploy went wrong" },
+      story: "CI says menu was updated to nginx:1.27 an hour ago, and the Deployment says so too. Every running Pod is still on 1.25. Someone paused the rollout during last week's incident.",
+      goal: "Get menu actually running nginx:1.27.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.25", req: 64, lim: 128, age: 8 * 24 * HOUR }],
+      setup: (c) => {
+        const d = c.deployments.find((x) => x.name === "menu");
+        d.paused = true;
+        d.pendingSpec = { ...d.spec, image: "nginx:1.27" };
+      },
+      won: (c) => { const d = c.deployments.find((x) => x.name === "menu"); return !d.paused && c.deploymentReady("menu") && c.podsOf("menu").every((p) => p.spec.image === "nginx:1.27"); },
+      check: (c) => { const imgs = [...new Set(c.podsOf("menu").map((p) => p.spec.image.split(":").pop()))]; return { label: "menu Pods run", ok: imgs.join() === "1.27", text: imgs.join(", ") }; },
+      hints: [
+        "kubectl get deploy menu -o wide shows the image you asked for; kubectl describe pod on a menu Pod shows the one running. UP-TO-DATE is 0.",
+        "kubectl describe deploy menu: Progressing Unknown, DeploymentPaused. kubectl rollout status deployment/menu says the same.",
+        "kubectl rollout resume deployment/menu"
+      ],
+      lesson: "A paused Deployment accepts changes but rolls none of them out, and deleting Pods only recreates the old version. kubectl rollout pause and resume exist to batch several changes into one rollout; check for a pause when UP-TO-DATE stays 0.",
+      tries: ["kubectl get deploy -o wide", "kubectl rollout status deployment/menu"]
+    },
+    {
+      id: "antiaffinity",
+      title: "Anti-affinity blocks scaling",
+      done: "cache runs 4 replicas, still spread across the nodes as much as possible.",
+      level: { id: "12", text: "Level 12 · Scheduling, taints and tolerations" },
+      story: "For the sale, cache was scaled from 3 to 4 replicas. The fourth has been Pending for an hour. The cluster has plenty of free memory.",
+      goal: "Run 4 cache replicas, keeping them spread over the nodes as far as possible.",
+      deployments: [{ name: "cache", replicas: 4, image: "nginx:1.27", req: 128, lim: 256, age: 3 * HOUR, antiAffinity: "required" }, api()],
+      won: (c) => { const d = c.deployments.find((x) => x.name === "cache"); return d.replicas === 4 && d.spec.antiAffinity === "preferred" && c.deploymentReady("cache") && new Set(c.podsOf("cache").map((p) => p.node)).size === NODES.length; },
+      check: (c) => ({ label: "cache", ok: c.deploymentReady("cache"), text: `${c.podsOf("cache").filter((p) => p.ready).length}/4 Running` }),
+      hints: [
+        "kubectl describe the Pending cache Pod: 3 node(s) didn't match pod anti-affinity rules. Memory is not the problem.",
+        "kubectl get deploy cache -o yaml: requiredDuringSchedulingIgnoredDuringExecution on kubernetes.io/hostname allows one cache Pod per node, and there are 3 nodes.",
+        `Make it a preference instead of a rule: kubectl patch deployment cache -p '{"spec":{"template":{"spec":{"affinity":{"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":null,"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"podAffinityTerm":{"labelSelector":{"matchLabels":{"app":"cache"}},"topologyKey":"kubernetes.io/hostname"}}]}}}}}}'`
+      ],
+      lesson: "Required pod anti-affinity on the hostname caps replicas at the number of nodes, and the extra ones wait forever. Use preferred anti-affinity, or topologySpreadConstraints with ScheduleAnyway, when you want spread without a hard limit.",
+      tries: ["kubectl get pods -o wide", "kubectl describe deployment cache"]
+    },
+    {
+      id: "lbpending",
+      title: "LoadBalancer pending",
+      done: "shop is a NodePort Service and answers from your machine.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "The shop team copied their cloud manifests to this kind cluster. Their Service has shown EXTERNAL-IP <pending> since yesterday, and they are waiting for an address that will never come.",
+      goal: "Reach shop from your machine, and stop its Service waiting for a load balancer this cluster does not have.",
+      deployments: [{ name: "shop", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 26 * HOUR }, api()],
+      services: [{ name: "shop", selector: { app: "shop" }, ip: "10.96.77.20", type: "LoadBalancer", nodePort: 31380, age: 26 * HOUR }],
+      won: (c) => c.services.find((x) => x.name === "shop").type === "NodePort" && c.nodePortHit,
+      check: (c) => { const t = c.services.find((x) => x.name === "shop").type; return { label: "shop", ok: t === "NodePort" && c.nodePortHit, text: t === "LoadBalancer" ? "<pending>" : c.nodePortHit ? "reachable" : t }; },
+      hints: [
+        "kubectl get svc shop: TYPE LoadBalancer, EXTERNAL-IP <pending>. kubectl describe svc shop: no events at all. Who would hand out that address?",
+        "A cloud provider's controller (or MetalLB, or cloud-provider-kind) assigns LoadBalancer IPs. kind has none. But a LoadBalancer Service also opens a NodePort: see PORT(S), and kubectl get nodes -o wide for the node IPs.",
+        `curl http://172.18.0.2:31380/ works already. Then say what you mean: kubectl patch svc shop -p '{"spec":{"type":"NodePort"}}'`
+      ],
+      lesson: "EXTERNAL-IP <pending> means no controller in the cluster provisions load balancers. On kind or bare metal use a NodePort, an Ingress, or a load-balancer implementation such as MetalLB; every LoadBalancer Service is also reachable on its NodePort.",
+      tries: ["kubectl get svc", "kubectl describe svc shop"]
+    },
+    {
+      id: "ratelimit",
+      title: "Docker Hub rate limit",
+      done: "menu pulls nginx through the company mirror.",
+      level: { id: "01", text: "Level 01 · Pods that will not start" },
+      story: "This morning's node upgrade replaced every node, so no image is cached any more. menu's new Pods cannot pull nginx:1.27, though the tag certainly exists.",
+      goal: "Get menu Running without depending on anonymous Docker Hub pulls.",
+      deployments: [web({ image: "mirror.kitchen.example/library/nginx:1.27" }), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 15 * MIN }],
+      hubRateLimit: true,
+      files: { "/opt/registry/README": ["Docker Hub pull-through cache for the kitchen clusters:", "  mirror.kitchen.example/library/<image>:<tag>   (official images)", "  mirror.kitchen.example/<org>/<image>:<tag>     (everything else)"] },
+      dirs: { "/opt/registry": ["README"] },
+      won: (c) => { const d = c.deployments.find((x) => x.name === "menu"); return d.spec.image.startsWith("mirror.kitchen.example/") && c.deploymentReady("menu"); },
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "kubectl describe pod on a menu Pod: 429 Too Many Requests, toomanyrequests: You have reached your unauthenticated pull rate limit.",
+        "All the new nodes share one public IP, and anonymous Docker Hub pulls are limited per IP. web already pulls through the company mirror: kubectl get deploy -o wide, then cat /opt/registry/README.",
+        "kubectl set image deployment/menu menu=mirror.kitchen.example/library/nginx:1.27"
+      ],
+      lesson: "429 toomanyrequests is Docker Hub's anonymous pull limit, which whole clusters behind one NAT address hit quickly. Pull through a mirror or your own registry, or authenticate the pulls with an imagePullSecret.",
+      tries: ["kubectl get pods", "kubectl get deploy -o wide"]
+    },
+    {
+      id: "priority",
+      title: "Critical Pod can't schedule",
+      done: "oven runs with a PriorityClass that lets it preempt the batch reports.",
+      level: { id: "07", text: "Level 07 · Requests, limits and quotas" },
+      story: "The nightly reports batch fills every node. The oven controller, which the whole kitchen depends on, was redeployed and now cannot find room.",
+      goal: "Get oven Running by giving it priority over the batch work. Do not scale the batch down; it should run whenever there is room.",
+      deployments: [
+        { name: "reports", replicas: 3, image: "localhost:5000/reports:1.0", req: 7300, lim: 7600, age: 2 * HOUR },
+        { name: "oven", replicas: 1, image: "localhost:5000/oven:1.4", req: 1024, lim: 1024, age: 5 * MIN }
+      ],
+      won: (c) => {
+        const d = c.deployments.find((x) => x.name === "oven");
+        return c.deploymentReady("oven") && c.priorityOf(d.spec) > 0 && c.deployments.find((x) => x.name === "reports").replicas === 3;
+      },
+      check: (c) => ({ label: "oven", ok: c.deploymentReady("oven"), text: c.deploymentReady("oven") ? "Running" : "Pending" }),
+      hints: [
+        "kubectl describe the oven Pod: Insufficient memory on every node, and 'Preemption is not helpful': nothing it could evict has a lower priority.",
+        "kubectl get priorityclass lists only the system classes, and every Pod here has priority 0. Create one for critical apps: kubectl create priorityclass kitchen-critical --value=100000",
+        `Use it: kubectl patch deployment oven -p '{"spec":{"template":{"spec":{"priorityClassName":"kitchen-critical"}}}}'. The scheduler then evicts one reports Pod to make room.`
+      ],
+      lesson: "When a cluster is full, a Pod with a higher PriorityClass preempts lower-priority ones. Give critical services a PriorityClass and leave batch work at the default, so the batch is what waits.",
+      tries: ["kubectl get pods", "kubectl get priorityclass"]
+    },
+    {
+      id: "statefulset",
+      title: "StatefulSet stuck at 0",
+      done: "All three orders-db Pods run, started in order.",
+      level: { id: "15", text: "Level 15 · StatefulSets" },
+      story: "orders-db was moved to a StatefulSet with three replicas. Only orders-db-0 exists, and it never starts. There is no sign of orders-db-1 or orders-db-2.",
+      goal: "Get all three orders-db Pods Running.",
+      deployments: [web()],
+      statefulsets: [{ name: "orders-db", replicas: 3, image: "localhost:5000/orders:2.3", req: 64, lim: 256, age: 40 * MIN, envFrom: "orders-db-config" }],
+      won: (c) => [0, 1, 2].every((i) => c.pods.some((p) => p.name === `orders-db-${i}` && p.ready)),
+      check: (c) => ({ label: "orders-db", ok: c.pods.filter((p) => p.sts === "orders-db" && p.ready).length === 3, text: `${c.pods.filter((p) => p.sts === "orders-db" && p.ready).length}/3 Ready` }),
+      hints: [
+        "kubectl get sts shows 0/3, and only orders-db-0 exists. A StatefulSet creates its Pods one at a time, each only once the one before is Ready.",
+        "So the problem is orders-db-0 alone: kubectl describe pod orders-db-0. Deleting it brings back the same Pod, with the same name.",
+        "It needs the orders-db-config ConfigMap: kubectl create configmap orders-db-config --from-literal=MENU_FILE=/etc/menu/menu.json. Then watch -1 and -2 follow."
+      ],
+      lesson: "A StatefulSet with the default OrderedReady policy starts Pod N+1 only when Pod N is Ready, so one broken first Pod blocks them all. Fix the first Pod; use podManagementPolicy Parallel only when order does not matter.",
+      tries: ["kubectl get sts", "kubectl get pods"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -1266,11 +1392,11 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "pullsecret", "cmreload", "secretkey"]],
-    ["Scheduling and storage", ["pending", "nodeselector", "taint", "daemonset", "pvc", "multiattach"]],
-    ["Networking", ["probe", "service", "canary", "svcport", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "statefulset"]],
+    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
-    ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain", "finalizer"]],
+    ["Operations and delivery", ["job", "cronjob", "rollout", "paused", "helm", "drain", "finalizer"]],
     ["Cluster administration", ["context", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
     ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
     ["Autoscaling", ["hpa", "vpa"]]
@@ -1339,6 +1465,10 @@
       this.registryAuth = scenario.registryAuth || null; // a private registry: { server, user, token }
       this.saPullSecrets = {};
       this.daemonsets = JSON.parse(JSON.stringify(scenario.daemonsets || []));
+      this.statefulsets = JSON.parse(JSON.stringify(scenario.statefulsets || []));
+      this.priorityClasses = [{ name: "system-cluster-critical", value: 2000000000 }, { name: "system-node-critical", value: 2000001000 }];
+      this.extraEvents = []; // events on objects other than Pods and ReplicaSets
+      this.nodePortHit = false; // reached a Service through a node's IP and nodePort
       this.rr = 0; // which endpoint a Service picks next
       // Expired control-plane certificates: what has been renewed and restarted since.
       this.certs = scenario.certsExpired ? { renewed: new Set(), out: {}, restarted: {}, kubeconfig: false, useAdmin: false } : null;
@@ -1359,9 +1489,10 @@
             tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
             init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null,
             secretEnv: d.secretEnv ? { ...d.secretEnv } : null, command: d.command ? [...d.command] : null,
-            livenessCfg: d.livenessCfg ? { ...d.livenessCfg } : null, startup: d.startup ? { ...d.startup } : null
+            livenessCfg: d.livenessCfg ? { ...d.livenessCfg } : null, startup: d.startup ? { ...d.startup } : null,
+            antiAffinity: d.antiAffinity || null, priorityClassName: d.priorityClassName || null
           },
-          labels: { ...(d.labels || {}) }, strategy: d.strategy || "RollingUpdate",
+          labels: { ...(d.labels || {}) }, strategy: d.strategy || "RollingUpdate", paused: false, pendingSpec: null,
           hash: this.rand(10)
         };
         this.deployments.push(dep);
@@ -1379,6 +1510,7 @@
       }
       for (const j of scenario.jobs || []) this.runJob({ ...j, created: this.now() - (j.age || 0) });
       this.syncDaemonSets(true);
+      this.syncStatefulSets(true);
       if (scenario.setup) scenario.setup(this);
       this.reconcileHpas();
     }
@@ -1394,7 +1526,7 @@
     }
 
     get dirty() {
-      return this.retry || this.pods.some((p) => p.creating || p.terminating || p.old) ||
+      return this.retry || this.pods.some((p) => p.creating || p.terminating || p.old) || this.stsGrowing() ||
         this.deployments.some((d) => !this.podsOf(d.name).some((p) => p.old) &&
           this.podsOf(d.name).filter((p) => p.hash === d.hash).length < d.replicas && !this.blocked(d.spec));
     }
@@ -1410,6 +1542,12 @@
         this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
         this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate",
           msg: `Error creating: pods "${name}" is forbidden: ValidatingAdmissionPolicy '${vap.name}' with binding '${vap.binding}' denied request: images must come from ${vap.prefix}` });
+        return null;
+      }
+      if (dep && spec.priorityClassName && !this.priorityClasses.some((x) => x.name === spec.priorityClassName)) {
+        this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
+        this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate",
+          msg: `Error creating: pods "${dep.name}-${dep.hash}-${this.rand(5)}" is forbidden: no PriorityClass with name ${spec.priorityClassName} was found` });
         return null;
       }
       const overQuota = dep && !denied.length && this.quotaError(spec);
@@ -1456,7 +1594,8 @@
       return `requested: requests.memory=${fmtMem(spec.req)}, used: requests.memory=${fmtMem(used)}, limited: requests.memory=${fmtMem(this.quota.memory)}`;
     }
     blocked(spec) {
-      return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec) || this.vaps.some((v) => v.bound && !String(spec.image).startsWith(v.prefix));
+      return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec) ||
+        (!!spec.priorityClassName && !this.priorityClasses.some((x) => x.name === spec.priorityClassName)) || this.vaps.some((v) => v.bound && !String(spec.image).startsWith(v.prefix));
     }
 
     // PersistentVolumeClaims bind when their StorageClass exists. A claim with
@@ -1508,6 +1647,34 @@
         }
       }
     }
+    // A StatefulSet creates its Pods in order, each only once the one before is Ready.
+    syncStatefulSets(initial) {
+      for (const st of this.statefulsets) {
+        for (let i = 0; i < st.replicas; i++) {
+          const name = `${st.name}-${i}`;
+          const pod = this.pods.find((p) => p.name === name && !p.terminating);
+          if (pod) { if (!pod.ready) break; continue; }
+          const made = this.addPod(null, {
+            name, settled: true, age: initial ? st.age : 0,
+            spec: { image: st.image, env: {}, req: st.req, lim: st.lim, envFrom: st.envFrom || null, probe: null, nodeSelector: {}, sa: "default",
+              cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null, apparmor: null }
+          });
+          if (made) { made.sts = st.name; made.labels = { app: st.name }; this.retry = true; }
+          break;
+        }
+      }
+    }
+    // A StatefulSet whose Pods so far are all Ready creates the next one.
+    stsGrowing() {
+      return this.statefulsets.some((st) => {
+        const mine = this.pods.filter((p) => p.sts === st.name);
+        return mine.length < st.replicas && mine.every((p) => p.ready);
+      });
+    }
+    // The desired spec of a Deployment: its pending one while a rollout is paused.
+    desired(d) { return d.pendingSpec || d.spec; }
+    priorityOf(spec) { const pc = this.priorityClasses.find((x) => x.name === spec.priorityClassName); return pc ? pc.value : 0; }
+    sameApp(pod, node) { return this.pods.filter((o) => o !== pod && !o.terminating && o.node === node && o.labels.app === pod.labels.app).length; }
     pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
 
     pullAllowed(pod) {
@@ -1627,10 +1794,34 @@
       if (this.schedulerError()) return null;
       const claim = this.pvcOf(pod);
       if (pod.spec.pvc && (!claim || !claim.bound)) return null;
-      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n)).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
-      if (!fits.length) return null;
-      fits.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      const anti = pod.spec.antiAffinity;
+      const usable = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n) && !(anti === "required" && this.sameApp(pod, n)));
+      const fits = usable.map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
+      if (!fits.length) return this.preempt(pod, usable);
+      // Preferred anti-affinity: fewest Pods of the same app first, then most free memory.
+      fits.sort((a, b) => (anti ? this.sameApp(pod, a[0]) - this.sameApp(pod, b[0]) : 0) || b[1] - a[1] || a[0].localeCompare(b[0]));
       return fits[0][0];
+    }
+
+    // A Pod with a higher priority evicts lower-priority Pods to make room.
+    preempt(pod, nodes) {
+      const mine = this.priorityOf(pod.spec);
+      if (!mine) return null;
+      for (const n of nodes) {
+        const victims = this.pods.filter((o) => o.node === n && !o.terminating && !o.job && this.priorityOf(o.spec) < mine)
+          .sort((a, b) => this.priorityOf(a.spec) - this.priorityOf(b.spec));
+        let free = this.freeOn(n);
+        const chosen = [];
+        for (const v of victims) { if (free >= (pod.spec.req || 0)) break; free += v.spec.req || 0; chosen.push(v); }
+        if (free < (pod.spec.req || 0)) continue;
+        for (const v of chosen) {
+          this.extraEvents.push(["Normal", "Preempted", `pod/${v.name}`, `Preempted by pod ${pod.name} on node ${n}`]);
+          this.pods = this.pods.filter((x) => x !== v);
+        }
+        this.retry = true;
+        return n;
+      }
+      return null;
     }
 
     // Work out what the kubelet would report, and the events it would emit.
@@ -1665,6 +1856,7 @@
           else if (this.cordoned[node]) r = "node(s) were unschedulable";
           else if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
           else if (!this.tolerates(pod, node)) r = `node(s) had untolerated taint {${this.taints[node].map((t) => `${t.key}: ${t.value}`).join(", ")}}`;
+          else if (pod.spec.antiAffinity === "required" && this.sameApp(pod, node)) r = "node(s) didn't match pod anti-affinity rules";
           reasons[r] = (reasons[r] || 0) + 1;
         }
         const why = Object.entries(reasons).map(([r, k]) => `${k} ${r}`).sort().join(", ");
@@ -1683,6 +1875,14 @@
         pod.events = [scheduled, ["Warning", "FailedAttachVolume", "attachdetach-controller",
           `Multi-Attach error for volume "${claim ? claim.volume : pod.spec.pvc}" Volume is already used by pod(s) ${holder.name}`],
           ["Warning", "FailedMount", "kubelet", `Unable to attach or mount volumes: unmounted volumes=[data], unattached volumes=[data]: timed out waiting for the condition`]];
+        return;
+      }
+      if (this.scenario.hubRateLimit && !/^[\w-]+(\.[\w-]+)+(:\d+)?\/|^localhost[:/]/.test(img) || this.scenario.hubRateLimit && /^docker\.io\//.test(img)) {
+        const ref = /^docker\.io\//.test(img) ? img : `docker.io/library/${img}`;
+        pod.state = "ImagePullBackOff";
+        pod.events = [scheduled, ["Normal", "Pulling", "kubelet", `Pulling image "${img}"`],
+          ["Warning", "Failed", "kubelet", `Failed to pull image "${img}": failed to pull and unpack image "${ref}": failed to copy: httpReadSeeker: failed open: unexpected status code https://registry-1.docker.io/v2/library/${img.split(":")[0].replace(/^docker\.io\/library\//, "")}/manifests/${img.split(":").pop()}: 429 Too Many Requests - Server message: toomanyrequests: You have reached your unauthenticated pull rate limit. https://www.docker.com/increase-rate-limit`],
+          ["Warning", "Failed", "kubelet", "Error: ErrImagePull"], ["Normal", "BackOff", "kubelet", `Back-off pulling image "${img}"`], ["Warning", "Failed", "kubelet", "Error: ImagePullBackOff"]];
         return;
       }
       if (this.registryAuth && String(img).startsWith(this.registryAuth.server + "/") && !this.pullAllowed(pod)) {
@@ -1881,6 +2081,7 @@
       this.retry = false;
       this.bindPvcs();
       this.syncDaemonSets(false);
+      this.syncStatefulSets(false);
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
       const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|ImagePullBackOff|ContainerCreating|Init:)/.test(x.state || "");
@@ -2023,6 +2224,7 @@
     }
 
     rollout(d, newSpec) {
+      if (d.paused) { d.pendingSpec = newSpec; return; }
       d.history.push(d.spec);
       d.spec = newSpec;
       this.restartRollout(d);
@@ -2061,6 +2263,8 @@
     "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
     "kubeadm certs check-expiration | renew all     openssl x509 -in <crt> -noout -enddate     mv | cp <files> <dest>     export KUBECONFIG=<file>",
     "kubectl create secret tls <name> --cert=<file> --key=<file>     curl -v https://<host>/  (-k skips the check)",
+    "kubectl get sts | describe sts <name>     kubectl get priorityclass     kubectl create priorityclass <name> --value=N",
+    "kubectl rollout pause | resume deployment/<name>     kubectl get nodes -o wide     curl http://<node-ip>:<nodePort>/",
     "kubectl get ds | describe ds <name>     docker buildx imagetools inspect <image>     curl http://localhost:5000/v2/<repo>/tags/list",
     "kubeadm upgrade plan | apply <version>     apt-get update | install <pkg>=<version>     apt-mark hold | unhold",
     "systemctl daemon-reload | restart kubelet     trivy image <image>     ssh <node> sudo aa-status | apparmor_parser <file>",
@@ -2084,6 +2288,17 @@
       return say(tags.length ? JSON.stringify({ name: reg[1], tags }) : `{"errors":[{"code":"NAME_UNKNOWN","message":"repository name not known to registry"}]}`, tags.length ? "" : "warn");
     }
     const m = /^(?:https?:\/\/)?([^/:]+)(?::\d+)?(\/[^\s]*)?/.exec(url);
+    const nodeIp = /^172\.18\.0\.(\d+)$/.exec(m[1]);
+    if (nodeIp) {
+      const port = Number((/:(\d+)/.exec(url) || [])[1]);
+      const svc = c.services.find((x) => x.nodePort && x.nodePort === port);
+      const known = Number(nodeIp[1]) >= 2 && Number(nodeIp[1]) < NODES.length + 2;
+      const eps = svc ? c.endpointsOf(svc.name) : [];
+      if (!known || !svc || !eps.length) return say(`curl: (7) Failed to connect to ${m[1]} port ${port || 80}: Connection refused`, "warn");
+      c.nodePortHit = true;
+      if (words.includes("-i") || words.includes("-I")) say("HTTP/1.1 200 OK");
+      return say(APPS[appOf(eps[0].spec.image)].body);
+    }
     if (!c.edgeHost(m[1])) {
       return say(`curl: (6) Could not resolve host: ${m[1]}${c.resolve(m[1]) ? "  (cluster Service names only resolve inside the cluster; use kubectl exec)" : ""}`, "warn");
     }
@@ -2983,6 +3198,18 @@
       if (spec.req) lines.push(`${pad}    requests:`, `${pad}      memory: ${fmtMem(spec.req)}`);
       return lines;
     };
+    const podSpecYaml = (spec, indent) => {
+      const pad = " ".repeat(indent);
+      const lines = spec.priorityClassName ? [`${pad}priorityClassName: ${spec.priorityClassName}`] : [];
+      if (spec.antiAffinity) {
+        const key = spec.antiAffinity === "required" ? "requiredDuringSchedulingIgnoredDuringExecution" : "preferredDuringSchedulingIgnoredDuringExecution";
+        lines.push(`${pad}affinity:`, `${pad}  podAntiAffinity:`, `${pad}    ${key}:`,
+          ...(spec.antiAffinity === "required"
+            ? [`${pad}    - labelSelector: {matchLabels: {app: <app>}}`, `${pad}      topologyKey: kubernetes.io/hostname`]
+            : [`${pad}    - weight: 100`, `${pad}      podAffinityTerm:`, `${pad}        labelSelector: {matchLabels: {app: <app>}}`, `${pad}        topologyKey: kubernetes.io/hostname`]));
+      }
+      return lines;
+    };
     const requireDeployment = (name) => {
       if (!name) { say("error: name the Deployment, for example deployment/orders", "warn"); return null; }
       const d = depByName(name);
@@ -3050,15 +3277,15 @@
         if (name && flags.o === "yaml") {
           const d = deps[0];
           ["apiVersion: apps/v1", "kind: Deployment", "metadata:", `  name: ${d.name}`, `  namespace: ${NS}`, "spec:",
-            `  replicas: ${d.replicas}`, "  selector:", "    matchLabels:", `      app: ${d.name}`, "  template:", "    metadata:",
-            "      labels:", `        app: ${d.name}`, "    spec:", ...containerYaml(d.spec, d.name, 6)].forEach((l) => say(l));
+            `  replicas: ${d.replicas}`, ...(d.paused ? ["  paused: true"] : []), "  selector:", "    matchLabels:", `      app: ${d.name}`, "  template:", "    metadata:",
+            "      labels:", `        app: ${d.name}`, "    spec:", ...containerYaml(c.desired(d), d.name, 6), ...podSpecYaml(c.desired(d), 6)].forEach((l) => say(l));
           return out;
         }
         const wide = flags.o === "wide";
         table([["NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE", ...(wide ? ["CONTAINERS", "IMAGES"] : [])], ...deps.map((d) => {
           const ready = c.podsOf(d.name).filter((p) => p.ready && !p.creating && !p.terminating).length;
           const fresh = c.podsOf(d.name).filter((p) => p.hash === d.hash).length;
-          return [d.name, `${ready}/${d.replicas}`, fresh, ready, age(nowMs - d.created), ...(wide ? [d.name, d.spec.image] : [])];
+          return [d.name, `${ready}/${d.replicas}`, d.pendingSpec ? 0 : fresh, ready, age(nowMs - d.created), ...(wide ? [d.name, c.desired(d).image] : [])];
         })]);
         return out;
       }
@@ -3069,7 +3296,7 @@
         if (!svcs.length) return say(`No resources found in ${ns} namespace.`), out;
         const head = ["NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"];
         table([everywhere ? ["NAMESPACE", ...head] : head, ...svcs.map((s) => {
-          const row = [s.name, "ClusterIP", s.ip, "<none>", `${s.port}/TCP`, age(nowMs - s.created)];
+          const row = [s.name, s.type || "ClusterIP", s.ip, s.type === "LoadBalancer" ? "<pending>" : "<none>", s.nodePort ? `${s.port}:${s.nodePort}/TCP` : `${s.port}/TCP`, age(nowMs - s.created)];
           return everywhere ? [s.ns || NS, ...row] : row;
         })]);
         return out;
@@ -3087,7 +3314,7 @@
       }
       if (kind === "nodes") {
         const extra = flags.L ? String(flags.L).split(",") : [];
-        const head = ["NAME", "STATUS", "ROLES", "AGE", "VERSION", ...extra.map((x) => x.toUpperCase())];
+        const head = ["NAME", "STATUS", "ROLES", "AGE", "VERSION", ...(flags.o === "wide" ? ["INTERNAL-IP"] : []), ...extra.map((x) => x.toUpperCase())];
         if (flags["show-labels"]) head.push("LABELS");
         const k = c.kadm;
         const cp = k && (!name || name === "control-plane")
@@ -3095,7 +3322,8 @@
           : [];
         if (k && name === "control-plane") return table([head.slice(0, 5 + extra.length), ...cp]), out;
         table([head, ...cp, ...NODES.filter((n) => !name || n === name).map((n) => {
-          const row = [n, (c.nodeReady(n) ? "Ready" : "NotReady") + (c.cordoned[n] ? ",SchedulingDisabled" : ""), "<none>", "12d", k ? "v1.33.5" : "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
+          const row = [n, (c.nodeReady(n) ? "Ready" : "NotReady") + (c.cordoned[n] ? ",SchedulingDisabled" : ""), "<none>", "12d", k ? "v1.33.5" : "v1.34.0",
+            ...(flags.o === "wide" ? [`172.18.0.${NODES.indexOf(n) + 2}`] : []), ...extra.map((x) => c.nodeLabels[n][x] || "")];
           if (flags["show-labels"]) row.push(sel(c.nodeLabels[n]));
           return row;
         })]);
@@ -3236,6 +3464,17 @@
         else table([["NAME", "POLICYNAME", "PARAMREF", "AGE"], ...list.map((v) => [v.binding, v.name, "<unset>", "3d"])]);
         return out;
       }
+      if (kind === "statefulsets") {
+        const list = c.statefulsets.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("statefulsets.apps", name), out;
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "READY", "AGE"], ...list.map((x) => [x.name, `${c.pods.filter((p) => p.sts === x.name && p.ready).length}/${x.replicas}`, age(x.age)])]);
+        return out;
+      }
+      if (kind === "priorityclasses") {
+        table([["NAME", "VALUE", "GLOBAL-DEFAULT", "AGE"], ...c.priorityClasses.map((x) => [x.name, x.value, "false", x.age === undefined ? "12d" : "0s"])]);
+        return out;
+      }
       if (kind === "daemonsets") {
         const list = c.daemonsets.filter((x) => !name || x.name === name);
         if (name && !list.length) return notFound("daemonsets.apps", name), out;
@@ -3290,6 +3529,7 @@
         const rows = [];
         for (const p of c.pods) for (const e of p.events) rows.push([e[0], e[1], `pod/${p.name}`, e[3]]);
         for (const e of c.rsEvents) rows.push([e.type, e.reason, `replicaset/${e.rs}`, e.msg]);
+        rows.push(...c.extraEvents);
         for (const x of c.hpas) for (const e of x.events || []) rows.push([e[0], e[1], `horizontalpodautoscaler/${x.name}`, e[3]]);
         if (!rows.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["TYPE", "REASON", "OBJECT", "MESSAGE"], ...rows]);
@@ -3361,13 +3601,14 @@
         say(`Namespace:          ${NS}`);
         say(`Selector:           app=${d.labels.app || d.name}`);
         say(`Replicas:           ${d.replicas} desired | ${ready} available | ${d.replicas - Math.min(ready, d.replicas)} unavailable`);
+        if (d.paused) say("Conditions:\n  Type           Status   Reason\n  Progressing    Unknown  DeploymentPaused", "warn");
         say(`StrategyType:       ${d.strategy}`);
         if (d.strategy === "RollingUpdate") say("RollingUpdateStrategy:  25% max unavailable, 25% max surge");
         say("Pod Template:");
         say(`  Labels:  ${sel({ app: d.name, ...d.labels })}`);
         say("  Containers:");
         say(`   ${d.name}:`);
-        say(`    Image:      ${d.spec.image}`);
+        say(`    Image:      ${c.desired(d).image}`);
         if (d.spec.lim) say(`    Limits:     memory: ${fmtMem(d.spec.lim)}`);
         if (d.spec.req) say(`    Requests:   memory: ${fmtMem(d.spec.req)}`);
         if (d.spec.probe) say(`    Readiness:  http-get http://:${APPS[appOf(d.spec.image)]?.port || 80}${d.spec.probe}`);
@@ -3394,9 +3635,11 @@
         say(`Name:              ${s.name}`);
         say(`Namespace:         ${NS}`);
         say(`Selector:          ${Object.entries(s.selector).map(([k, v]) => `${k}=${v}`).join(",")}`);
-        say("Type:              ClusterIP");
+        say(`Type:              ${s.type || "ClusterIP"}`);
         say(`IP:                ${s.ip}`);
+        if (s.type === "LoadBalancer") say("LoadBalancer Ingress:  (none: nothing in this cluster hands out external IPs)", "warn");
         say(`Port:              <unset>  ${s.port}/TCP`);
+        if (s.nodePort) say(`NodePort:          <unset>  ${s.nodePort}/TCP`);
         say(`TargetPort:        ${s.targetPort === undefined ? s.port : s.targetPort}/TCP`);
         say(`Endpoints:         ${eps.map((p) => ipOf(p) + ":" + (s.targetPort === undefined ? s.port : s.targetPort)).join(",")}`, eps.length ? "" : "warn");
         say("Events:            <none>");
@@ -3578,6 +3821,21 @@
         say("Data");
         say("====");
         for (const [k, v] of Object.entries(x.data)) say(`${k}:  ${v.length} bytes`);
+        return out;
+      }
+      if (kind === "statefulsets") {
+        const x = c.statefulsets.find((y) => y.name === name);
+        if (!x) return notFound("statefulsets.apps", name), out;
+        const pods = c.pods.filter((p) => p.sts === x.name).sort((a, b) => a.name.localeCompare(b.name));
+        say(`Name:               ${x.name}`);
+        say(`Selector:           app=${x.name}`);
+        say(`Replicas:           ${x.replicas} desired | ${pods.length} total`);
+        say("Update Strategy:    RollingUpdate");
+        say("Pod Management Policy:  OrderedReady");
+        say(`Pods Status:        ${pods.filter((p) => p.ready).length} Running / ${pods.filter((p) => !p.ready).length} Waiting / 0 Succeeded / 0 Failed`);
+        say(`  Containers:\n   ${x.name}:\n    Image:  ${x.image}${x.envFrom ? `\n    Environment Variables from:\n      ${x.envFrom}  ConfigMap  Optional: false` : ""}`);
+        say("Events:");
+        for (const p of pods) say(`  Normal  SuccessfulCreate  statefulset-controller  create Pod ${p.name} in StatefulSet ${x.name} successful`, "row");
         return out;
       }
       if (kind === "daemonsets") {
@@ -3818,7 +4076,8 @@
       if (kind !== "deployments") return say(`error: name the object, for example deployment/orders`, "warn"), out;
       const d = requireDeployment(name);
       if (!d) return out;
-      const spec = { ...d.spec, env: { ...d.spec.env } };
+      const base = c.desired(d);
+      const spec = { ...base, env: { ...base.env } };
       if (what === "image") {
         const pair = rest.find((x) => x.startsWith(d.name + "="));
         if (!pair) return say(`error: use the form  kubectl set image deployment/${d.name} ${d.name}=<image>`, "warn"), out;
@@ -3866,6 +4125,13 @@
       const ref = (args[2] || "").includes("/") ? args[2].split("/")[1] : args[3];
       const d = requireDeployment(ref);
       if (!d) return out;
+      if (sub === "pause" || sub === "resume") {
+        if ((sub === "pause") === d.paused) return say(`error: deployment.apps/${d.name} is ${d.paused ? "already paused" : "not paused"}`, "warn"), out;
+        d.paused = sub === "pause";
+        if (!d.paused && d.pendingSpec) { const pending = d.pendingSpec; d.pendingSpec = null; c.rollout(d, pending); }
+        return say(`deployment.apps/${d.name} ${sub}d`), out;
+      }
+      if (sub === "status" && d.paused) return say(`Waiting for deployment "${d.name}" rollout to finish: 0 out of ${d.replicas} new replicas have been updated...\n(the Deployment is paused: nothing rolls out until kubectl rollout resume)`, "warn"), out;
       if (sub === "status") {
         const fresh = c.podsOf(d.name).filter((p) => p.hash === d.hash && !p.terminating);
         if (c.deploymentReady(d.name)) say(`deployment "${d.name}" successfully rolled out`);
@@ -3877,6 +4143,10 @@
         say(`deployment.apps/${d.name}`);
         table([["REVISION", "CHANGE-CAUSE"], ...[...d.history, d.spec].map((sp, i) => [i + 1, `image ${sp.image}`])]);
         return out;
+      }
+      if (sub === "restart" && d.paused) {
+        d.pendingSpec = JSON.parse(JSON.stringify(c.desired(d)));
+        return say(`deployment.apps/${d.name} restarted\n(it is paused, so the restart waits for kubectl rollout resume too)`, "dim"), out;
       }
       if (sub === "restart") {
         c.restartRollout(d);
@@ -3890,7 +4160,7 @@
         say(`deployment.apps/${d.name} rolled back`);
         return out;
       }
-      return say("kubectl rollout supports status, history, restart and undo here.", "dim"), out;
+      return say("kubectl rollout supports status, history, restart, undo, pause and resume here.", "dim"), out;
     }
 
     if (verb === "scale") {
@@ -4006,6 +4276,10 @@
           fresh.hash = p.hash;
           say(`(the ReplicaSet creates a replacement from the same template: ${fresh.name})`, "dim");
         }
+      } else if (p.sts) {
+        c.pods = c.pods.filter((x) => x !== p);
+        c.retry = true;
+        say(`(the StatefulSet ${p.sts} recreates ${p.name} with the same name; a StatefulSet's Pods keep their identity)`, "dim");
       } else if (p.ds) {
         c.pods = c.pods.filter((x) => x !== p);
         c.retry = true;
@@ -4153,6 +4427,15 @@
     if (verb === "create") {
       const what = KINDS[args[1]] || args[1];
       const name = args[2];
+      if (what === "priorityclasses") {
+        const value = Number(flags.value);
+        if (!name || !Number.isInteger(value)) return say("error: kubectl create priorityclass <name> --value=<integer> [--description=...]", "warn"), out;
+        if (value > 1000000000) return say(`The PriorityClass "${name}" is invalid: value: Invalid value: ${value}: must not be greater than 1000000000`, "warn"), out;
+        if (c.priorityClasses.some((x) => x.name === name)) return say(`error: failed to create priorityclass: priorityclasses.scheduling.k8s.io "${name}" already exists`, "warn"), out;
+        c.priorityClasses.push({ name, value, age: 0 });
+        c.retry = true;
+        return say(`priorityclass.scheduling.k8s.io/${name} created`), out;
+      }
       if (what === "secrets") {
         const type = args[2];
         const sname = args[3];
@@ -4302,6 +4585,11 @@
         const svc = svcByName(name);
         if (!svc) return notFound("services", name), out;
         if (spec.selector) svc.selector = { ...spec.selector };
+        if (spec.type) {
+          svc.type = spec.type;
+          if (spec.type === "ClusterIP") delete svc.nodePort;
+          else if (!svc.nodePort) svc.nodePort = 30000 + Math.floor(Math.random() * 2767);
+        }
         const port = Array.isArray(spec.ports) && spec.ports[0];
         if (port) {
           if (port.port !== undefined) svc.port = Number(port.port);
@@ -4314,7 +4602,7 @@
         const d = requireDeployment(name);
         if (!d) return out;
         const tpl = ((spec.template || {}).spec) || {};
-        const next = JSON.parse(JSON.stringify(d.spec));
+        const next = JSON.parse(JSON.stringify(c.desired(d)));
         const ctr = (Array.isArray(tpl.containers) ? tpl.containers : []).find((x) => x && (!x.name || x.name === d.name));
         if (tpl.containers && !ctr) return say(`(no container named "${d.name}" in that patch; nothing changed)`, "warn"), out;
         if (ctr) {
@@ -4354,6 +4642,16 @@
         if (tpl.tolerations === null) next.tolerations = [];
         else if (Array.isArray(tpl.tolerations)) next.tolerations = tolerationsFrom(tpl.tolerations);
         if (Array.isArray(tpl.imagePullSecrets)) next.pullSecrets = tpl.imagePullSecrets.map((x) => x.name);
+        if (tpl.priorityClassName !== undefined) next.priorityClassName = tpl.priorityClassName || null;
+        if (tpl.affinity === null) next.antiAffinity = null;
+        else if (tpl.affinity && "podAntiAffinity" in tpl.affinity) {
+          const paa = tpl.affinity.podAntiAffinity || {};
+          const req = paa.requiredDuringSchedulingIgnoredDuringExecution;
+          const pref = paa.preferredDuringSchedulingIgnoredDuringExecution;
+          if (!tpl.affinity.podAntiAffinity || (req === null && next.antiAffinity === "required")) next.antiAffinity = null;
+          if (Array.isArray(pref) && pref.length && next.antiAffinity !== "required") next.antiAffinity = "preferred";
+          if (Array.isArray(req) && req.length) next.antiAffinity = "required";
+        }
         if (tpl.nodeSelector === null) next.nodeSelector = {};
         else if (tpl.nodeSelector) next.nodeSelector = { ...tpl.nodeSelector };
         if (spec.replicas !== undefined) return say("Use kubectl scale for replicas here.", "dim"), out;
@@ -4363,9 +4661,14 @@
           }
           d.strategy = spec.strategy.type;
           c.retry = true;
-          if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched`), out;
+          if (JSON.stringify(next) === JSON.stringify(c.desired(d))) return say(`deployment.apps/${name} patched`), out;
         }
-        if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched (no change)`, "dim"), out;
+        if (spec.paused !== undefined) {
+          d.paused = !!spec.paused;
+          if (!d.paused && d.pendingSpec) { const pending = d.pendingSpec; d.pendingSpec = null; c.rollout(d, pending); }
+          if (JSON.stringify(next) === JSON.stringify(c.desired(d))) return say(`deployment.apps/${name} patched`), out;
+        }
+        if (JSON.stringify(next) === JSON.stringify(c.desired(d))) return say(`deployment.apps/${name} patched (no change)`, "dim"), out;
         if (d.spec.probe && !next.probe) say("(removing the probe makes Pods Ready, but nothing then checks they really are)", "warn");
         if (d.spec.liveness && !next.liveness) say("(without a liveness probe nobody restarts the app if it hangs; point the probe at the right port instead)", "warn");
         if (d.spec.apparmor && d.spec.apparmor !== next.apparmor) say(`(that removes the ${d.spec.apparmor} profile the security team asked for; load it on the nodes instead)`, "warn");
