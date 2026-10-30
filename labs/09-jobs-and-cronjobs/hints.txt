@@ -1,0 +1,8 @@
+`kubectl get cronjob cleanup -o yaml` shows every field from the mission.
+`kubectl explain cronjob.spec` describes them.
+---
+One `kubectl patch cronjob cleanup --type=merge -p '{"spec":{...}}'` can set
+all four fields. Then look at `kubectl create job --help` for `--from`.
+---
+kubectl patch cronjob cleanup --type=merge -p '{"spec":{"suspend":false,"schedule":"*/15 * * * *","concurrencyPolicy":"Forbid","successfulJobsHistoryLimit":3}}'
+kubectl create job cleanup-now --from=cronjob/cleanup

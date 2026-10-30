@@ -2,10 +2,10 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: customer-pod
-  namespace:my-namespace
+  namespace: my-namespace
 spec:
   containers:
   - name: customer
-    image: 573567580560.dkr.ecr.ap-south-1.amazonaws.com/customer:latest
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/customer:1.0.0  # pin a tag, avoid :latest
     ports:
     - containerPort: 8081

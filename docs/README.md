@@ -1,27 +1,18 @@
-# Kubernetes Learning Paths
+# Guides
 
-This directory contains focused guides for topics that complement the hands-on manifests in this repository.
+Reference guides that go with the hands-on [quest levels](../labs/).
 
-## Core Kubernetes
+## Start here
 
-- [Health Probes](./probes.md)
-- [Network Policies](./network-policies.md)
-- [Pod Disruption Budgets](./pod-disruption-budgets.md)
-- [Troubleshooting](./troubleshooting.md)
+- [Set up your practice cluster](setup.md): Docker, kind and kubectl on macOS, Linux and Windows
+- [Production readiness checklist](production-checklist.md): review any workload before it goes live
 
-## Recommended next topics
+## Topics
 
-The repository can continue expanding into:
-
-- Helm and chart development
-- Stateful applications and database operations
-- Persistent storage and CSI drivers
-- Service Accounts and workload identity
-- NetworkPolicy and ingress security
-- Pod Security Standards
-- Secrets management
-- Observability with Prometheus and Grafana
-- GitOps with Argo CD
-- Cluster autoscaling
-- Cost optimization
-- Disaster recovery and backup
+- [Health probes](probes.md)
+- [Network policies](network-policies.md)
+- [Pod disruption budgets](pod-disruption-budgets.md)
+- [Troubleshooting](troubleshooting.md)
+- [Kubernetes security](../k8s-security.md)
+- [EKS from zero to a CI deploy account](../k8s-steps.md)
+- [kind on Ubuntu](../kind.md)

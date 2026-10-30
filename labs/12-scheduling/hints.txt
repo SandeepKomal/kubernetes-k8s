@@ -1,0 +1,11 @@
+`kubectl describe pod -l app=trainer` explains why nothing is scheduled.
+`kubectl describe nodes | grep -E '^Name:|^Taints:'` shows which node is
+reserved.
+---
+Two changes: a label on that node (`kubectl label node ...`), and a
+`tolerations` entry in the Deployment's Pod template that matches key
+`dedicated`, value `gpu`, effect `NoSchedule`.
+---
+NODE=$(kubectl get nodes -o jsonpath='{.items[?(@.spec.taints[0].key=="dedicated")].metadata.name}')
+kubectl label node "$NODE" accelerator=gpu
+kubectl patch deployment trainer --type=merge -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"dedicated","operator":"Equal","value":"gpu","effect":"NoSchedule"}]}}}}'

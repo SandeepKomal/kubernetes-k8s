@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# Kubernetes Quest: learn Kubernetes by fixing a broken practice cluster.
+#
+#   ./quest up            create the local kind cluster
+#   ./quest list          show every level and your progress
+#   ./quest start 0       set up level 0 in its own namespace
+#   ./quest check         check your work on the current level
+#   ./quest hint          reveal the next hint
+#
+# Run ./quest help for everything else.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LEVELS="$ROOT/labs"
+CLUSTER="k8s-quest"
+STATE_DIR="${QUEST_HOME:-$HOME/.k8s-quest}"
+mkdir -p "$STATE_DIR"
+
+if [ -t 1 ]; then
+  B=$'\033[1m'; DIM=$'\033[2m'; OK=$'\033[32m'; WARN=$'\033[33m'; BAD=$'\033[31m'; END=$'\033[0m'
+else
+  B=""; DIM=""; OK=""; WARN=""; BAD=""; END=""
+fi
+
+die() { printf '%serror:%s %s\n' "$BAD" "$END" "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is not installed. Run ./quest doctor"; }
+
+# --- levels -----------------------------------------------------------------
+
+# Level directories are labs/NN-slug/.
+level_dirs() { find "$LEVELS" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9]-*' | sort; }
+
+# resolve <arg> -> level directory. Accepts 3, 03 or 03-slug; empty means current.
+resolve() {
+  local arg=${1:-} d
+  [ -n "$arg" ] || arg=$(cat "$STATE_DIR/current" 2>/dev/null || true)
+  [ -n "$arg" ] || die "which level? e.g. ./quest start 0"
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then arg=$(printf '%02d' "$((10#$arg))"); fi
+  while read -r d; do
+    case "$(basename "$d")" in "$arg"|"$arg"-*) echo "$d"; return ;; esac
+  done < <(level_dirs)
+  die "no level '$arg'. Run ./quest list"
+}
+
+level_id() { basename "$1" | cut -d- -f1; }
+level_ns() { echo "quest-$(level_id "$1")"; }
+level_title() { head -n1 "$1/README.md" | sed -E 's/^# *//'; }
+is_done() { grep -qx "$(level_id "$1")" "$STATE_DIR/done" 2>/dev/null; }
+
+# --- safety -----------------------------------------------------------------
+
+# Levels delete and recreate namespaces, so only run against the practice
+# cluster unless the learner explicitly opts in.
+guard_context() {
+  need kubectl
+  local ctx
+  ctx=$(kubectl config current-context 2>/dev/null || true)
+  if [ "$ctx" != "kind-$CLUSTER" ] && [ "${QUEST_ANY_CONTEXT:-}" != "1" ]; then
+    die "current kubectl context is '${ctx:-none}', not kind-$CLUSTER.
+       Quest deletes and recreates namespaces, so it only runs on its own practice cluster.
+       Run ./quest up, or set QUEST_ANY_CONTEXT=1 if you really mean another disposable cluster."
+  fi
+}
+
+# --- commands ---------------------------------------------------------------
+
+cmd_doctor() {
+  local t missing=0
+  for t in docker kind kubectl; do
+    if command -v "$t" >/dev/null 2>&1; then
+      printf '  %s✔%s %s\n' "$OK" "$END" "$t"
+    else
+      printf '  %s✘%s %s  (see docs/setup.md)\n' "$BAD" "$END" "$t"; missing=1
+    fi
+  done
+  if [ $missing -eq 0 ] && ! docker info >/dev/null 2>&1; then
+    printf '  %s!%s docker is installed but not running\n' "$WARN" "$END"; missing=1
+  fi
+  return $missing
+}
+
+cmd_up() {
+  need kind; need kubectl
+  if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
+    echo "Cluster $CLUSTER already exists."
+  else
+    kind create cluster --config "$LEVELS/kind.yaml" --wait 120s
+  fi
+  kubectl config use-context "kind-$CLUSTER" >/dev/null
+  echo
+  echo "${OK}Ready.${END} Next: ${B}./quest list${END}, then ${B}./quest start 0${END}"
+}
+
+cmd_down() {
+  need kind
+  kind delete cluster --name "$CLUSTER"
+}
+
+cmd_list() {
+  local d mark cur done_count
+  cur=$(cat "$STATE_DIR/current" 2>/dev/null || true)
+  echo "${B}Kubernetes Quest${END}  ${DIM}(✔ done, ▶ current)${END}"
+  echo
+  while read -r d; do
+    mark=" "
+    if is_done "$d"; then mark="${OK}✔${END}"
+    elif [ "$(level_id "$d")" = "$cur" ]; then mark="${WARN}▶${END}"; fi
+    printf '  %s %s\n' "$mark" "$(level_title "$d")"
+  done < <(level_dirs)
+  done_count=$(sort -u "$STATE_DIR/done" 2>/dev/null | grep -c . || true)
+  echo
+  printf '  %d of %d levels complete\n' "$done_count" "$(level_dirs | wc -l | tr -d ' ')"
+}
+
+cmd_start() {
+  local d ns id
+  d=$(resolve "${1:-}"); ns=$(level_ns "$d"); id=$(level_id "$d")
+  guard_context
+  echo "Setting up ${B}$(level_title "$d")${END} in namespace ${B}$ns${END}..."
+  kubectl delete namespace "$ns" --ignore-not-found --wait=true >/dev/null
+  # Undo cluster-wide changes (node labels, taints) left by any level.
+  local c
+  for c in "$LEVELS"/*/cleanup.sh; do
+    if [ -x "$c" ]; then "$c" >/dev/null 2>&1 || true; fi
+  done
+  kubectl create namespace "$ns" >/dev/null
+  kubectl label namespace "$ns" k8s-quest=level >/dev/null
+  if [ -f "$d/setup.yaml" ]; then kubectl apply -n "$ns" -f "$d/setup.yaml" >/dev/null; fi
+  if [ -x "$d/setup.sh" ]; then NS=$ns "$d/setup.sh" >/dev/null; fi
+  kubectl config set-context --current --namespace="$ns" >/dev/null
+  echo "$id" > "$STATE_DIR/current"
+  rm -f "$STATE_DIR/hint-$id"
+  echo
+  echo "kubectl now defaults to ${B}$ns${END}, so a plain ${B}kubectl get pods${END} works."
+  echo "Read the mission:  ${B}${d#"$ROOT"/}/README.md${END}"
+  echo "Check your work:   ${B}./quest check${END}"
+}
+
+cmd_check() {
+  local d rc=0 next
+  d=$(resolve "${1:-}")
+  guard_context
+  echo "Checking ${B}$(level_title "$d")${END}"
+  echo
+  (
+    NS=$(level_ns "$d"); LEVEL_ID=$((10#$(level_id "$d")))
+    export NS LEVEL_ID
+    # shellcheck source=labs/lib.sh
+    . "$LEVELS/lib.sh"
+    # shellcheck disable=SC1091
+    . "$d/check.sh"
+    check_summary
+  ) || rc=$?
+  if [ $rc -eq 0 ]; then
+    is_done "$d" || level_id "$d" >> "$STATE_DIR/done"
+    next=$(level_dirs | grep -A1 -x "$d" | tail -n +2 || true)
+    if [ -n "$next" ]; then
+      echo "Next: ${B}$(level_title "$next")${END}  ->  ${B}./quest start $((10#$(level_id "$next")))${END}"
+    else
+      echo "${OK}You finished every level.${END} Try the production checklist in docs/production-checklist.md."
+    fi
+  fi
+  return $rc
+}
+
+cmd_hint() {
+  local d id f n total
+  d=$(resolve "${1:-}"); id=$(level_id "$d"); f="$STATE_DIR/hint-$id"
+  [ -f "$d/hints.txt" ] || die "this level has no hints"
+  n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 ))
+  total=$(awk 'BEGIN{n=1} /^---$/{n++} END{print n}' "$d/hints.txt")
+  [ "$n" -le "$total" ] || n=$total
+  echo "$n" > "$f"
+  echo "${B}Hint $n of $total${END}"
+  awk -v want="$n" 'BEGIN{n=1} /^---$/{n++; next} n==want' "$d/hints.txt"
+  if [ "$n" -lt "$total" ]; then echo "${DIM}(run again for a stronger hint)${END}"; fi
+}
+
+cmd_solution() {
+  local d a
+  d=$(resolve "${1:-}")
+  if [ -t 0 ]; then
+    read -r -p "Peek at the solution for $(level_title "$d")? Try ./quest hint first. [y/N] " a
+    [[ "$a" =~ ^[Yy] ]] || exit 0
+  fi
+  cat "$d/solution.sh"
+}
+
+cmd_solve() {
+  local d
+  d=$(resolve "${1:-}")
+  guard_context
+  NS=$(level_ns "$d") "$d/solution.sh"
+}
+
+cmd_reset() {
+  rm -f "$STATE_DIR/done" "$STATE_DIR/current" "$STATE_DIR"/hint-*
+  echo "Progress cleared."
+}
+
+cmd_help() {
+  cat <<EOF
+${B}Kubernetes Quest${END}: learn Kubernetes by fixing a practice cluster.
+
+  ${B}./quest doctor${END}         check docker, kind and kubectl are installed
+  ${B}./quest up${END}             create the practice cluster (kind, 3 nodes)
+  ${B}./quest list${END}           levels and your progress
+  ${B}./quest start <n>${END}      set up level n (run it again to start over)
+  ${B}./quest check [n]${END}      check your work (defaults to the current level)
+  ${B}./quest hint [n]${END}       next hint, one at a time
+  ${B}./quest solution [n]${END}   print the reference solution
+  ${B}./quest solve [n]${END}      apply the reference solution
+  ${B}./quest reset${END}          forget your progress
+  ${B}./quest down${END}           delete the practice cluster
+
+Progress is stored in $STATE_DIR.
+EOF
+}
+
+case "${1:-help}" in
+  doctor) cmd_doctor ;;
+  up) cmd_up ;;
+  down) cmd_down ;;
+  list|ls) cmd_list ;;
+  start) cmd_start "${2:-}" ;;
+  check) cmd_check "${2:-}" ;;
+  hint) cmd_hint "${2:-}" ;;
+  solution) cmd_solution "${2:-}" ;;
+  solve) cmd_solve "${2:-}" ;;
+  reset) cmd_reset ;;
+  help|-h|--help) cmd_help ;;
+  *) die "unknown command '$1'. Run ./quest help" ;;
+esac

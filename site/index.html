@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 15 hands-on levels, quizzes, a YAML X-ray, a Pod doctor and a searchable kubectl cheat sheet.">
+  <title>Kubernetes Quest</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 8v16L16 30 4 24V8z' fill='%23326ce5'/%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <div class="wrap top-inner">
+      <a class="brand" href="#path" aria-label="Kubernetes Quest home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 8v16L16 30 4 24V8z"/></svg>
+        Kubernetes Quest
+      </a>
+      <nav aria-label="Sections">
+        <a href="#path" data-tab="path">Path</a>
+        <a href="#quiz" data-tab="quiz">Quiz</a>
+        <a href="#xray" data-tab="xray">YAML X-ray</a>
+        <a href="#doctor" data-tab="doctor">Pod doctor</a>
+        <a href="#cheats" data-tab="cheats">Cheat sheet</a>
+      </nav>
+      <a class="gh" id="gh-link" href="#">GitHub</a>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <section id="tab-path" class="tab">
+      <div class="hero">
+        <h1>Learn Kubernetes by fixing it.</h1>
+        <p>Fifteen levels, each a ticket from the on-call queue of Kubelet Kitchen, a made-up startup. Every level starts with something broken in your own practice cluster. You fix it, and <code>./quest check</code> tells you when you are right.</p>
+        <pre class="start"><code>git clone https://github.com/SandeepKomal/kubernetes-k8s.git
+cd kubernetes-k8s
+./quest up        # local kind cluster
+./quest start 0</code></pre>
+      </div>
+      <div class="progress-row">
+        <div class="bar" role="progressbar" aria-label="Levels complete" aria-valuemin="0" aria-valuemax="15" id="bar"><span id="bar-fill"></span></div>
+        <span id="bar-text"></span>
+      </div>
+      <div id="levels"></div>
+      <p class="note">Progress is saved in this browser only. Tick a level when <code>./quest check</code> passes.</p>
+    </section>
+
+    <section id="tab-quiz" class="tab" hidden>
+      <h2>Quiz</h2>
+      <p class="lede">Two questions per level. Each answer comes with the reason, which is where the learning is.</p>
+      <label class="field">Level
+        <select id="quiz-level"></select>
+      </label>
+      <div id="quiz"></div>
+    </section>
+
+    <section id="tab-xray" class="tab" hidden>
+      <h2>YAML X-ray</h2>
+      <p class="lede">Select any line to see what it does and the mistake people make with it.</p>
+      <div class="seg" id="xray-pick" role="tablist" aria-label="Manifest"></div>
+      <div class="xray">
+        <ol id="xray-lines" class="code" aria-label="Manifest lines"></ol>
+        <aside id="xray-note" class="card" aria-live="polite"><p class="muted">Pick a line on the left.</p></aside>
+      </div>
+    </section>
+
+    <section id="tab-doctor" class="tab" hidden>
+      <h2>Pod doctor</h2>
+      <p class="lede">What does <code>kubectl get pods</code> say? Pick the symptom for likely causes, the commands to confirm them, and the level that teaches it.</p>
+      <div id="doctor-list" class="chips"></div>
+      <div id="doctor-out"></div>
+    </section>
+
+    <section id="tab-cheats" class="tab" hidden>
+      <h2>Cheat sheet</h2>
+      <label class="field">Search
+        <input id="cheat-q" type="search" placeholder="rollout, logs, node..." autocomplete="off">
+      </label>
+      <div id="cheat-out"></div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Open source under the MIT License. Built with no trackers, no cookies and nothing loaded from other sites.</p>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

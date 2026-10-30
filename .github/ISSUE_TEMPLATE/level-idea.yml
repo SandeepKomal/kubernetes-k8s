@@ -1,0 +1,21 @@
+name: Idea for a new level
+description: A real-world Kubernetes problem that would make a good quest.
+labels: ["level-idea"]
+body:
+  - type: textarea
+    id: ticket
+    attributes:
+      label: The ticket
+      description: Describe the incident or request as a teammate would write it.
+    validations:
+      required: true
+  - type: textarea
+    id: learn
+    attributes:
+      label: What the learner will learn
+    validations:
+      required: true
+  - type: textarea
+    id: broken
+    attributes:
+      label: What starts broken, and how a check could prove it is fixed

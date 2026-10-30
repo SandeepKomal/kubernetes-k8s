@@ -1,198 +1,165 @@
-# Kubernetes K8s — Practical Kubernetes Learning & DevOps Guide
+# Kubernetes Quest
 
-A practical collection of **Kubernetes (K8s) commands, manifests, AWS EKS examples, Kind setup, deployment guides, and Kubernetes security notes** for DevOps engineers, cloud engineers, and anyone learning Kubernetes hands-on.
+**Learn Kubernetes by fixing it.** Fifteen hands-on levels. Each one breaks
+something real in your own practice cluster, and you fix it the way you
+would at work: `get`, `describe`, `logs`, fix, check.
 
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-CKA%2FCKAD%20Learning-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![AWS EKS](https://img.shields.io/badge/AWS-EKS-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/eks/)
-[![Docker](https://img.shields.io/badge/Docker-Containers-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-
-## What is this repository?
-
-This repository is a hands-on Kubernetes reference that brings together practical notes and examples I use while working with Kubernetes and AWS.
-
-It is intended to help you move from **Kubernetes fundamentals → hands-on workloads → AWS EKS → Kubernetes security** without having to search through scattered notes.
-
-## What you'll find
-
-- Kubernetes fundamentals and core objects
-- kubectl commands and imperative workflows
-- Deployments and application workloads
-- Services and Ingress
-- Kubernetes object examples
-- Kind cluster setup
-- Kubernetes installation and CLI tools
-- AWS EKS cluster setup notes
-- AWS Load Balancer Controller
-- Jenkins + EKS integration
-- IAM policies and AWS/Kubernetes integration
-- Kubernetes security concepts and practices
-- Practical troubleshooting and operational notes
-
-## Repository structure
+[![ci](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml/badge.svg)](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ```text
-kubernetes-k8s/
-├── Kubernetes/
-│   ├── K8's-Deployment
-│   ├── kubectl commands
-│   ├── k8's_objects/
-│   ├── eks cluster creation steps
-│   ├── configure eks cluster with Jenkins
-│   ├── Deploy the AWS Load Balancer Controller
-│   ├── IAM policies
-│   ├── Installing CLI tools for K8's
-│   └── ingdeployment.yaml
-├── k8s-security.md
-├── k8s-steps.md
-├── kind.md
-└── kubernetes_installation.md
+$ ./quest check
+Checking Level 06 · Never ready, always restarting
+
+  ✔ a readiness probe is still configured
+  ✔ a liveness probe is still configured
+  ✔ the readiness probe checks port 80
+  ✘ the liveness probe checks port 80
+  ✘ the rollout is complete
+  ✘ 2 replicas are Ready
+
+3 of 6 checks still failing. Try ./quest hint 6
 ```
 
-## Learning path
+## Why this repository is different
 
-### 1. Kubernetes fundamentals
+Most Kubernetes material asks you to read a concept and then copy a
+working YAML file. Then the first real incident teaches you everything
+the tutorial left out.
 
-Start with:
+Here it is the other way round:
 
-- [Kubernetes steps](./k8s-steps.md)
-- [kubectl commands](./Kubernetes/kubectl%20commands)
-- [Kubernetes objects](./Kubernetes/k8's_objects)
-
-### 2. Workloads and networking
-
-Explore:
-
-- Deployments
-- Services
-- Ingress
-- Application deployment manifests
-
-See the examples under [Kubernetes/](./Kubernetes/).
-
-### 3. Run Kubernetes locally
-
-Use [Kind](./kind.md) to create a local Kubernetes cluster and experiment without needing a cloud cluster.
-
-### 4. AWS EKS
-
-For AWS-based Kubernetes environments, see:
-
-- [EKS cluster creation steps](./Kubernetes/eks%20cluster%20creation%20steps)
-- [Configure EKS with Jenkins](./Kubernetes/configure%20eks%20cluster%20with%20Jenkins)
-- [AWS Load Balancer Controller](./Kubernetes/Deploy%20the%20AWS%20Load%20Balancer%20Controller)
-- [IAM policies](./Kubernetes/IAM%20policies)
-
-### 5. Kubernetes security
-
-Read the dedicated [Kubernetes Security Guide](./k8s-security.md) for practical security concepts and controls.
-
-## Who is this for?
-
-This repository is useful for:
-
-- DevOps engineers
-- Cloud engineers
-- SREs
-- Kubernetes beginners
-- CKA/CKAD learners
-- Engineers preparing for Kubernetes interviews
-- Anyone building hands-on Kubernetes skills
+- **Start broken.** Every level begins with a fault: a typo in an image, a
+  Service selecting nothing, a probe on the wrong port, a Pod that never
+  schedules. Reading the symptoms *is* the lesson.
+- **A story, not a syllabus.** You are the new engineer at Kubelet Kitchen,
+  a made-up food-delivery startup. Each level is a ticket from a teammate,
+  ending in a Friday-night SEV-1 and a postmortem.
+- **Instant, honest feedback.** `./quest check` tests the live cluster and
+  tells you, criterion by criterion, what is still wrong.
+- **Hints, not answers.** `./quest hint` goes from a nudge to the solution,
+  one step at a time.
+- **Proven to work.** On every change, CI creates a fresh kind cluster for
+  each level, checks that the level really starts broken, applies the
+  reference solution, and checks that it passes.
+- **Production lens.** Every level ends with how the same problem shows up
+  at real companies, on EKS and elsewhere.
+- **Free and local.** Runs on your laptop with kind. No cloud account, no
+  cost, MIT licensed.
 
 ## Quick start
 
-Clone the repository:
+You need Docker, [kind](https://kind.sigs.k8s.io/) and kubectl. See
+[docs/setup.md](docs/setup.md) for macOS, Linux and Windows.
 
 ```bash
 git clone https://github.com/SandeepKomal/kubernetes-k8s.git
 cd kubernetes-k8s
+./quest doctor       # are docker, kind and kubectl ready?
+./quest up           # create the 3-node practice cluster
+./quest start 0      # begin; read labs/00-hello-cluster/README.md
+./quest check
 ```
 
-If you are using Kind, follow [kind.md](./kind.md).
+`./quest` only runs against its own `kind-k8s-quest` cluster, so it can
+never touch a real one by accident.
 
-If you already have a Kubernetes cluster, make sure `kubectl` is configured:
+## The levels
 
-```bash
-kubectl cluster-info
-kubectl get nodes
-```
+| # | Level | You will learn |
+| --- | --- | --- |
+| 00 | [Hello, cluster](labs/00-hello-cluster/) | Pods, kubectl, imperative vs declarative |
+| 01 | [Pods that will not start](labs/01-crashing-pods/) | `ImagePullBackOff`, `CrashLoopBackOff`, describe, logs |
+| 02 | [The Service that routes nowhere](labs/02-labels-and-selectors/) | Labels, selectors, endpoints |
+| 03 | [A deploy went wrong](labs/03-rollouts-and-rollbacks/) | Deployments, rollout, rollback, `maxUnavailable` |
+| 04 | [Connection refused](labs/04-services-and-dns/) | Service ports and types, cluster DNS |
+| 05 | [Missing configuration](labs/05-configmaps-and-secrets/) | ConfigMaps, Secrets |
+| 06 | [Never ready, always restarting](labs/06-health-probes/) | Readiness, liveness and startup probes |
+| 07 | [Stuck in Pending](labs/07-resources-and-quotas/) | Requests, limits, QoS, ResourceQuota |
+| 08 | [Data that survives](labs/08-persistent-storage/) | PV, PVC, StorageClass |
+| 09 | [The cleanup that never ran](labs/09-jobs-and-cronjobs/) | Jobs, CronJobs |
+| 10 | [Too much access](labs/10-rbac-least-privilege/) | ServiceAccounts, RBAC, `auth can-i` |
+| 11 | [Everyone can reach the database](labs/11-network-policies/) | NetworkPolicy, default deny |
+| 12 | [The GPU node](labs/12-scheduling/) | nodeSelector, taints, tolerations |
+| 13 | [Ready for the dinner rush](labs/13-autoscaling/) | HPA, PodDisruptionBudget |
+| 14 | [Boss level: the Friday night incident](labs/14-boss-friday-incident/) | All of it, under pressure, plus a postmortem |
 
-Then explore the manifests and examples under the `Kubernetes/` directory.
+Every command: `./quest help`.
 
-## AWS + Kubernetes
+## The companion site
 
-This repository also covers practical AWS Kubernetes workflows, including:
+The [`site/`](site/) folder is a small, offline-friendly web app that goes
+with the levels. Once GitHub Pages is on, it is published at
+**<https://sandeepkomal.github.io/kubernetes-k8s/>**.
+
+- **Path**: every level with your progress (saved in your browser)
+- **Quiz**: two questions per level, and every answer explains *why*
+- **YAML X-ray**: click any line of a Deployment, Service or NetworkPolicy to see what it does
+- **Pod doctor**: pick what `kubectl get pods` says, get the likely causes and the commands to confirm them
+- **Cheat sheet**: searchable kubectl commands with copy buttons (press `/`)
+
+No trackers, no cookies, nothing loaded from other sites.
+
+## Choose your path
+
+| You are... | Do this |
+| --- | --- |
+| New to Kubernetes | Levels 00 to 06 in order, with the quiz after each one |
+| Preparing for CKA or CKAD | All levels, using only imperative commands and `kubectl explain`; then the [CKA command reference](https://github.com/SandeepKomal/Imperative-commands-for-CKA) |
+| Going on call for Kubernetes | 01, 02, 04, 06, 07, then the boss level against the clock; keep the Pod doctor open |
+| A team lead onboarding engineers | Assign levels as onboarding tasks; review workloads with the [production checklist](docs/production-checklist.md) |
+| Running on AWS | Finish the levels, then [EKS from zero to a CI deploy account](k8s-steps.md) |
+
+## Reference library
+
+| Where | What |
+| --- | --- |
+| [docs/](docs/) | Guides: [setup](docs/setup.md), [production checklist](docs/production-checklist.md), [probes](docs/probes.md), [network policies](docs/network-policies.md), [PDBs](docs/pod-disruption-budgets.md), [troubleshooting](docs/troubleshooting.md) |
+| [k8s-security.md](k8s-security.md) | Kubernetes security, hands-on with kind |
+| [Kubernetes/k8s_objects](Kubernetes/k8's_objects) | Example manifests: workloads, Services, Ingress, RBAC, scheduling, storage, autoscaling, Jobs |
+| [Kubernetes/kubectl commands](Kubernetes/kubectl%20commands) | kubectl command reference |
+| [k8s-steps.md](k8s-steps.md) | EKS with eksctl and a least-privilege CI identity |
+| [Kubernetes/](Kubernetes/) | AWS notes: [EKS creation](Kubernetes/eks%20cluster%20creation%20steps), [IAM](Kubernetes/IAM%20policies), [AWS Load Balancer Controller](Kubernetes/Deploy%20the%20AWS%20Load%20Balancer%20Controller), [Jenkins with EKS](Kubernetes/configure%20eks%20cluster%20with%20Jenkins) |
+| [kind.md](kind.md), [kubernetes_installation.md](kubernetes_installation.md) | Installing kind and the CLI tools |
+
+Every manifest in this repository is validated against the Kubernetes API
+schema in CI. Values like `<AWS_ACCOUNT_ID>` and `<REGION>` are
+placeholders to replace with your own.
+
+## Repository layout
 
 ```text
-AWS
- └── EKS
-      ├── IAM
-      ├── Jenkins
-      ├── AWS Load Balancer Controller
-      ├── Ingress
-      └── Kubernetes workloads
+kubernetes-k8s/
+├── quest                 the CLI: up, list, start, check, hint, solution
+├── labs/                 one folder per level: README, setup, checks, hints, solution
+├── site/                 the companion web app (GitHub Pages)
+├── docs/                 guides and the production checklist
+├── Kubernetes/           reference manifests and AWS/EKS notes
+├── tests/run-level.sh    proves a level starts broken and the solution fixes it
+└── .github/workflows/    lint, per-level kind tests, Pages deploy
 ```
-
-## Related repository
-
-For a focused CKA command reference, see the companion repository:
-
-**[Imperative Commands for CKA](https://github.com/SandeepKomal/Imperative-commands-for-CKA)** — a quick-reference collection of imperative `kubectl` commands, YAML generation patterns, troubleshooting commands, and CKA speed tips.
-
-This repository provides the broader Kubernetes learning path, while the companion repo is designed for fast command lookup and CKA practice.
 
 ## Contributing
 
-Found something that can be improved or want to add a useful Kubernetes example?
+New levels, clearer explanations and fixes are very welcome. Read
+[CONTRIBUTING.md](CONTRIBUTING.md), especially
+[adding a quest level](CONTRIBUTING.md#adding-a-quest-level), and the
+[code of conduct](CODE_OF_CONDUCT.md). Ideas for levels can go straight
+into an issue.
 
-Contributions, corrections, and practical examples are welcome.
+Everything here is original work. Please keep it that way: write in your
+own words and link to the official docs rather than copying.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Open a pull request
+## License
 
-
-## Additional practical guides
-
-The repository now also includes focused operational guides:
-
-- [Kubernetes Health Probes](./docs/probes.md) — startup, readiness, and liveness probes
-- [Network Policies](./docs/network-policies.md) — namespace isolation and traffic controls
-- [Pod Disruption Budgets](./docs/pod-disruption-budgets.md) — availability during voluntary disruptions
-- [Troubleshooting Guide](./docs/troubleshooting.md) — a practical diagnostic workflow
-- [Contributing Guide](./CONTRIBUTING.md)
-- [Security Policy](./SECURITY.md)
-
-## Kubernetes roadmap
-
-Planned areas for future examples include:
-
-- Helm and reusable charts
-- GitOps with Argo CD
-- Prometheus and Grafana observability
-- Cluster Autoscaler and node autoscaling
-- Secrets management and workload identity
-- Pod Security Standards
-- Network security and service-to-service controls
-- Cost optimization
-- Backup, disaster recovery, and production operations
-
-If you have a topic you'd like to see added, open a discussion or issue with the use case.
-
-## Support the project
-
-If this repository helps you learn Kubernetes, troubleshoot an issue, prepare for an interview, or build a DevOps project, consider giving it a **star**.
-
-It helps other Kubernetes learners discover the repository and motivates me to keep adding practical examples.
+[MIT](LICENSE). Use it for yourself, your team, your company's onboarding
+or your own course. Keeping the copyright notice is all that is asked.
 
 ## Author
 
-**Sandeep Komal**
+**Sandeep Komal**, Cloud and DevOps engineer working with AWS, Kubernetes,
+Terraform, CI/CD and DevSecOps. [@SandeepKomal](https://github.com/SandeepKomal)
 
-Cloud / DevOps Engineer focused on AWS, Kubernetes, Terraform, CI/CD, automation, and DevSecOps.
-
-- GitHub: [@SandeepKomal](https://github.com/SandeepKomal)
-
----
-
-**Kubernetes is best learned by running it. Read the concepts, apply the examples, break things, troubleshoot them, and repeat.**
+If this helped you learn, fix an incident or pass an exam, a star helps
+other learners find it.

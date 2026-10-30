@@ -13,10 +13,11 @@ spec:
       labels:
         app: nginx
     spec:
-      nodeName: ip-172-31-87-195.ec2.internal
+      # nodeName skips the scheduler entirely. Replace with a node from `kubectl get nodes`.
+      nodeName: <NODE_NAME>
       containers:
       - name: nginx
-        image: nginx:1.7.9
+        image: nginx:1.27
         ports:
         - containerPort: 80
         resources:
@@ -24,9 +25,7 @@ spec:
           # based on CPU utilization
           requests:
             cpu: "10m"
-          limits:
-            cpu: "20m"
-          requests:
             memory: "1G"
           limits:
+            cpu: "20m"
             memory: "2G"

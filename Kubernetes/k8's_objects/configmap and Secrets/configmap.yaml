@@ -1,11 +1,11 @@
+# Non-secret settings only. The database password belongs in a Secret
+# (see secrets.yaml), never in a ConfigMap: anyone who can read ConfigMaps
+# could read it.
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: customer-config-map
   namespace: default
 data:
-  db-username : "spring"
-  db-password : "springspring"
-  db-endpoint : "jdbc:mysql://spring.cno8yecwarzn.us-east-1.rds.amazonaws.com:3306/springdb"
-
-
+  db-username: "spring"
+  db-endpoint: "jdbc:mysql://<RDS_ENDPOINT>:3306/springdb"

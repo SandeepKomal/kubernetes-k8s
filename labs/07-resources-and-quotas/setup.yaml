@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: team-budget
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 512Mi
+    limits.cpu: "2"
+    limits.memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reports
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: reports
+  template:
+    metadata:
+      labels:
+        app: reports
+    spec:
+      containers:
+        - name: reports
+          image: busybox:1.36
+          command: ["sh", "-c", "echo generating reports; sleep 3600"]
+          resources:
+            requests:
+              cpu: "64"
+              memory: 64Mi
+            limits:
+              cpu: "64"
+              memory: 64Mi

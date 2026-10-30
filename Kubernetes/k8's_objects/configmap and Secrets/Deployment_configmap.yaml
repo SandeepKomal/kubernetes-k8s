@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: customer
-        image: 637423236688.dkr.ecr.us-east-1.amazonaws.com/spring:11
+        image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/spring:11
         imagePullPolicy: Always
         env:
         - name: DB_USERNAME
@@ -36,8 +36,8 @@ spec:
               key: db-username
         - name: DB_PASSWORD
           valueFrom:
-            configMapKeyRef:
-              name: customer-config-map
+            secretKeyRef:
+              name: customer-secrets
               key: db-password
         - name: DB_ENDPOINT
           valueFrom:

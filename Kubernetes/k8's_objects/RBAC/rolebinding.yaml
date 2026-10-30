@@ -5,7 +5,7 @@ metadata:
   namespace: naveen  # Replace 'your-namespace' with your desired namespace
 subjects:
 - kind: User
-  name: arn:aws:iam::637423236688:user/naveen1
+  name: arn:aws:iam::<AWS_ACCOUNT_ID>:user/<IAM_USER>
   apiGroup: rbac.authorization.k8s.io
 - kind: ServiceAccount
   name: my-service-account  # Replace 'your-service-account' with the service account name

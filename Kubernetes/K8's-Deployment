@@ -29,4 +29,4 @@ ii) kubectl apply -f service.yaml
 
 7) Run the below kustomize command to reploy the application with new changes.
 
-i) kustomize edit set image 703550360617.dkr.ecr.ap-south-1.amazonaws.com/batch13:1=703550360617.dkr.ecr.ap-south-1.amazonaws.com/batch13:2
+i) kustomize edit set image <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/batch13:1=<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/batch13:2

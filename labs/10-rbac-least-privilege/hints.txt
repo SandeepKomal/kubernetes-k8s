@@ -1,0 +1,7 @@
+Run `kubectl auth can-i --list --as=system:serviceaccount:quest-10:auditor`.
+Then look at the Role it is bound to: `kubectl get role auditor -o yaml`.
+---
+Replace the Role's rules: apiGroups [""], resources pods and pods/log,
+verbs get, list, watch. Keep the RoleBinding: it already points at the Role.
+---
+kubectl create role auditor --verb=get,list,watch --resource=pods,pods/log --dry-run=client -o yaml | kubectl replace -f -

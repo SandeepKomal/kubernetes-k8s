@@ -1,0 +1,7 @@
+`kubectl run` creates a single Pod. Look at `kubectl run --help` for how to
+set the image and labels.
+---
+You need three things in one command: a name, `--image`, and `--labels`.
+---
+kubectl run hello --image=nginx:1.27 --labels=team=kitchen
+Then watch it come up with: kubectl get pods -w
