@@ -1,0 +1,11 @@
+Go through the mission one group at a time and run ./quest check after
+each change. `kubectl explain` documents every field you need.
+---
+Pieces you need: a ServiceAccount; in the Pod spec serviceAccountName,
+automountServiceAccountToken: false, securityContext, topologySpreadConstraints,
+an emptyDir mounted at /tmp; in the container probes, resources and
+securityContext; a PodDisruptionBudget; a NetworkPolicy selecting
+app=checkout-api that allows ingress from app=storefront on port 8080.
+---
+`./quest solution 21` prints a complete, commented answer. Read it line by
+line and compare it with yours rather than copying it.

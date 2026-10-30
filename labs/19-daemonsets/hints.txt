@@ -1,0 +1,9 @@
+Compare DESIRED in `kubectl get ds node-agent` with `kubectl get nodes`.
+Then compare the image in the DaemonSet with the image of a running Pod.
+---
+Add a toleration for `node-role.kubernetes.io/control-plane` (operator
+Exists, effect NoSchedule), and change `updateStrategy.type` to
+RollingUpdate. Pods created under OnDelete are not replaced until you do.
+---
+kubectl patch ds node-agent --type=merge -p '{"spec":{"updateStrategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1}},"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}]}}}}'
+kubectl rollout status ds/node-agent

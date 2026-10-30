@@ -5,7 +5,9 @@
 # It calls `check "<what the learner should see>" <command...>` once per
 # acceptance criterion. A check passes when the command exits 0.
 
-QUEST_WAIT="${QUEST_WAIT:-45}"
+# How long a check waits for something to become ready. Short by default so
+# a failing check answers quickly; CI raises it.
+QUEST_WAIT="${QUEST_WAIT:-15}"
 _pass=0
 _fail=0
 
@@ -71,12 +73,12 @@ has_endpoints() {
 can() { [ "$(kubectl auth can-i "$1" "$2" -n "$NS" --as="$3" 2>/dev/null)" = "yes" ]; }
 cannot() { ! can "$@"; }
 
-# http_get <url> [pod labels] : fetch a URL from a throwaway pod inside the
-# namespace and print the body. Fails if the request fails.
-http_get() {
+# probe_run <shell command> [pod labels] : run a command in a throwaway
+# busybox pod inside the namespace and print its output. Fails if it fails.
+probe_run() {
   local name="quest-probe-$RANDOM" labels="quest-probe=true${2:+,$2}"
   kubectl -n "$NS" run "$name" --image=busybox:1.36 --restart=Never --quiet \
-    --labels="$labels" --command -- wget -qO- -T 5 "$1" >/dev/null 2>&1 || return 1
+    --labels="$labels" --command -- sh -c "$1" >/dev/null 2>&1 || return 1
   local deadline=$((SECONDS + QUEST_WAIT)) rc=1
   while [ $SECONDS -lt $deadline ]; do
     case "$(jp "pod/$name" '{.status.phase}')" in
@@ -89,6 +91,10 @@ http_get() {
   kubectl -n "$NS" delete pod "$name" --wait=false >/dev/null 2>&1
   return $rc
 }
+
+# http_get <url> [pod labels] : fetch a URL from inside the namespace and
+# print the body.
+http_get() { probe_run "wget -qO- -T 5 '$1'" "${2:-}"; }
 
 http_ok() { http_get "$@" >/dev/null; }
 

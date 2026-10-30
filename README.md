@@ -1,6 +1,6 @@
 # Kubernetes Quest
 
-A hands-on Kubernetes course you run on your own machine. Each of the 15
+A hands-on Kubernetes course you run on your own machine. Each of the 22
 levels deploys a deliberately broken workload into a local cluster. You
 diagnose and fix it with `kubectl`, and an automated check verifies the
 result against the live cluster.
@@ -21,6 +21,7 @@ result against the live cluster.
 - [Levels](#levels)
 - [Companion site](#companion-site)
 - [Learning paths](#learning-paths)
+- [Production example](#production-example)
 - [Reference material](#reference-material)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -40,7 +41,8 @@ result against the live cluster.
    `./quest solution` prints a commented reference fix.
 
 The levels follow one fictional company, Kubelet Kitchen, from a first Pod
-to a multi-fault production incident. Each level closes with a
+to StatefulSets, Pod Security, Kustomize, CRDs and a full production
+hardening exercise. Each level closes with a
 *Production lens* section on how the same problem appears in real
 environments, including managed services such as Amazon EKS.
 
@@ -139,11 +141,20 @@ one is suggested. To start a level again from its broken state, run
 ./quest ui
 ```
 
-This opens a local web page, served from your machine only, that shows
-each level's mission next to **Start**, **Check**, **Hint** and
-**Solution** buttons. Check results update in place, and a panel lists the
-resources in the level's namespace every few seconds. You still fix things
-with `kubectl` in your terminal, which is the skill the course teaches.
+This opens a local web page, served from your machine only, where you can
+work through a level without leaving the browser:
+
+- the level's mission, with **Start**, **Check**, **Hint** and
+  **Solution** buttons and check results that update in place
+- a **Namespace** view that refreshes every 5 seconds
+- a **Console** that runs `kubectl` commands, with history and one-click
+  common commands
+- a **YAML editor** that loads any object, lets you change it, and
+  dry-runs or applies it (the browser version of `kubectl edit`)
+
+The console runs `kubectl` only, never a shell, and only against the
+practice cluster: flags such as `--context`, `--kubeconfig` and `--as`
+are refused.
 
 The dashboard needs Python 3 (included on macOS and most Linux
 distributions) and uses no third-party packages. It listens on
@@ -194,9 +205,17 @@ production cluster.
 | 12 | [The GPU node](labs/12-scheduling/) | nodeSelector, taints and tolerations |
 | 13 | [Ready for the dinner rush](labs/13-autoscaling/) | HorizontalPodAutoscaler, PodDisruptionBudget |
 | 14 | [The Friday night incident](labs/14-boss-friday-incident/) | Multi-fault incident response and postmortem |
+| 15 | [Every replica is the same, except it is not](labs/15-statefulsets/) | StatefulSets, headless Services, per-replica storage |
+| 16 | [The menu never loads](labs/16-init-and-sidecar-containers/) | Init containers, native sidecars, `emptyDir` |
+| 17 | [Rejected at the door](labs/17-pod-security/) | Pod Security Standards, `securityContext` |
+| 18 | [One app, many environments](labs/18-kustomize-overlays/) | Kustomize bases, overlays, generators |
+| 19 | [One agent per node](labs/19-daemonsets/) | DaemonSets, update strategies, control-plane taints |
+| 20 | [Teaching Kubernetes a new word](labs/20-custom-resources/) | CRDs, validation, the operator pattern |
+| 21 | [Final boss: ready for production](labs/21-boss-production-hardening/) | The full production checklist on one workload |
 
-Levels are independent and can be taken in any order, but they are
-written to be read in sequence. The layout of a level folder is described
+Levels are independent and can be taken in any order. The
+[learning roadmap](docs/roadmap.md) groups them into five stages, from
+foundations to platform engineering, and lists what to learn next. The layout of a level folder is described
 in [labs/README.md](labs/README.md).
 
 ## Companion site
@@ -208,7 +227,7 @@ It is published with GitHub Pages at
 | Section | Description |
 | --- | --- |
 | Path | All levels, with progress saved in the browser |
-| Quiz | Two questions per level, each answer explained |
+| Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
 | YAML X-ray | Line-by-line explanation of a Deployment, Service and NetworkPolicy |
 | Pod doctor | Common Pod and Service failure states, their causes and the commands that confirm them |
 | Cheat sheet | Searchable kubectl reference (press `/` to search) |
@@ -223,14 +242,30 @@ cookies. To run it locally: `python3 -m http.server -d site 8000`.
 | New to Kubernetes | Levels 00 to 06 in order, with the quiz after each level |
 | CKA or CKAD preparation | All levels using only imperative commands and `kubectl explain`, followed by the [CKA command reference](https://github.com/SandeepKomal/Imperative-commands-for-CKA) |
 | Joining an on-call rotation | Levels 01, 02, 04, 06, 07 and 14, with the Pod doctor as a reference |
+| Platform or SRE role | Levels 15 to 21, then the [production example](examples/production-app/) |
 | Team onboarding | Assign levels as onboarding tasks; review real workloads with the [production readiness checklist](docs/production-checklist.md) |
 | Running on AWS | Complete the levels, then follow [EKS with a least-privilege CI identity](k8s-steps.md) |
+
+## Production example
+
+[examples/production-app](examples/production-app/) is a complete,
+working template for a real stateless service: probes, resources,
+security context, own ServiceAccount, spread, graceful shutdown, PDB, HPA
+and NetworkPolicy, as a Kustomize base with dev and prod overlays. Its
+README explains every setting and links to the level that teaches it. CI
+deploys both overlays to kind on every change.
+
+```bash
+kubectl apply -k examples/production-app/overlays/dev
+kubectl -n shop-dev get all,pdb,hpa,networkpolicy
+```
 
 ## Reference material
 
 | Location | Contents |
 | --- | --- |
 | [docs/setup.md](docs/setup.md) | Installing Docker, kind and kubectl on macOS, Linux and Windows |
+| [docs/roadmap.md](docs/roadmap.md) | The levels as a five-stage path, and what to learn after the course |
 | [docs/production-checklist.md](docs/production-checklist.md) | Review checklist for workloads going to production |
 | [docs/](docs/) | Guides on probes, network policies, PodDisruptionBudgets and troubleshooting |
 | [k8s-security.md](k8s-security.md) | Kubernetes security controls, with exercises on kind |
@@ -249,7 +284,8 @@ kubernetes-k8s/
 ├── labs/                  One directory per level, shared check helpers, and the dashboard (labs/ui)
 ├── .devcontainer/         GitHub Codespaces environment
 ├── site/                  Companion web application (GitHub Pages)
-├── docs/                  Guides and the production readiness checklist
+├── examples/              Production-ready reference configurations
+├── docs/                  Roadmap, guides and the production readiness checklist
 ├── Kubernetes/            Reference manifests and AWS notes
 ├── tests/run-level.sh     End-to-end test for a single level
 └── .github/workflows/     Linting, per-level cluster tests, Pages deployment
@@ -263,7 +299,7 @@ kubernetes-k8s/
 | `permission denied` on `/var/run/docker.sock` | Add your user to the `docker` group, then log out and back in |
 | Nodes stay `NotReady`, or cluster creation times out | Give Docker at least 4 GB of memory. On Linux, raise inotify limits (see [docs/setup.md](docs/setup.md#troubleshooting-the-setup)) |
 | Image pulls are slow or fail with `429 Too Many Requests` | Docker Hub limits anonymous pulls. Run `docker login` and retry |
-| A check fails although the fix looks right | Checks wait up to 45 seconds for rollouts. Run `./quest check` again, or raise `QUEST_WAIT` (seconds) |
+| A check fails although the fix looks right | Checks wait up to 15 seconds for rollouts. Run `./quest check` again a little later, or set `QUEST_WAIT=60` |
 | You want to start a level from scratch | `./quest start <n>` restores its original broken state |
 | The dashboard says the token is missing | Open the full link printed by `./quest ui`, including `#token=…` |
 | `cannot listen on 127.0.0.1:8765` | Another program uses the port: `./quest ui --port 8766` |

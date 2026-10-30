@@ -1,0 +1,10 @@
+Run `kubectl kustomize overlays/prod` in ~/.k8s-quest/workspace/18-kustomize
+and read the error. Then check the image tag against the mission.
+---
+The patch in resources.yaml names a Deployment that does not exist in the
+base. The image tag 1.27-prod does not exist either; the mission wants
+1.27-alpine.
+---
+In overlays/prod/resources.yaml: name: shop
+In overlays/prod/kustomization.yaml: newTag: 1.27-alpine
+Then: kubectl apply -k overlays/prod

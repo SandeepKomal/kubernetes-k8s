@@ -1,0 +1,11 @@
+`kubectl describe rs -l app=payments` lists every rule the Pod breaks.
+---
+You need a pod-level securityContext (runAsNonRoot, a non-zero runAsUser
+such as 65534, seccompProfile RuntimeDefault) and a container-level one
+(allowPrivilegeEscalation false, capabilities drop ALL,
+readOnlyRootFilesystem true).
+---
+kubectl patch deployment payments --type=strategic -p '{"spec":{"template":{"spec":{
+  "securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},
+  "containers":[{"name":"payments","securityContext":{"allowPrivilegeEscalation":false,
+  "readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}}}'

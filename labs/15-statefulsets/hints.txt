@@ -1,0 +1,11 @@
+Compare `kubectl get svc orders-db` with what a StatefulSet needs for
+per-Pod DNS names. What does the CLUSTER-IP column show?
+---
+The Service must have `clusterIP: None`, which cannot be edited in place:
+export it, add `clusterIP: None`, delete it and create it again. Then scale
+the StatefulSet to 3.
+---
+kubectl get svc orders-db -o yaml > svc.yaml
+(remove clusterIP, clusterIPs, resourceVersion, uid; add clusterIP: None under spec)
+kubectl delete svc orders-db && kubectl apply -f svc.yaml
+kubectl scale statefulset orders-db --replicas=3

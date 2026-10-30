@@ -1,0 +1,12 @@
+Read the CRD with `kubectl get crd menus.kitchen.example.com -o yaml`.
+Short names live under spec.names; printer columns under spec.versions[0].
+---
+`kubectl edit crd menus.kitchen.example.com` (or a JSON patch) and add
+  names.shortNames: [mn]
+  versions[0].additionalPrinterColumns:
+    - {name: Price, type: integer, jsonPath: .spec.price}
+Then write a Menu YAML (see Field notes) and apply it.
+---
+kubectl patch crd menus.kitchen.example.com --type=json -p '[
+  {"op":"add","path":"/spec/names/shortNames","value":["mn"]},
+  {"op":"add","path":"/spec/versions/0/additionalPrinterColumns","value":[{"name":"Price","type":"integer","jsonPath":".spec.price"}]}]'
