@@ -3715,7 +3715,9 @@
       const solved = ids.filter((id) => done.has(id)).length;
       const items = el("div", "pg-group-items", null);
       items.append(...ids.map((id) => button(SCENARIOS.find((x) => x.id === id))));
-      row.append(el("span", "pg-group-name", `${group} · ${solved}/${ids.length}`), items);
+      const name = el("span", "pg-group-name", group);
+      name.append(el("span", "pg-group-count" + (solved === ids.length ? " done" : ""), `${solved}/${ids.length}`));
+      row.append(name, items);
       return row;
     }));
   }
