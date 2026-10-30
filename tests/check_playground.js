@@ -365,6 +365,82 @@ assert.match(step(c, "kubectl drain worker-2 --ignore-daemonsets"), /node\/worke
 assert.ok(won(c), "drain: fixed by scaling up first");
 assert.doesNotMatch(step(c, "kubectl get pods -o wide"), /worker-2/);
 
+// Helm: a failed upgrade; fixing it with kubectl leaves the release drifted.
+c = fresh("helm");
+assert.match(step(c, "helm list"), /menu\s+kitchen\s+2\s+.*failed/);
+assert.match(step(c, "helm get values menu --revision 2"), /tag: "2.0"/);
+assert.match(step(c, "kubectl set image deployment/menu menu=nginx:1.27"), /belongs to Helm release menu/);
+assert.ok(c.deploymentReady("menu") && !won(c), "a kubectl fix runs the Pods but the release stays failed and drifted");
+c = fresh("helm");
+assert.match(step(c, "helm rollback menu 1"), /Rollback was a success/);
+assert.ok(won(c), "helm: fixed by rollback");
+assert.match(step(c, "helm history menu"), /3\s+.*deployed\s+.*Rollback to 1/);
+c = fresh("helm");
+step(c, "helm upgrade menu ./charts/menu --set image.tag=1.27");
+assert.ok(won(c), "helm: also fixed by an upgrade with good values");
+
+// Gateway API: the route names a Gateway that does not exist.
+c = fresh("gateway");
+assert.match(step(c, "curl -i http://menu.kitchen.example/"), /404 Not Found/);
+assert.match(step(c, "kubectl describe httproute menu"), /Accepted\s+Status: False\s+Reason: NoMatchingParent/);
+assert.match(step(c, "kubectl describe gateway kitchen-gateway"), /Attached Routes:\s+0/);
+step(c, `kubectl patch httproute menu -p '{"spec":{"parentRefs":[{"name":"kitchen-gateway"}]}}'`);
+assert.ok(won(c), "gateway: fixed by the parentRef");
+assert.match(step(c, "curl http://menu.kitchen.example/"), /Welcome to nginx/);
+
+// Wrong namespace in the kubeconfig context.
+c = fresh("context");
+assert.match(step(c, "kubectl get pods"), /No resources found in default namespace/);
+assert.match(step(c, "kubectl get pods -n kitchen"), /web-/);
+assert.ok(!won(c), "passing -n every time does not change the default");
+assert.match(step(c, "kubectl config set-context --current --namespace=kitchen"), /modified/);
+assert.ok(won(c), "context: fixed by the context's namespace");
+assert.match(step(c, "kubectl get pods"), /web-/);
+
+// New user: approve the CSR, then bind a Role; cluster-admin does not count.
+c = fresh("csr");
+assert.match(step(c, "kubectl get csr"), /jane\s+.*Pending/);
+assert.match(step(c, "kubectl get pods --as=jane"), /forbidden: User "jane" cannot list resource "pods"/);
+step(c, "kubectl certificate approve jane");
+assert.ok(!won(c), "an approved certificate alone gives no rights");
+step(c, "kubectl create clusterrolebinding jane-admin --clusterrole=cluster-admin --user=jane");
+assert.ok(!won(c), "cluster-admin is too much");
+step(c, "kubectl delete clusterrolebinding jane-admin");
+step(c, "kubectl create rolebinding jane-read-pods --role=pod-reader --user=jane");
+assert.ok(won(c), "csr: fixed by approval and a read-only binding");
+assert.match(step(c, "kubectl get pods --as=jane"), /web-/);
+
+// CronJob suspended.
+c = fresh("cronjob");
+step(c, "kubectl create job report-now --from=cronjob/nightly-report");
+assert.ok(!won(c), "a manual run alone leaves the schedule suspended");
+step(c, `kubectl patch cronjob nightly-report -p '{"spec":{"suspend":false}}'`);
+assert.ok(won(c), "cronjob: resumed and proven");
+
+// Node NotReady: kubelet stopped and disabled.
+c = fresh("nodenotready");
+assert.match(step(c, "kubectl get nodes"), /worker-3\s+NotReady/);
+assert.match(step(c, "ssh worker-3 sudo systemctl status kubelet"), /disabled[\s\S]*inactive \(dead\)/);
+assert.match(step(c, "ssh worker-3 sudo journalctl -u kubelet"), /kubelet was not started/);
+step(c, "ssh worker-3 sudo systemctl start kubelet");
+assert.match(step(c, "kubectl get nodes"), /worker-3\s+Ready/);
+assert.ok(!won(c), "started but still disabled: the next reboot breaks it again");
+step(c, "ssh worker-3 sudo systemctl enable kubelet");
+assert.ok(won(c), "node: fixed by enable and start");
+
+// etcd backup: endpoint and certificates must match the etcd manifest.
+c = fresh("etcd");
+assert.match(step(c, "kubectl -n kube-system describe pod etcd-control-plane"), /--trusted-ca-file=\/etc\/kubernetes\/pki\/etcd\/ca.crt/);
+assert.match(step(c, "etcdctl snapshot save /opt/backup/etcd.db"), /context deadline exceeded/);
+assert.match(step(c, "etcdctl snapshot save /opt/backup/etcd.db --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key"), /unknown authority/);
+assert.ok(!won(c));
+const save = "ETCDCTL_API=3 etcdctl snapshot save /opt/backup/etcd.db --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key";
+assert.match(step(c, save), /Snapshot saved at \/opt\/backup\/etcd.db/);
+assert.ok(!won(c), "an unchecked backup does not count");
+assert.match(step(c, "etcdutl snapshot status /opt/backup/etcd.db --write-out=table"), /TOTAL KEYS/);
+assert.ok(won(c), "etcd: saved and verified");
+assert.match(step(c, "ls /opt/backup"), /etcd.db/);
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
