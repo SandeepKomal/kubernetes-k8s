@@ -1,12 +1,23 @@
-
-kind: StorageClass
+# A StorageClass for AWS EBS, using the EBS CSI driver.
+#
+# The in-tree provisioner `kubernetes.io/aws-ebs` was removed from
+# Kubernetes; current clusters use the CSI driver `ebs.csi.aws.com`, which
+# is an EKS add-on.
+#
+#   WaitForFirstConsumer  creates the volume in the zone where the Pod is
+#                         scheduled, so Pod and disk always match.
+#   reclaimPolicy Retain  keeps the EBS volume when the claim is deleted;
+#                         Delete (the default) destroys the data with it.
+#
+# Only useful on EKS. On kind, the built-in `standard` class is used instead.
 apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
-  name: standard
-provisioner: kubernetes.io/aws-ebs
+  name: ebs-gp3
+provisioner: ebs.csi.aws.com
 parameters:
-  type: gp2
+  type: gp3
+  encrypted: "true"
 reclaimPolicy: Retain
-mountOptions:
-  - debug
-volumeBindingMode: Immediate
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer

@@ -1,59 +1,91 @@
-
+# StatefulSet: Pods with a stable name and their own disk.
+#
+# Each replica (records-0, records-1) gets its own PersistentVolumeClaim from
+# volumeClaimTemplates and keeps it across restarts and rescheduling. The
+# headless Service gives each one a stable DNS name:
+#   records-0.records.<namespace>.svc.cluster.local
+#
+# The container writes a line to its own disk on every start and serves the
+# file on port 8080, so you can see that the data survives.
+#
+# Try it:
+#   kubectl apply -f Statefulset.yaml
+#   kubectl get pods,pvc -l app=records                 # records-0, records-1 and their claims
+#   kubectl delete pod records-0                        # it comes back with the same name and disk
+#   kubectl exec records-0 -- cat /data/starts.log      # one line per start
+#
+# Hands-on version: labs/15-statefulsets. How real databases use this pattern:
+# docs/databases.md.
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql
+  name: records
 spec:
-  type: LoadBalancer
+  clusterIP: None          # headless: DNS returns each Pod, not one virtual IP
   selector:
-    app: mysql
+    app: records
   ports:
     - name: http
-      protocol: TCP
-      port: 3306
-      targetPort: 3306
+      port: 8080
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: mysql-deployment
+  name: records
 spec:
-  replicas: 1
+  serviceName: records
+  replicas: 2
   selector:
     matchLabels:
-      app: mysql
-  serviceName: "mysql"
+      app: records
   template:
     metadata:
       labels:
-        app: mysql
+        app: records
     spec:
-      volumes:
-        - name: mysql-pv
-          persistentVolumeClaim:
-            claimName: mysql-pv-claim
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534       # lets the non-root user write to the volume
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: mysql
-          image: mysql:8.4
-          env:
-            - name: MYSQL_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: customer-secrets
-                  key: db-root-password
-            - name: MYSQL_USER
-              valueFrom:
-                secretKeyRef:
-                  name: customer-secrets
-                  key: db-username
-            - name: MYSQL_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: customer-secrets
-                  key: db-password
-          volumeMounts:
-            - name: mysql-pv
-              mountPath: /var/lib/mysql
+        - name: records
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "$(date -Iseconds) $(hostname) started" >> /data/starts.log
+              exec httpd -f -p 8080 -h /data
           ports:
-            - containerPort: 3306
-              name: mysql
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /starts.log
+              port: http
+          resources:
+            requests:
+              cpu: 25m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  # One claim per replica, named data-records-0, data-records-1, ...
+  # No storageClassName: the cluster's default class provisions the disk.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 100Mi

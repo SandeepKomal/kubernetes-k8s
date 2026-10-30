@@ -1,9 +1,45 @@
+# Static provisioning: bind a claim to a volume that already exists.
+#
+# Usually a StorageClass creates volumes on demand. Sometimes the disk exists
+# first (migrated data, a restored snapshot). Then you create the
+# PersistentVolume yourself and reserve it for one claim with claimRef.
+#
+# Replace <EBS_VOLUME_ID> with your own volume (vol-...) and <ZONE> with its
+# availability zone. EKS only; needs the EBS CSI driver.
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: foo-pv
+  name: restored-data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""            # empty: never matched by dynamic provisioning
+  claimRef:                        # only this claim may bind to it
+    name: restored-data
+    namespace: default
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: <EBS_VOLUME_ID>
+    fsType: ext4
+  nodeAffinity:                    # an EBS volume can only attach in its own zone
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values: ["<ZONE>"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: restored-data
+  namespace: default
 spec:
   storageClassName: ""
-  claimRef:
-    name: foo-pvc
-    namespace: foo
+  volumeName: restored-data
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi

@@ -222,23 +222,14 @@ NetworkPolicy allows:
 
 ## Important Note (kind)
 
-kind supports NetworkPolicy **only if a CNI like Calico is installed**.
+NetworkPolicy only works when the cluster's network plugin enforces it.
+Recent kind releases, including the one this course installs, enforce it
+with their default network plugin, so there is nothing extra to install.
+Level 11 of the course tests this on every change.
 
-We will install Calico.
-
----
-
-## Install Calico on kind
-
-```
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-```
-
-Wait until ready:
-
-```
-kubectl get pods -n kube-system
-```
+On other clusters, check that your network plugin enforces policies; some
+silently ignore them. The quickest check is the test in this section: if a
+denied Pod can still connect, policies are not being enforced.
 
 ---
 

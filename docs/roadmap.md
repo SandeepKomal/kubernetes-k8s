@@ -73,6 +73,7 @@ documentation and run on kind.
 
 | Topic | Start with | Builds on |
 | --- | --- | --- |
+| Databases: managed services, operators, StatefulSets | [databases.md](databases.md) | Levels 05, 08, 15 |
 | Helm charts | <https://helm.sh/docs/> | Level 18 |
 | GitOps with Argo CD or Flux | <https://argo-cd.readthedocs.io/>, <https://fluxcd.io/flux/> | Levels 03, 18 |
 | Ingress and the Gateway API | <https://gateway-api.sigs.k8s.io/> | Level 04 |
