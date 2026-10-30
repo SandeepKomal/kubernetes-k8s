@@ -259,23 +259,56 @@
 
   // --- YAML X-ray ----------------------------------------------------------
 
-  function renderXray(index) {
-    const m = Q.xray[index];
-    document.querySelectorAll("#xray-pick button").forEach((b, i) => b.setAttribute("aria-selected", String(i === index)));
+  // rows: [{line, note, level, warns}]. Blank lines stay visible but inert.
+  function renderXrayLines(rows) {
     const lines = $("#xray-lines");
     lines.replaceChildren();
-    m.lines.forEach(([code, note], i) => {
-      lines.append(h("li", null, h("button.line", {
+    rows.forEach(({ line, note, level, warns }, i) => {
+      if (!note) { lines.append(h("li", null, h("span.line.blank", null, line || " "))); return; }
+      const flag = warns && warns.length ? "warn" : level === "unknown" ? "unknown" : "";
+      lines.append(h("li", null, h("button.line" + (flag ? "." + flag : ""), {
         type: "button",
         onclick: (e) => {
           lines.querySelectorAll(".line").forEach((b) => b.classList.remove("on"));
           e.currentTarget.classList.add("on");
-          $("#xray-note").replaceChildren(h("pre", null, h("code", null, code.trim())), h("p", null, ...rich(note)),
-            h("p.muted", null, `Line ${i + 1} of ${m.lines.length}`));
+          $("#xray-note").replaceChildren(h("pre", null, h("code", null, line.trim())), h("p", null, ...rich(note)),
+            ...(warns || []).map((w) => h("p.xray-warn", null, w)),
+            h("p.muted", null, `Line ${i + 1} of ${rows.length}`));
         }
-      }, code)));
+      }, line)));
     });
-    $("#xray-note").replaceChildren(h("p.muted", null, "Pick a line on the left."));
+    $("#xray-note").replaceChildren(h("p.muted", null, rows.length ? "Pick a line on the left." : "Paste a manifest and choose Explain."));
+  }
+
+  function renderXray(index) {
+    document.querySelectorAll("#xray-pick button").forEach((b, i) => b.setAttribute("aria-selected", String(i === index)));
+    const paste = index === Q.xray.length;
+    $("#xray-paste").hidden = !paste;
+    if (paste) {
+      $("#xray-review").replaceChildren();
+      renderXrayLines([]);
+      return;
+    }
+    renderXrayLines(Q.xray[index].lines.map(([line, note]) => ({ line, note })));
+  }
+
+  function explainPasted() {
+    const text = $("#xray-input").value;
+    const review = $("#xray-review");
+    if (!text.trim()) { review.replaceChildren(h("p.muted", null, "Paste some YAML first.")); return; }
+    const res = window.KQExplain.explain(text);
+    if (res.error) { review.replaceChildren(h("p.xray-warn", null, res.error)); renderXrayLines([]); return; }
+    const rows = res.lines;
+    const warned = rows.filter((r) => r.warns && r.warns.length).length;
+    const unknown = rows.filter((r) => r.level === "unknown").length;
+    const summary = [`${rows.filter((r) => r.note).length} lines explained`];
+    if (warned) summary.push(`${warned} with a warning`);
+    if (unknown) summary.push(`${unknown} not in the dictionary`);
+    review.replaceChildren(h("p.small", null, summary.join(" · ") + "."),
+      ...(res.review.length ? [h("p.small.strong", null, "Worth a look"), h("ul.xray-review", null, res.review.map((n) => h("li", null, n)))] : []));
+    renderXrayLines(rows);
+    const first = $("#xray-lines .line.warn") || $("#xray-lines button.line");
+    if (first) first.click();
   }
 
   // --- Pod doctor ----------------------------------------------------------
@@ -308,6 +341,45 @@
     }, "Copy");
   }
 
+  // Placeholders the reader can fill in once for every command.
+  const FILL = [
+    { key: "namespace", label: "Namespace", tags: ["ns", "namespace"], example: "kitchen" },
+    { key: "pod", label: "Pod", tags: ["pod"], example: "menu-7d9f-x2k7l" },
+    { key: "deployment", label: "Deployment", tags: ["d"], example: "menu" },
+    { key: "container", label: "Container", tags: ["container"], example: "web" },
+    { key: "service", label: "Service", tags: ["svc", "service"], example: "menu-svc" },
+    { key: "app", label: "App label", tags: ["app"], example: "menu" },
+    { key: "node", label: "Node", tags: ["node"], example: "worker-1" },
+    { key: "image", label: "Image", tags: ["image"], example: "nginx:1.27" }
+  ];
+  const fills = store.get("fill", {});
+  // Commands the playground can run.
+  const RUNNABLE = /^kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|restart|undo) |scale |set (image|env|resources|selector) )/;
+
+  // Split a command into text and placeholder parts, filling in what we know.
+  function fillParts(cmd) {
+    return cmd.split(/(<[a-z-]+>)/).filter(Boolean).map((part) => {
+      const m = /^<([a-z-]+)>$/.exec(part);
+      if (!m) return { text: part };
+      const f = FILL.find((x) => x.tags.includes(m[1]));
+      const value = f && fills[f.key];
+      return value ? { text: value, filled: true } : { text: part, hole: true };
+    });
+  }
+
+  function renderFill() {
+    $("#cheat-fill").replaceChildren(...FILL.map((f) => h("label.fill", null, f.label,
+      h("input", {
+        type: "text", value: fills[f.key] || "", placeholder: f.example, spellcheck: "false", autocapitalize: "off",
+        oninput: (e) => {
+          const v = e.target.value.trim().replace(/[^\w.:/@-]/g, "");
+          if (v) fills[f.key] = v; else delete fills[f.key];
+          store.set("fill", fills);
+          renderCheats();
+        }
+      }))));
+  }
+
   function renderCheats() {
     const q = $("#cheat-q").value.trim().toLowerCase();
     const out = $("#cheat-out");
@@ -320,8 +392,19 @@
     }
     if (!groups.size) { out.append(h("p.muted", null, "No match. Try a resource name like pod, node or secret.")); return; }
     for (const [group, rows] of groups) {
-      out.append(h("h3.group", null, group), h("ul.cheats", null, rows.map(([cmd, what]) =>
-        h("li", null, h("div", null, h("code", null, cmd), h("span.muted", null, what)), copyButton(cmd)))));
+      out.append(h("h3.group", null, group), h("ul.cheats", null, rows.map(([cmd, what]) => {
+        const parts = fillParts(cmd);
+        const full = parts.map((p) => p.text).join("");
+        const ready = !parts.some((p) => p.hole);
+        const code = h("code", null, parts.map((p) => p.filled ? h("span.filled", null, p.text) : p.hole ? h("span.hole", null, p.text) : p.text));
+        const actions = h("div.cheat-actions", null,
+          RUNNABLE.test(cmd) && window.KQPlayground ? h("button.copy", {
+            type: "button", title: "Run it in the playground on the Path page",
+            onclick: () => { location.hash = "path"; show(); window.KQPlayground.prefill(full, ready); }
+          }, "Try") : null,
+          copyButton(full));
+        return h("li", null, h("div", null, code, h("span.muted", null, what)), actions);
+      })));
     }
   }
 
@@ -332,8 +415,18 @@
   $("#quiz-level").value = "00";
   $("#quiz-level").addEventListener("change", renderQuiz);
   Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => renderXray(i) }, m.name)));
+  $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => { renderXray(Q.xray.length); $("#xray-input").focus(); } }, "Your YAML"));
+  $("#xray-go").addEventListener("click", explainPasted);
+  $("#xray-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) explainPasted(); });
+  $("#xray-example").addEventListener("click", () => {
+    $("#xray-input").value = Q.xrayExample;
+    explainPasted();
+  });
   Q.doctor.forEach((d, i) => $("#doctor-list").append(h("button.chip", { type: "button", onclick: () => renderDoctor(i) }, d.status)));
   $("#cheat-q").addEventListener("input", renderCheats);
+  renderFill();
+  // Open on wide screens, or whenever names are already filled in.
+  $("#cheat-fill-box").open = window.matchMedia("(min-width: 721px)").matches || Object.keys(fills).length > 0;
 
   // --- command palette (Ctrl+K, Cmd+K or /) --------------------------------
 
@@ -363,7 +456,10 @@
 
   function renderPalette() {
     const words = paletteInput.value.toLowerCase().split(/\s+/).filter(Boolean);
-    paletteItems = ACTIONS.filter((a) => {
+    const scenarios = (window.KQPlayground ? window.KQPlayground.scenarios : []).map((sc) => ({
+      label: `Playground: ${sc.title}`, kind: "Practice", run: () => goTab("path", () => window.KQPlayground.load(sc.id))
+    }));
+    paletteItems = [...ACTIONS, ...scenarios].filter((a) => {
       const text = `${a.label} ${a.hint || ""} ${a.kind}`.toLowerCase();
       return words.every((w) => text.includes(w));
     }).slice(0, 8);
@@ -421,6 +517,7 @@
   renderPath();
   renderQuiz();
   renderXray(0);
-  renderCheats();
   show();
+  // The Try buttons need the playground, which loads after this script.
+  window.addEventListener("DOMContentLoaded", renderCheats);
 })();

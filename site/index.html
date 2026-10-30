@@ -45,11 +45,12 @@
       <section class="playground" aria-labelledby="pg-title">
         <div class="pg-head">
           <div>
-            <h2 id="pg-title" class="section-title">Fix a broken Pod. Right here.</h2>
-            <p class="section-sub">A simulated cluster, real kubectl commands. No install, no account.</p>
+            <h2 id="pg-title" class="section-title">Fix a broken cluster. Right here.</h2>
+            <p class="section-sub">Five real incidents, real kubectl commands. No install, no account.</p>
           </div>
           <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
         </div>
+        <div class="pg-scenarios" id="pg-scenarios" role="group" aria-label="Scenario"></div>
         <div class="pg-body">
           <div class="pg-term" id="pg-term">
             <div class="pg-bar" aria-hidden="true"><span></span><span></span><span></span><em>kitchen · kubectl</em></div>
@@ -61,13 +62,7 @@
           </div>
           <div class="pg-side">
             <div class="pg-map" id="pg-map" aria-label="Cluster map"></div>
-            <div class="pg-try">
-              <span class="muted small">Try</span>
-              <button type="button" class="chip" data-pg="kubectl get pods">get pods</button>
-              <button type="button" class="chip" data-pg="kubectl describe pod menu">describe pod menu</button>
-              <button type="button" class="chip" data-pg="hint">hint</button>
-              <button type="button" class="chip" data-pg="reset">reset</button>
-            </div>
+            <div class="pg-try" id="pg-try"></div>
           </div>
         </div>
       </section>
@@ -122,8 +117,18 @@ cd kubernetes-k8s
 
     <section id="tab-xray" class="tab" hidden>
       <h2>YAML X-ray</h2>
-      <p class="lede">Select any line to see what it does and the mistake people make with it.</p>
+      <p class="lede">Select any line to see what it does and the mistake people make with it. Or paste your own manifest.</p>
       <div class="seg" id="xray-pick" role="tablist" aria-label="Manifest"></div>
+      <div class="xray-paste card" id="xray-paste" hidden>
+        <label for="xray-input" class="xray-paste-label">Paste a manifest</label>
+        <textarea id="xray-input" rows="10" spellcheck="false" autocapitalize="off" placeholder="apiVersion: apps/v1&#10;kind: Deployment&#10;..."></textarea>
+        <div class="xray-paste-actions">
+          <button type="button" class="pill primary small-pill" id="xray-go">Explain</button>
+          <button type="button" class="pill small-pill" id="xray-example">Load an example</button>
+          <span class="note">Explained in your browser. Nothing is uploaded. Do not paste real secrets.</span>
+        </div>
+        <div id="xray-review" aria-live="polite"></div>
+      </div>
       <div class="xray">
         <ol id="xray-lines" class="code" aria-label="Manifest lines"></ol>
         <aside id="xray-note" class="card" aria-live="polite"><p class="muted">Pick a line on the left.</p></aside>
@@ -139,9 +144,16 @@ cd kubernetes-k8s
 
     <section id="tab-cheats" class="tab" hidden>
       <h2>Cheat sheet</h2>
-      <label class="field">Search
-        <input id="cheat-q" type="search" placeholder="rollout, logs, node..." autocomplete="off">
-      </label>
+      <p class="lede">Type your own names once and every command fills in, ready to copy. Commands marked Try run in the playground.</p>
+      <div class="cheat-tools">
+        <label class="field">Search
+          <input id="cheat-q" type="search" placeholder="rollout, logs, node..." autocomplete="off">
+        </label>
+        <details class="cheat-fill-box" id="cheat-fill-box">
+          <summary>Fill in your own names</summary>
+          <div class="cheat-fill" id="cheat-fill"></div>
+        </details>
+      </div>
       <div id="cheat-out"></div>
     </section>
   </main>
@@ -160,5 +172,6 @@ cd kubernetes-k8s
   <script src="quiz-bank.js"></script>
   <script src="app.js"></script>
   <script src="playground.js"></script>
+  <script src="xray-explain.js"></script>
 </body>
 </html>
