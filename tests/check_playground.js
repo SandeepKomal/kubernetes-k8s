@@ -1044,6 +1044,32 @@ assert.ok(!won(c), "Always on a moving tag still hides what runs");
 step(c, "kubectl set image deployment/shop shop=localhost:5000/shop:2.5.0");
 assert.ok(won(c), "stalelatest: an immutable tag");
 
+// A node's kubelet maxPods caps it, whatever memory is free.
+c = fresh("maxpods");
+assert.match(step(c, `kubectl describe pod ${podOf(c, "menu")}`), /1 Too many pods, 2 Insufficient memory/);
+assert.match(step(c, "kubectl describe node worker-3"), /pods:\s+4/);
+step(c, "kubectl scale deployment/web --replicas=2");
+assert.ok(!won(c), "scaling web down only moves the problem");
+c = fresh("maxpods");
+assert.match(step(c, "ssh worker-3 sudo cat /var/lib/kubelet/config.yaml"), /maxPods: 4/);
+step(c, "ssh worker-3 sudo sed -i 's/maxPods: 4/maxPods: 110/' /var/lib/kubelet/config.yaml");
+assert.ok(!won(c), "the kubelet reads its config when it starts");
+step(c, "ssh worker-3 sudo systemctl restart kubelet");
+assert.ok(won(c), "maxpods: the kubelet allows 110 Pods");
+
+// rewrite-target / sends every path to the app's home page.
+c = fresh("rewrite");
+assert.match(step(c, "curl -v http://kitchen.example/shop/menu"), /received GET \/\)\nstorefront: home/);
+step(c, "kubectl annotate ingress storefront nginx.ingress.kubernetes.io/rewrite-target-");
+assert.match(step(c, "curl -v http://kitchen.example/shop/menu"), /received GET \/shop\/menu\)\n404 page not found/);
+assert.ok(!won(c), "no rewrite sends /shop/menu, which the app does not know");
+c = fresh("rewrite");
+assert.match(step(c, "kubectl annotate ingress storefront nginx.ingress.kubernetes.io/rewrite-target=/$2"), /--overwrite is false/);
+step(c, `kubectl patch ingress storefront -p '{"metadata":{"annotations":{"nginx.ingress.kubernetes.io/rewrite-target":"/$2"}},"spec":{"rules":[{"host":"kitchen.example","http":{"paths":[{"path":"/shop(/|$)(.*)","pathType":"ImplementationSpecific","backend":{"service":{"name":"storefront-svc","port":{"number":80}}}}]}}]}}'`);
+assert.match(step(c, "curl -v http://kitchen.example/shop/basket"), /received GET \/basket\)\nstorefront: basket/);
+assert.strictEqual(c.viaIngress("kitchen.example", "/shopping").code, 404, "the regex stops at a path element");
+assert.ok(won(c), "rewrite: /shop(/|$)(.*) rewritten to /$2");
+
 // Commands the cheat sheet relies on.
 c = fresh("crash");
 assert.match(step(c, "kubectl get all -l app=web"), /pod\/web-\S+[\s\S]*deployment\.apps\/web[\s\S]*replicaset\.apps\/web-/);

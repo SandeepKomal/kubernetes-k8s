@@ -44,7 +44,7 @@ nothing.
 | --- | --- |
 | Labels and selectors | Level 02 · Playground: No endpoints, Canary leaking |
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down, LoadBalancer pending · [reference/manifests/services](../reference/manifests/services/) |
-| Ingress, IngressClass, path types, TLS | Playground: Ingress 404, Ingress 503, Ingress path too exact, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
+| Ingress, IngressClass, path types, rewrites, TLS | Playground: Ingress 404, Ingress 503, Ingress path too exact, Ingress path not rewritten, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
 | NetworkPolicy, ingress and egress | Level 11 · Playground: NetworkPolicy, Egress lockdown breaks DNS · [network-policies.md](network-policies.md) |
 
@@ -79,7 +79,7 @@ nothing.
 | Pod states and events | Level 01 · Playground scenarios · Troubleshoot page |
 | Application and Service failures | Levels 01, 02, 04, 06, 14 · Troubleshoot page |
 | Incident under pressure | Level 14 |
-| Node problems (NotReady, DiskPressure and eviction, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Node DiskPressure, Drain blocked |
+| Node problems (NotReady, DiskPressure and eviction, maxPods, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Node DiskPressure, Too many pods, Drain blocked |
 | Control-plane components (static Pods, scheduler) | Playground: Scheduler down |
 | Certificate expiry and renewal with kubeadm | Playground: Certificates expired |
 | Finalizers and objects stuck Terminating | Playground: Stuck Terminating |

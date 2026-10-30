@@ -65,6 +65,11 @@
       logs: ["accounts: connecting to postgres.kitchen:5432 as accounts", "accounts: listening on :8080"],
       crashLogs: ["accounts: connecting to postgres.kitchen:5432 as accounts", 'accounts: fatal: password authentication failed for user "accounts"']
     },
+    storefront: {
+      mem: 40, port: 8080, health: ["/healthz"], body: "storefront: home",
+      routes: { "/": "storefront: home", "/menu": "storefront: menu (42 items)", "/basket": "storefront: basket (empty)" }, // the paths it serves; anything else is its own 404
+      logs: ["storefront: serving / /menu /basket on :8080"]
+    },
     shop: {
       mem: 40, port: 8080, health: ["/healthz"], body: "shop: ok",
       logs: (x) => [`shop: starting version ${x.pod.version}`, "shop: listening on :8080"]
@@ -78,7 +83,8 @@
   };
   const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1",
     "localhost:5000/ledger:4.2", "localhost:5000/invoice:2.0", "localhost:5000/invoice:2.0-arm64", "localhost:5000/menu-beta:0.9",
-    "localhost:5000/policy-webhook:1.3", "localhost:5000/inventory:1.8", "localhost:5000/accounts:3.2", "localhost:5000/shop:latest", "localhost:5000/shop:2.4.0", "localhost:5000/shop:2.5.0"]);
+    "localhost:5000/policy-webhook:1.3", "localhost:5000/inventory:1.8", "localhost:5000/accounts:3.2", "localhost:5000/shop:latest", "localhost:5000/shop:2.4.0", "localhost:5000/shop:2.5.0", "localhost:5000/storefront:1.0"]);
+  const KUBELET_CONFIG = "/var/lib/kubelet/config.yaml";
   // The registry's digest for each shop tag, and what :latest pointed to when the nodes last pulled it.
   const SHOP = { latest: "2.5.0", cached: "2.4.0", digests: { "2.4.0": "sha256:7c41e09b2f", "2.5.0": "sha256:e83a1d5c90" } };
   // Images built for one CPU architecture only; the rest are multi-arch.
@@ -1532,6 +1538,49 @@
       tries: ["kubectl logs deploy/shop", "kubectl get deploy shop -o yaml"]
     },
     {
+      id: "maxpods",
+      title: "Too many pods",
+      done: "menu runs on worker-3, now that its kubelet allows the usual number of Pods.",
+      level: { id: "07", text: "Level 07 · Stuck in Pending" },
+      story: "worker-3 joined the cluster yesterday to give the kitchen more room. It has plenty of free memory, yet menu stays Pending, and only four Pods ever land on it.",
+      goal: "Get menu running, without scaling down web or reports.",
+      maxPods: { node: "worker-3", maxPods: 4 },
+      deployments: [
+        { name: "reports", replicas: 2, image: "localhost:5000/reports:1.0", req: 8000, lim: 8100, age: 9 * HOUR },
+        { name: "web", replicas: 4, image: "nginx:1.27", req: 64, lim: 128, age: 20 * HOUR },
+        { name: "menu", replicas: 2, image: "nginx:1.27", req: 256, lim: 512, age: 30 * MIN }
+      ],
+      won: (c) => c.deploymentReady("menu") && c.deployments.find((d) => d.name === "web").replicas === 4 && c.deployments.find((d) => d.name === "reports").replicas === 2,
+      check: (c) => ({ label: "worker-3", ok: c.maxPodsOf("worker-3") > 4, text: `${c.podsOn("worker-3")}/${c.maxPodsOf("worker-3")} Pods` }),
+      hints: [
+        "kubectl describe pod on a Pending menu Pod: 1 Too many pods, 2 Insufficient memory. The other two nodes are full; worker-3 is full in a different way.",
+        "kubectl describe node worker-3: Allocatable pods: 4, and four Pods run there. That limit is the kubelet's maxPods: ssh worker-3 sudo cat /var/lib/kubelet/config.yaml. The new node was built from a test template.",
+        "ssh worker-3 sudo sed -i 's/maxPods: 4/maxPods: 110/' /var/lib/kubelet/config.yaml, then ssh worker-3 sudo systemctl restart kubelet: the kubelet reads its config only when it starts."
+      ],
+      lesson: "A node accepts at most maxPods Pods, whatever memory it has left (110 by default; on some clouds far fewer, tied to network interfaces). FailedScheduling says Too many pods; describe node shows the limit under Allocatable. Change it in the kubelet config, and restart the kubelet.",
+      tries: ["kubectl get pods -o wide", "kubectl describe node worker-3"]
+    },
+    {
+      id: "rewrite",
+      title: "Ingress path not rewritten",
+      done: "kitchen.example/shop/menu reaches the storefront's /menu.",
+      level: { id: "04", text: "Level 04 · Connection refused" },
+      story: "The storefront moved under kitchen.example/shop. The home page at /shop works, but every link on it, /shop/menu and /shop/basket, shows the home page again.",
+      goal: "Serve the storefront's pages under /shop: /shop for its home page and /shop/menu for its menu.",
+      deployments: [web(), { name: "storefront", replicas: 2, image: "localhost:5000/storefront:1.0", req: 64, lim: 128, age: 3 * HOUR }],
+      services: [{ name: "storefront-svc", selector: { app: "storefront" }, ip: "10.96.40.12", age: 3 * HOUR }],
+      ingresses: [{ name: "storefront", class: "nginx", host: "kitchen.example", path: "/shop", pathType: "Prefix", svc: "storefront-svc", port: 80, rewrite: "/" }],
+      won: (c) => c.viaIngress("kitchen.example", "/shop").text === "storefront: home" && c.viaIngress("kitchen.example", "/shop/menu").text === "storefront: menu (42 items)",
+      check: (c) => { const r = c.viaIngress("kitchen.example", "/shop/menu"); return { label: "kitchen.example/shop/menu", ok: r.text === "storefront: menu (42 items)", text: r.ok ? r.text.replace("storefront: ", "") : String(r.code) }; },
+      hints: [
+        "curl -v http://kitchen.example/shop/menu shows the path the storefront received: GET /, not /menu. Something between the two changes the path.",
+        "kubectl describe ingress storefront: rewrite-target / sends every path under /shop to /. Without it, the app gets /shop/menu, which it does not know either. The rewrite has to keep what comes after /shop.",
+        `Capture the rest of the path and pass it on: kubectl patch ingress storefront -p '{"metadata":{"annotations":{"nginx.ingress.kubernetes.io/rewrite-target":"/$2"}},"spec":{"rules":[{"host":"kitchen.example","http":{"paths":[{"path":"/shop(/|$)(.*)","pathType":"ImplementationSpecific","backend":{"service":{"name":"storefront-svc","port":{"number":80}}}}]}}]}}'`
+      ],
+      lesson: "ingress-nginx's rewrite-target replaces the request path before it reaches the app. To serve an app under a prefix, capture the rest with a regex path, /shop(/|$)(.*), and rewrite to /$2. When every page looks like the home page, or the app answers its own 404, the Ingress routed it and the path was wrong.",
+      tries: ["curl -v http://kitchen.example/shop/menu", "kubectl describe ingress storefront"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -1702,8 +1751,8 @@
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
     ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey", "secretvolume", "limitrange", "base64twice", "readonlyroot", "stalelatest"]],
-    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "volumefull", "statefulset", "diskpressure"]],
-    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "pathtype", "ingresstls", "gateway", "netpol", "dnsegress"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "maxpods", "pvc", "multiattach", "volumefull", "statefulset", "diskpressure"]],
+    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "pathtype", "rewrite", "ingresstls", "gateway", "netpol", "dnsegress"]],
     ["Security", ["rbac", "csr", "podsecurity", "webhook", "quota"]],
     ["Operations and delivery", ["job", "cronjob", "cronhung", "rollout", "paused", "helm", "drain", "finalizer"]],
     ["Cluster administration", ["context", "nsstuck", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
@@ -1790,6 +1839,8 @@
       this.helm = scenario.helm ? JSON.parse(JSON.stringify(scenario.helm)) : null;
       this.limitRanges = JSON.parse(JSON.stringify(scenario.limitRanges || [])); // namespace defaults: { name, lim, req }
       this.webhooks = JSON.parse(JSON.stringify(scenario.webhooks || [])); // validating webhooks: { name, hook, svc, policy }
+      // One node's kubelet config: maxPods on disk, and the value the running kubelet loaded.
+      this.kubeletCfg = scenario.maxPods ? { ...scenario.maxPods, applied: scenario.maxPods.maxPods } : null;
       // A node whose image disk is nearly full: the kubelet taints it and evicts Pods.
       this.disk = scenario.diskPressure ? { ...scenario.diskPressure, pressure: true } : null;
       if (this.disk) this.taints[this.disk.node].push(DISK_TAINT);
@@ -2144,13 +2195,17 @@
       const claim = this.pvcOf(pod);
       if (pod.spec.pvc && (!claim || !claim.bound)) return null;
       const anti = pod.spec.antiAffinity;
-      const usable = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n) && !(anti === "required" && this.sameApp(pod, n)));
+      const usable = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n) && !(anti === "required" && this.sameApp(pod, n)) &&
+        this.podsOn(n) < this.maxPodsOf(n));
       const fits = usable.map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
       if (!fits.length) return this.preempt(pod, usable);
       // Preferred anti-affinity: fewest Pods of the same app first, then most free memory.
       fits.sort((a, b) => (anti ? this.sameApp(pod, a[0]) - this.sameApp(pod, b[0]) : 0) || b[1] - a[1] || a[0].localeCompare(b[0]));
       return fits[0][0];
     }
+
+    podsOn(node) { return this.pods.filter((p) => p.node === node && !p.terminating && !p.evicted && p.state !== "Completed").length; }
+    maxPodsOf(node) { return this.kubeletCfg && this.kubeletCfg.node === node ? this.kubeletCfg.applied : 110; }
 
     // A Pod with a higher priority evicts lower-priority Pods to make room.
     preempt(pod, nodes) {
@@ -2206,6 +2261,7 @@
           else if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
           else if (!this.tolerates(pod, node)) r = `node(s) had untolerated taint {${this.taints[node].map((t) => `${t.key}: ${t.value}`).join(", ")}}`;
           else if (pod.spec.antiAffinity === "required" && this.sameApp(pod, node)) r = "node(s) didn't match pod anti-affinity rules";
+          else if (this.podsOn(node) >= this.maxPodsOf(node)) r = "Too many pods";
           reasons[r] = (reasons[r] || 0) + 1;
         }
         const why = Object.entries(reasons).map(([r, k]) => `${k} ${r}`).sort().join(", ");
@@ -2372,12 +2428,17 @@
     viaIngress(host, path) {
       const p = path || "/";
       // Exact matches one path; Prefix matches whole path elements, so /api serves /api/menu but not /apis.
-      const fits = (x) => (x.pathType === "Exact" ? p === x.path : x.path === "/" || p === x.path || p.startsWith(x.path.replace(/\/$/, "") + "/"));
+      // With rewrite-target, ingress-nginx treats the path as a regular expression.
+      const regex = (x) => (x.rewrite || /[()$^*+?|]/.test(x.path) ? new RegExp(`^${x.path}`) : null);
+      const fits = (x) => (regex(x) ? regex(x).test(p) : x.pathType === "Exact" ? p === x.path : x.path === "/" || p === x.path || p.startsWith(x.path.replace(/\/$/, "") + "/"));
       const rule = this.ingresses.find((x) => x.host === host && this.ingressClasses.includes(x.class) && fits(x));
       if (!rule) return errorPage(404, "Not Found");
+      const m = regex(rule) && regex(rule).exec(p);
+      const forwarded = rule.rewrite ? (rule.rewrite.replace(/\$(\d)/g, (_, i) => (m && m[i]) || "") || "/").replace(/^(?!\/)/, "/") : p;
       const svc = this.resolve(rule.svc);
       if (!svc || svc.port !== rule.port || !this.endpointsOf(svc.name).length) return errorPage(503, "Service Temporarily Unavailable");
       const app = APPS[appOf(this.endpointsOf(svc.name)[0].spec.image)];
+      if (app.routes) return app.routes[forwarded] ? { ok: true, code: 200, text: app.routes[forwarded], path: forwarded } : { ok: false, code: 404, text: "404 page not found", path: forwarded };
       return { ok: true, code: 200, text: app.body };
     }
 
@@ -2696,6 +2757,7 @@
       if (!insecure && !match) return say(`curl: (60) SSL: no alternative certificate subject name matches target host name '${m[1]}'`, "warn");
     }
     const res = c.viaEdge(m[1], m[2] || "/");
+    if (words.includes("-v") && res.path) say(`> (the backend received GET ${res.path})`, "dim");
     if (words.includes("-i") || words.includes("-I")) say(`HTTP/1.1 ${res.code} ${res.code === 200 ? "OK" : res.code === 404 ? "Not Found" : res.code === 500 ? "Internal Server Error" : "Service Temporarily Unavailable"}`, res.ok ? "" : "warn");
     say(res.text, res.ok ? "" : "warn");
   }
@@ -2868,7 +2930,12 @@
           say(k.running ? "     Active: active (running) since Thu 2026-10-30 08:12:04 UTC" : "     Active: inactive (dead)", k.running ? "" : "warn");
           return;
         }
-        if (action === "start" || action === "restart") { k.running = true; c.retry = true; return; }
+        if (action === "start" || action === "restart") {
+          k.running = true;
+          if (c.kubeletCfg && c.kubeletCfg.node === node) c.kubeletCfg.applied = c.kubeletCfg.maxPods;
+          c.retry = true;
+          return;
+        }
         if (action === "stop") { k.running = false; return; }
         if (action === "enable") { k.enabled = true; if (rest.includes("--now")) { k.running = true; c.retry = true; } return say("Created symlink /etc/systemd/system/multi-user.target.wants/kubelet.service → /usr/lib/systemd/system/kubelet.service."); }
         if (action === "disable") { k.enabled = false; return; }
@@ -2908,6 +2975,21 @@
         if (rest[0] === "ls") return say("abstractions  k8s-deny-write  local  tunables  usr.sbin.chronyd");
         if (rest[1] !== APPARMOR_FILE) return say(`cat: ${rest[1]}: No such file or directory`, "warn");
         return APPARMOR_PROFILE.forEach((l) => say(l));
+      }
+      const cfg = c.kubeletCfg && c.kubeletCfg.node === node ? c.kubeletCfg : { maxPods: 110 };
+      if (rest[0] === "cat" && rest[1] === KUBELET_CONFIG) {
+        ["apiVersion: kubelet.config.k8s.io/v1beta1", "kind: KubeletConfiguration", "cgroupDriver: systemd", "clusterDNS:", "- 10.96.0.10", "clusterDomain: cluster.local",
+          `maxPods: ${cfg.maxPods}`, "rotateCertificates: true", "staticPodPath: /etc/kubernetes/manifests"].forEach((l) => say(l));
+        return;
+      }
+      if (rest[0] === "sed" && rest.includes(KUBELET_CONFIG)) {
+        const m = /^s\/(.*)\/(.*)\/g?$/.exec(rest.find((x) => x.startsWith("s/")) || "");
+        if (!m || !rest.includes("-i")) return say(`This playground edits the file in place: sed -i 's/maxPods: ${cfg.maxPods}/maxPods: 110/' ${KUBELET_CONFIG}`, "dim");
+        const line = `maxPods: ${cfg.maxPods}`.replace(m[1], m[2]);
+        const n = /^maxPods: (\d+)$/.exec(line);
+        if (!n) return say("(that would break the maxPods line; this playground keeps it as it was)", "warn");
+        if (cfg.node) cfg.maxPods = Number(n[1]);
+        return;
       }
       const full = c.disk && c.disk.node === node && c.disk.pressure;
       if (rest[0] === "df") {
@@ -3962,7 +4044,7 @@
         if (name && !list.length) return notFound("ingresses.networking.k8s.io", name), out;
         if (name && flags.o === "yaml") {
           const x = list[0];
-          ["apiVersion: networking.k8s.io/v1", "kind: Ingress", "metadata:", `  name: ${x.name}`, `  namespace: ${NS}`, "spec:",
+          ["apiVersion: networking.k8s.io/v1", "kind: Ingress", "metadata:", ...(x.rewrite ? ["  annotations:", `    nginx.ingress.kubernetes.io/rewrite-target: ${x.rewrite}`] : []), `  name: ${x.name}`, `  namespace: ${NS}`, "spec:",
             ...(x.class ? [`  ingressClassName: ${x.class}`] : []), "  rules:", `  - host: ${x.host}`, "    http:", "      paths:",
             "      - backend:", "          service:", `            name: ${x.svc}`, "            port:", `              number: ${x.port}`,
             `        path: ${x.path}`, `        pathType: ${x.pathType || "Prefix"}`].forEach((l) => say(l));
@@ -4220,6 +4302,7 @@
         else if (c.nodeReady(name)) say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
         else say("Conditions:         Ready=Unknown  NodeStatusUnknown  Kubelet stopped posting node status.", "warn");
         say("Allocatable:");
+        say(`  pods:             ${c.maxPodsOf(name)}`, c.podsOn(name) >= c.maxPodsOf(name) ? "warn" : "");
         say("  cpu:              4");
         say(`  memory:           ${fmtMem(NODE_MEMORY)}`);
         say("Non-terminated Pods:");
@@ -4354,6 +4437,7 @@
         say(`Namespace:        ${NS}`);
         say(`Address:          ${c.ingressClasses.includes(x.class) ? "localhost" : ""}`);
         say(`Ingress Class:    ${x.class || "<none>"}`, c.ingressClasses.includes(x.class) ? "" : "warn");
+        say(`Annotations:      ${x.rewrite ? `nginx.ingress.kubernetes.io/rewrite-target: ${x.rewrite}` : "<none>"}`);
         say("Default backend:  <default>");
         if (x.tls) say(`TLS:\n  ${x.tls} terminates ${x.host}`);
         say("Rules:");
@@ -5413,6 +5497,8 @@
         const x = c.ingresses.find((y) => y.name === name);
         if (!x) return notFound("ingresses.networking.k8s.io", name), out;
         if (spec.ingressClassName !== undefined) x.class = spec.ingressClassName;
+        const ann = (patch.metadata || {}).annotations;
+        if (ann && "nginx.ingress.kubernetes.io/rewrite-target" in ann) x.rewrite = ann["nginx.ingress.kubernetes.io/rewrite-target"] || null;
         if (Array.isArray(spec.tls) && spec.tls[0]) x.tls = spec.tls[0].secretName || null;
         const rule = (spec.rules || [])[0];
         if (rule) {
@@ -5422,7 +5508,7 @@
             if (path.path) x.path = path.path;
             if (path.pathType !== undefined) {
               if (!/^(Exact|Prefix|ImplementationSpecific)$/.test(path.pathType)) return say(`The Ingress "${name}" is invalid: spec.rules[0].http.paths[0].pathType: Unsupported value: "${path.pathType}": supported values: "Exact", "ImplementationSpecific", "Prefix"`, "warn"), out;
-              x.pathType = path.pathType === "ImplementationSpecific" ? "Prefix" : path.pathType;
+              x.pathType = path.pathType;
             }
             const bs = (path.backend || {}).service || {};
             if (bs.name) x.svc = bs.name;
@@ -5531,6 +5617,20 @@
       }
       return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./quest start 0", "na"), out;
     }
+    if (verb === "annotate") {
+      const { kind, name } = target(null);
+      if (kind !== "ingresses") return say("This playground annotates Ingresses: kubectl annotate ingress <name> key=value", "na"), out;
+      const x = c.ingresses.find((y) => y.name === name);
+      if (!x) return notFound("ingresses.networking.k8s.io", name), out;
+      for (const kv of args.slice(2).filter((y) => y !== name && (y.includes("=") || y.endsWith("-")))) {
+        const key = kv.endsWith("-") && !kv.includes("=") ? kv.slice(0, -1) : kv.slice(0, kv.indexOf("="));
+        if (key !== "nginx.ingress.kubernetes.io/rewrite-target") continue;
+        if (kv.endsWith("-") && !kv.includes("=")) { x.rewrite = null; continue; }
+        if (x.rewrite && !flags.overwrite) return say(`error: --overwrite is false but found the following declared annotation(s): '${key}' already has a value (${x.rewrite})`, "warn"), out;
+        x.rewrite = kv.slice(kv.indexOf("=") + 1);
+      }
+      return say(`ingress.networking.k8s.io/${name} annotated`), out;
+    }
     if (verb === "wait") {
       if (!/^condition=\w+$/i.test(flags.for || "")) return say("error: give --for=condition=<name>, for example --for=condition=Ready", "warn"), out;
       const { kind, name } = target("pods");
@@ -5589,7 +5689,8 @@
       chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : c.disk ? c.disk.node : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
       registry: "registry.kitchen.example", user: "ci", token: "practice-token", sa: "default", "1.x.y": "1.34.1", snapshot: "etcd-0300",
       "file.crt": file(".crt"), "file.key": file(".key"),
-      value: c.secrets[0] && Object.keys(c.secrets[0].data).length ? b64(Object.values(c.secrets[0].data)[0]) : null
+      value: c.secrets[0] && Object.keys(c.secrets[0].data).length ? b64(Object.values(c.secrets[0].data)[0]) : null,
+      host: c.ingresses[0] && c.ingresses[0].host, path: c.ingresses[0] && `${c.ingresses[0].path.replace(/[(].*$/, "").replace(/^\//, "")}/menu`.replace(/^\//, "")
     };
     return cmd.replace(/(\S*)\s+<name>/g, (m, before) => {
       const obj = named[before];
