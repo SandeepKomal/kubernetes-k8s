@@ -247,6 +247,7 @@ It is published with GitHub Pages at
 | YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
 | Troubleshoot | A searchable reference of 25 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC, Pod Security, rollouts, HPA and VPA, storage, Jobs, nodes): what each means, the likely causes, the commands that confirm them, and a link to practise the fix. Every entry has its own shareable link |
 | Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
+| K8s arch | An interactive diagram of the control plane, worker nodes and add-ons. Point at a component to see what it does and how it fails; click for the commands to inspect it and the playground scenarios that break it; follow a `kubectl apply` through the cluster step by step |
 
 Every page opens with a How to use this panel: what the page is, step-by-step
 use, what it is for, and tips. Press Ctrl+K (⌘K on a Mac) or `/` anywhere to
