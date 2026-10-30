@@ -39,5 +39,7 @@ for (const lv of Q.levels) {
 
 for (const step of Q.flow) assert.ok(step.name && step.text && step.try, "flow steps need name, text and try");
 for (const d of Q.doctor) assert.ok(Q.levels.some((l) => l.id === d.level), `doctor entry ${d.status} links to a missing level`);
+const grouped = Q.doctorGroups.flatMap(([, statuses]) => statuses);
+assert.deepStrictEqual([...grouped].sort(), Q.doctor.map((d) => d.status).sort(), "every troubleshooting entry belongs to exactly one group");
 
 console.log(`site data ok: ${Q.levels.length} levels, ${total} quiz questions, ${Q.flow.length} flow steps`);
