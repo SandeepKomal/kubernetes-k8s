@@ -235,8 +235,9 @@ It is published with GitHub Pages at
 | Pod doctor | Common Pod and Service failure states, their causes and the commands that confirm them |
 | Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
 
-Press Ctrl+K (⌘K on a Mac) or `/` anywhere to jump to a level, quiz,
-scenario or section.
+Every page opens with a How to use this panel: what the page is, step-by-step
+use, what it is for, and tips. Press Ctrl+K (⌘K on a Mac) or `/` anywhere to
+jump to a level, quiz, scenario or section.
 
 The site has no dependencies, makes no network requests and sets no
 cookies. To run it locally: `python3 -m http.server -d site 8000`.

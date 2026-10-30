@@ -254,6 +254,123 @@ window.QUEST = {
     }
   ],
 
+  // "How to use this page" panels, one per page. Text may contain `code`.
+  guides: {
+    playground: {
+      what: "A simulated Kubernetes cluster that runs entirely in your browser. Each scenario is a real incident: something is broken, and you find out why with kubectl, the same way you would at work. The terminal on the left takes commands; the cluster map on the right shows every node and Pod and changes as you work.",
+      steps: [
+        "Pick a scenario above the terminal. Start with ImagePullBackOff if you are new; the others get harder from left to right.",
+        "Read the story and the goal. The goal pill turns green when you have fixed it.",
+        "Look before you touch: `kubectl get pods`, then `kubectl describe pod <name>` and `kubectl logs <name>`. The answer is always in what Kubernetes tells you.",
+        "Fix the cause with a `kubectl set ...` command. Changes roll out like on a real cluster: new Pods start, old ones go once the new ones are Running.",
+        "Stuck? Type `hint`. Three hints per scenario, each more direct than the last. `reset` starts the scenario again, `help` lists every command."
+      ],
+      uses: [
+        "Practise the debugging loop (look, read the events, fix the cause, verify) without installing anything.",
+        "Learn what each failure looks like in `get pods`, `describe` and `logs`, so you recognise it instantly at work.",
+        "See why the obvious move is often wrong: restarting or deleting a crashing Pod changes nothing, because its Deployment recreates it from the same broken template."
+      ],
+      tips: [
+        "Tab completes Pod, Deployment and Service names. Click a Pod on the map to insert its name.",
+        "Up and down arrows bring back earlier commands. `k` works as a short form of `kubectl`.",
+        "Solved scenarios get a tick and are remembered in this browser. Nothing is sent anywhere.",
+        "When you have solved them all, do the real thing on your own cluster: `./quest start 0`."
+      ]
+    },
+    path: {
+      what: "The full course: 22 levels in five stages, from your first Pod to a production-ready service. Every level runs on a free practice cluster on your own machine (or in GitHub Codespaces), starts broken, and checks your fix automatically.",
+      steps: [
+        "Set up once with the steps under Start in two minutes: install Docker, kind and kubectl, run `./quest doctor` to check them, then `./quest up` to create the practice cluster.",
+        "Start a level with `./quest start <n>`, for example `./quest start 0`. Read the brief it prints, and the level's README on GitHub. `./quest list` shows every level and your progress.",
+        "Investigate and fix with kubectl. Run `./quest check` as often as you like; it tells you what is still wrong.",
+        "Use `./quest hint` for help, and `./quest solution` only when you have tried.",
+        "Tick a level here when you finish it. Your progress is saved in this browser."
+      ],
+      uses: [
+        "A structured path instead of scattered tutorials: each level builds on the ones before.",
+        "Real muscle memory: you type every command against a real API server, not a simulation.",
+        "Preparation for work and for the CKA, CKAD and CKS exams, which are hands-on in the same way."
+      ],
+      tips: [
+        "Play the request flow above to see what happens between `kubectl apply` and a running Pod. Every level makes more sense with it in mind.",
+        "Each level links to its quiz. Take it straight after the level, while it is fresh.",
+        "Everything is free: kind runs on your laptop, and Codespaces has a free monthly allowance."
+      ]
+    },
+    quiz: {
+      what: "Scenario questions for every level, written like the problems you meet at work rather than definitions to memorise. You see straight away whether you were right, and why every option is right or wrong.",
+      steps: [
+        "Choose a level in Practise, or Exam for 20 random questions from every level.",
+        "Answer a question. The correct option turns green, a wrong choice red, and the explanation appears underneath.",
+        "Read the explanation even when you were right; it often covers the edge case.",
+        "Your score for the set is shown at the top. Start again with new order clears your answers and reshuffles the questions and options."
+      ],
+      uses: [
+        "Check that a level really sank in before moving on.",
+        "Revise before an interview or a certification exam with Exam mode.",
+        "Find gaps: every set ends with a link to the level that teaches it, so a low score tells you exactly what to redo."
+      ],
+      tips: [
+        "Options are shuffled each time, so remembering positions will not help.",
+        "If two answers look right, look for the one that is true in every case, not just usually."
+      ]
+    },
+    xray: {
+      what: "A line-by-line explanation of Kubernetes YAML. Pick a sample manifest, or paste your own: every field is explained, risky values are flagged, and missing essentials are listed. It runs entirely in your browser from a built-in dictionary of Kubernetes fields; nothing is uploaded.",
+      steps: [
+        "Choose Deployment, Service or NetworkPolicy to study an annotated example, or Your YAML to use your own.",
+        "For your own YAML, paste one or more manifests (separated by `---`) and choose Explain, or press Ctrl+Enter. Load an example shows the format.",
+        "Select any line on the left. The panel on the right explains it, with an amber warning when the value is risky.",
+        "Read Worth a look: settings that are missing rather than wrong, such as requests, limits, probes and a securityContext."
+      ],
+      uses: [
+        "Understand a manifest someone else wrote before you apply it or approve it in a review.",
+        "Learn what each field does by reading real files instead of reference docs.",
+        "Catch common mistakes early: `:latest` images, privileged containers, wildcard RBAC, no memory limit."
+      ],
+      tips: [
+        "Lines with an amber edge carry a warning; grey lines are fields the dictionary does not know. For those, the note gives the `kubectl explain` command that describes them.",
+        "It explains structure and values; it does not validate against your cluster. Use `kubectl apply --dry-run=server -f file.yaml` for that.",
+        "Never paste real Secrets into any website, including this one."
+      ]
+    },
+    doctor: {
+      what: "A field guide to the states you see in `kubectl get pods` and the errors Services and the API return. For each symptom: what it means, the usual causes, the commands that confirm which cause it is, and the level that teaches it.",
+      steps: [
+        "Run `kubectl get pods` (or reproduce the error) and note the STATUS or message.",
+        "Pick the matching symptom.",
+        "Run the commands under Confirm with, replacing names in angle brackets with yours. Compare what you see with the likely causes.",
+        "Fix the cause, then follow the link to the level if you want to practise it properly."
+      ],
+      uses: [
+        "A calm checklist during an incident, when it is easy to guess instead of look.",
+        "A map from symptom to concept: Pending is about scheduling, CrashLoopBackOff about the app or its config, no endpoints about labels."
+      ],
+      tips: [
+        "Start every investigation with `kubectl describe` and read the Events at the bottom.",
+        "Several symptoms are also playground scenarios on the Path page, where you can try the fix safely."
+      ]
+    },
+    cheats: {
+      what: "The kubectl commands you use most, grouped by task, with what each one is for. Fill in your own names once and every command is ready to copy and run.",
+      steps: [
+        "Search by what you want to do or the resource involved, for example rollout, logs or node.",
+        "Open Fill in your own names and type your namespace, Pod, Deployment and so on. Filled values turn blue in every command; blanks stay as `<placeholders>`.",
+        "Choose Copy to put the finished command on your clipboard, then paste it into your terminal.",
+        "Choose Try, where shown, to run the command in the playground and see real-looking output without a cluster."
+      ],
+      uses: [
+        "Stop retyping long commands and flags from memory.",
+        "Learn the commands that matter in a sensible order: inspect, debug, change, roll out, secure, maintain nodes.",
+        "Build exam speed: the CKA and CKAD reward knowing exactly which command to reach for."
+      ],
+      tips: [
+        "Your filled-in names are remembered in this browser only.",
+        "Press Ctrl+K (⌘K on a Mac) or `/` anywhere on the site to jump between pages, levels and scenarios."
+      ]
+    }
+  },
+
   // Pod doctor: symptom -> likely causes -> commands.
   doctor: [
     { status: "Pending", meaning: "No node can take the Pod yet.",

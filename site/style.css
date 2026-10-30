@@ -55,7 +55,7 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: 64px; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 96px; }
 body {
   margin: 0;
   background: var(--bg);
@@ -261,6 +261,7 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 .xray-review { margin: 6px 0 0; padding-left: 20px; font-size: .9rem; color: var(--muted); }
 .xray-review li { margin: 4px 0; }
 .strong { font-weight: 600; margin-bottom: 0; }
+.quiz-again { margin: -8px 0 20px; }
 #xray-note pre { margin-bottom: 14px; white-space: pre-wrap; }
 
 /* Pod doctor */
@@ -307,10 +308,11 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 }
 @media (max-width: 720px) {
   body { font-size: 16px; }
-  .top-inner { gap: 10px; }
+  .top-inner { gap: 6px 10px; flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 6px; }
   .gh { display: none; }
-  .brand { font-size: 0; gap: 0; }
-  .top nav { justify-content: flex-start; }
+  .brand { font-size: .95rem; flex: 1; }
+  .top nav { order: 3; flex-basis: 100%; justify-content: space-between; margin: 0 -8px; }
+  .top nav a { padding: 6px 8px; }
   .hero { padding: 48px 0 24px; }
   .flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -323,6 +325,26 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
   #xray-note { position: static; }
   .card { padding: 20px; }
 }
+/* "How to use this" guide on every page */
+.guide { margin: 0 0 24px; background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); box-shadow: var(--shadow); }
+.guide summary {
+  cursor: pointer; padding: 14px 20px; font-weight: 600; font-size: .95rem; color: var(--accent); list-style: none;
+  display: flex; align-items: center; gap: 8px;
+}
+.guide summary::-webkit-details-marker { display: none; }
+.guide summary::before { content: "›"; display: inline-block; transition: transform .2s var(--ease); font-size: 1.1rem; line-height: 1; }
+.guide[open] summary::before { transform: rotate(90deg); }
+.guide-body { padding: 0 20px 18px; font-size: .95rem; }
+.guide-body > p { margin: 0 0 14px; max-width: 760px; }
+.guide-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 8px 32px; }
+.guide h3 { font-size: .82rem; color: var(--muted); font-weight: 600; margin: 4px 0 6px; letter-spacing: 0; }
+.guide ol, .guide ul { margin: 0 0 12px; padding-left: 20px; }
+.guide li { margin: 5px 0; }
+@media (max-width: 720px) {
+  .guide-cols { grid-template-columns: 1fr; }
+  .guide-body { padding: 0 16px 16px; }
+}
+
 /* Search button and command palette */
 .kbd-btn {
   display: inline-flex; align-items: center; gap: 10px; font: inherit; font-size: .8rem; color: var(--muted);

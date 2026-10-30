@@ -50,6 +50,7 @@
           </div>
           <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
         </div>
+        <div class="guide-slot" data-guide="playground"></div>
         <div class="pg-scenarios" id="pg-scenarios" role="group" aria-label="Scenario"></div>
         <div class="pg-body">
           <div class="pg-term" id="pg-term">
@@ -97,6 +98,7 @@ cd kubernetes-k8s
       </section>
 
       <h2 class="section-title" id="path-title">Your path</h2>
+      <div class="guide-slot" data-guide="path"></div>
       <div class="stages" id="stages" role="list"></div>
       <div class="progress-row">
         <div class="bar" role="progressbar" aria-label="Levels complete" aria-valuemin="0" aria-valuemax="22" id="bar"><span id="bar-fill"></span></div>
@@ -109,15 +111,18 @@ cd kubernetes-k8s
     <section id="tab-quiz" class="tab" hidden>
       <h2>Quiz</h2>
       <p class="lede">Scenario-based questions for every level, from first Pod to production. You see right or wrong as soon as you answer, with the reasoning, which is where the learning is.</p>
+      <div class="guide-slot" data-guide="quiz"></div>
       <label class="field">Practise
         <select id="quiz-level"></select>
       </label>
-      <div id="quiz"></div>
+      <button type="button" class="pill small-pill quiz-again" id="quiz-again">Start again with new order</button>
+      <div id="quiz-list"></div>
     </section>
 
     <section id="tab-xray" class="tab" hidden>
       <h2>YAML X-ray</h2>
       <p class="lede">Select any line to see what it does and the mistake people make with it. Or paste your own manifest.</p>
+      <div class="guide-slot" data-guide="xray"></div>
       <div class="seg" id="xray-pick" role="tablist" aria-label="Manifest"></div>
       <div class="xray-paste card" id="xray-paste" hidden>
         <label for="xray-input" class="xray-paste-label">Paste a manifest</label>
@@ -138,6 +143,7 @@ cd kubernetes-k8s
     <section id="tab-doctor" class="tab" hidden>
       <h2>Pod doctor</h2>
       <p class="lede">What does <code>kubectl get pods</code> say? Pick the symptom for likely causes, the commands to confirm them, and the level that teaches it.</p>
+      <div class="guide-slot" data-guide="doctor"></div>
       <div id="doctor-list" class="chips"></div>
       <div id="doctor-out"></div>
     </section>
@@ -145,6 +151,7 @@ cd kubernetes-k8s
     <section id="tab-cheats" class="tab" hidden>
       <h2>Cheat sheet</h2>
       <p class="lede">Type your own names once and every command fills in, ready to copy. Commands marked Try run in the playground.</p>
+      <div class="guide-slot" data-guide="cheats"></div>
       <div class="cheat-tools">
         <label class="field">Search
           <input id="cheat-q" type="search" placeholder="rollout, logs, node..." autocomplete="off">

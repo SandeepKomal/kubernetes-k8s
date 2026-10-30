@@ -45,9 +45,11 @@
   // --- tabs ----------------------------------------------------------------
 
   const tabs = ["path", "quiz", "xray", "doctor", "cheats"];
+  let current = null;
   function show() {
     const want = location.hash.slice(1);
     const tab = tabs.includes(want) ? want : "path";
+    current = tab;
     if (tab !== "path" && flowTimer) stopFlow();
     for (const t of tabs) $("#tab-" + t).hidden = t !== tab;
     document.querySelectorAll("nav a").forEach((a) => {
@@ -55,7 +57,13 @@
       else a.removeAttribute("aria-current");
     });
   }
-  window.addEventListener("hashchange", show);
+  // A new page starts at the top. Code that switches tab itself (the
+  // palette) calls show() first and scrolls where it wants.
+  window.addEventListener("hashchange", () => {
+    const before = current;
+    show();
+    if (current !== before) window.scrollTo(0, 0);
+  });
 
   // --- path ----------------------------------------------------------------
 
@@ -197,7 +205,7 @@
     const items = exam
       ? shuffle(Q.levels.flatMap((l) => questionsFor(l.id))).slice(0, EXAM_SIZE)
       : questionsFor(mode);
-    const out = $("#quiz");
+    const out = $("#quiz-list");
     out.replaceChildren();
     let answered = 0;
     let correct = 0;
@@ -408,12 +416,39 @@
     }
   }
 
+  // --- page guides -------------------------------------------------------------
+
+  // Each page explains itself: what it is, how to use it, what it is for.
+  // Open on the inner pages, closed on the busy landing page; whatever the
+  // reader chooses afterwards is remembered per page.
+  const GUIDES_CLOSED_BY_DEFAULT = ["playground", "path"];
+  function renderGuides() {
+    const state = store.get("guides", {});
+    document.querySelectorAll(".guide-slot").forEach((slot) => {
+      const key = slot.dataset.guide;
+      const g = Q.guides[key];
+      if (!g) return;
+      const box = h("details.guide", { open: state[key] ?? !GUIDES_CLOSED_BY_DEFAULT.includes(key) },
+        h("summary", null, "How to use this"),
+        h("div.guide-body", null,
+          h("p", null, ...rich(g.what)),
+          h("div.guide-cols", null,
+            h("div", null, h("h3", null, "How to use it"), h("ol", null, g.steps.map((t) => h("li", null, ...rich(t))))),
+            h("div", null,
+              h("h3", null, "What it is for"), h("ul", null, g.uses.map((t) => h("li", null, ...rich(t)))),
+              h("h3", null, "Tips"), h("ul", null, g.tips.map((t) => h("li", null, ...rich(t))))))));
+      box.addEventListener("toggle", () => store.set("guides", { ...store.get("guides", {}), [key]: box.open }));
+      slot.replaceChildren(box);
+    });
+  }
+
   // --- init ----------------------------------------------------------------
 
   $("#quiz-level").append(h("option", { value: "exam" }, `Exam: ${EXAM_SIZE} random questions from every level`));
   for (const lv of Q.levels) $("#quiz-level").append(h("option", { value: lv.id }, `${lv.id} · ${lv.topic} (${questionsFor(lv.id).length} questions)`));
   $("#quiz-level").value = "00";
   $("#quiz-level").addEventListener("change", renderQuiz);
+  $("#quiz-again").addEventListener("click", () => { renderQuiz(); $("#quiz-list").scrollIntoView({ block: "start" }); });
   Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => renderXray(i) }, m.name)));
   $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => { renderXray(Q.xray.length); $("#xray-input").focus(); } }, "Your YAML"));
   $("#xray-go").addEventListener("click", explainPasted);
@@ -513,6 +548,7 @@
     }
   });
 
+  renderGuides();
   renderFlow();
   renderPath();
   renderQuiz();
