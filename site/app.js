@@ -335,11 +335,85 @@
   Q.doctor.forEach((d, i) => $("#doctor-list").append(h("button.chip", { type: "button", onclick: () => renderDoctor(i) }, d.status)));
   $("#cheat-q").addEventListener("input", renderCheats);
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "/" && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+  // --- command palette (Ctrl+K, Cmd+K or /) --------------------------------
+
+  const palette = $("#palette");
+  const paletteInput = $("#palette-input");
+  const paletteList = $("#palette-list");
+  let paletteItems = [];
+  let paletteActive = 0;
+
+  function goTab(tab, then) {
+    location.hash = tab;
+    show();
+    if (then) then();
+  }
+  const ACTIONS = [
+    { label: "Playground: fix a broken Pod", kind: "Section", run: () => goTab("path", () => { $("#pg-input").focus(); $(".playground").scrollIntoView(); }) },
+    { label: "What happens on kubectl apply", kind: "Section", run: () => goTab("path", () => $(".flow-block").scrollIntoView()) },
+    { label: "Your path", kind: "Section", run: () => goTab("path", () => $("#path-title").scrollIntoView()) },
+    { label: "Exam: random questions from every level", kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = "exam"; renderQuiz(); }) },
+    { label: "YAML X-ray", kind: "Section", run: () => goTab("xray") },
+    { label: "Pod doctor", kind: "Section", run: () => goTab("doctor") },
+    { label: "Cheat sheet", kind: "Section", run: () => goTab("cheats", () => $("#cheat-q").focus()) },
+    ...Q.levels.map((lv) => ({ label: `${lv.id} · ${lv.title}`, hint: lv.topic, kind: "Level", run: () => window.open(levelUrl(lv), "_blank", "noopener") })),
+    ...Q.levels.map((lv) => ({ label: `Quiz: ${lv.id} · ${lv.topic}`, kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = lv.id; renderQuiz(); }) })),
+    ...Q.doctor.map((d, i) => ({ label: `Pod status: ${d.status}`, kind: "Doctor", run: () => goTab("doctor", () => renderDoctor(i)) }))
+  ];
+
+  function renderPalette() {
+    const words = paletteInput.value.toLowerCase().split(/\s+/).filter(Boolean);
+    paletteItems = ACTIONS.filter((a) => {
+      const text = `${a.label} ${a.hint || ""} ${a.kind}`.toLowerCase();
+      return words.every((w) => text.includes(w));
+    }).slice(0, 8);
+    paletteActive = Math.min(paletteActive, Math.max(0, paletteItems.length - 1));
+    paletteList.replaceChildren(...paletteItems.map((a, i) => h("li", {
+      role: "option", id: "pal-" + i, "aria-selected": String(i === paletteActive),
+      onclick: () => choose(i), onmousemove: () => { if (paletteActive !== i) { paletteActive = i; renderPalette(); } }
+    }, h("span.pal-label", null, a.label), h("span.pal-kind", null, a.kind))));
+    if (!paletteItems.length) paletteList.append(h("li.pal-empty", null, "Nothing matches. Try a topic such as probes or rbac."));
+    paletteInput.setAttribute("aria-activedescendant", paletteItems.length ? "pal-" + paletteActive : "");
+  }
+  function openPalette() {
+    if (palette.open) return;
+    paletteInput.value = "";
+    paletteActive = 0;
+    renderPalette();
+    palette.showModal();
+    paletteInput.focus();
+  }
+  function choose(i) {
+    const action = paletteItems[i];
+    if (!action) return;
+    palette.close();
+    action.run();
+  }
+  paletteInput.addEventListener("input", () => { paletteActive = 0; renderPalette(); });
+  paletteInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      location.hash = "cheats";
-      $("#cheat-q").focus();
+      const n = paletteItems.length;
+      if (n) paletteActive = (paletteActive + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      renderPalette();
+      $("#pal-" + paletteActive)?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      choose(paletteActive);
+    }
+  });
+  palette.addEventListener("click", (e) => { if (e.target === palette) palette.close(); });
+  $("#palette-open").addEventListener("click", openPalette);
+  if (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) $("#palette-key").textContent = "⌘K";
+
+  document.addEventListener("keydown", (e) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+    if ((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      openPalette();
+    } else if (e.key === "/" && !typing) {
+      e.preventDefault();
+      openPalette();
     }
   });
 
