@@ -58,8 +58,9 @@ jobs:
 
       - name: Install kind
         run: |
-          curl -sSLo /usr/local/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/v0.30.0/kind-linux-amd64
-          chmod +x /usr/local/bin/kind
+          curl -sSLo "$RUNNER_TEMP/kind" https://github.com/kubernetes-sigs/kind/releases/download/v0.30.0/kind-linux-amd64
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version
 
       - name: Create the practice cluster
         run: ./quest up
