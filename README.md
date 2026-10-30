@@ -228,7 +228,7 @@ It is published with GitHub Pages at
 
 | Section | Description |
 | --- | --- |
-| Playground | Five simulated incidents (ImagePullBackOff, CrashLoopBackOff, Pending, OOMKilled, a Service with no endpoints) to diagnose and fix with kubectl, beside a live cluster map |
+| Playground | Eleven simulated incidents to diagnose and fix with kubectl, beside a live cluster map: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, Pending, OOMKilled, a node selector, a failing readiness probe, a Service with no endpoints, a NetworkPolicy, RBAC forbidden and a bad rollout |
 | Path | All levels, with progress saved in the browser |
 | Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
 | YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |

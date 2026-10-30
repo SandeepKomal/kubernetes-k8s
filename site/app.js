@@ -362,7 +362,7 @@
   ];
   const fills = store.get("fill", {});
   // Commands the playground can run.
-  const RUNNABLE = /^kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|restart|undo) |scale |set (image|env|resources|selector) )/;
+  const RUNNABLE = /^kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events|networkpolicy|configmaps?|rs)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|history|restart|undo) |scale |set (image|env|resources|selector) |auth can-i (?!--list)|label node )/;
 
   // Split a command into text and placeholder parts, filling in what we know.
   function fillParts(cmd) {

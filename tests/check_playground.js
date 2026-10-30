@@ -97,6 +97,94 @@ assert.match(step(c, "kubectl set selector service menu-svc app=menu"), /selecto
 assert.ok(won(c), "service: fixed by the selector");
 assert.match(step(c, "kubectl get endpoints menu-svc"), /10\.244\.\d+\.\d+:80,10\.244/);
 
+// Missing ConfigMap: CreateContainerConfigError until the right one exists;
+// one without the key the app needs gets it crash-looping instead.
+c = fresh("configmap");
+assert.match(step(c, "kubectl get pods"), /orders-\S+\s+0\/1\s+CreateContainerConfigError/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "orders")), /configmap "orders-config" not found/);
+assert.match(step(c, "kubectl get configmaps"), /order-config/);
+step(c, "kubectl create configmap orders-config --from-literal=OTHER=1");
+assert.match(step(c, "kubectl get pods"), /orders-\S+\s+0\/1\s+CrashLoopBackOff/);
+assert.ok(!won(c), "a ConfigMap without MENU_FILE must not fix it");
+step(c, "kubectl delete configmap orders-config");
+step(c, "kubectl create configmap orders-config --from-literal=MENU_FILE=/etc/menu/menu.json");
+assert.ok(won(c), "configmap: fixed by creating the ConfigMap it references (the next restart reads it)");
+assert.match(step(c, `kubectl exec ${podOf(c, "orders")} -- env`), /MENU_FILE=\/etc\/menu\/menu.json/);
+c = fresh("configmap");
+assert.match(step(c, `kubectl patch deployment orders -p '{"spec":{"template":{"spec":{"containers":[{"name":"orders","envFrom":[{"configMapRef":{"name":"order-config"}}]}]}}}}'`), /patched/);
+assert.ok(won(c), "configmap: also fixed by pointing envFrom at the existing ConfigMap");
+
+// Node selector: no node carries the label until one is labelled.
+c = fresh("nodeselector");
+assert.match(step(c, "kubectl describe pod " + podOf(c, "cache")), /didn't match Pod's node affinity\/selector/);
+assert.match(step(c, "kubectl get nodes --show-labels"), /kubernetes.io\/hostname=worker-1/);
+step(c, "kubectl label node worker-3 disk=hdd");
+assert.ok(!won(c), "the wrong label value must not fix it");
+assert.match(step(c, "kubectl label node worker-3 disk=ssd"), /already has a value/);
+step(c, "kubectl label node worker-3 disk=ssd --overwrite");
+assert.ok(won(c), "nodeselector: fixed by labelling a node");
+assert.match(step(c, "kubectl get pods -o wide"), /cache-\S+\s+1\/1\s+Running.*worker-3/);
+
+// Readiness probe: Running but not Ready, no endpoints; removing the probe is not the fix.
+c = fresh("probe");
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+Running/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "menu")), /Readiness probe failed: HTTP probe failed with statuscode: 404/);
+assert.match(step(c, "kubectl logs deployment/menu"), /GET \/ready HTTP\/1.1" 404/);
+assert.match(step(c, "kubectl get endpoints menu-svc"), /<none>/);
+assert.match(step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","readinessProbe":null}]}}}}'`), /nothing then checks/);
+assert.ok(!won(c), "removing the probe must not count");
+c = fresh("probe");
+assert.match(step(c, "kubectl patch deployment menu -p 'not json'"), /unable to parse/);
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","readinessProbe":{"httpGet":{"path":"/"}}}]}}}}'`);
+assert.ok(won(c), "probe: fixed by a path the app serves");
+
+// NetworkPolicy: blocked until the allow rule names the web Pods; deleting the deny is not the fix.
+c = fresh("netpol");
+const webPod = () => podOf(c, "web");
+assert.match(step(c, `kubectl exec ${webPod()} -- wget -qO- -T 2 http://api-svc:8080`), /download timed out/);
+assert.match(step(c, `kubectl exec ${webPod()} -- curl -s --max-time 2 api-svc:8080`), /curl: \(28\)/);
+assert.match(step(c, "kubectl describe networkpolicy allow-frontend-to-api"), /PodSelector: app=frontend/);
+assert.match(step(c, "kubectl get networkpolicy"), /default-deny-ingress\s+<none>/);
+step(c, "kubectl label pod " + webPod() + " app=frontend");
+assert.ok(!won(c), "relabelling Pods is refused");
+assert.match(step(c, "kubectl delete networkpolicy default-deny-ingress"), /open again/);
+assert.ok(c.reach(c.podsOf("web")[0], "api-svc", 8080).ok === false, "the allow policy still isolates api");
+c = fresh("netpol");
+step(c, `kubectl patch networkpolicy allow-frontend-to-api -p '{"spec":{"ingress":[{"from":[{"podSelector":{"matchLabels":{"app":"web"}}}],"ports":[{"port":8080}]}]}}'`);
+assert.ok(won(c), "netpol: fixed by allowing app=web");
+assert.match(step(c, `kubectl exec ${webPod()} -- wget -qO- -T 2 http://api-svc:8080`), /api: ok/);
+assert.match(step(c, `kubectl exec ${webPod()} -- wget -qO- -T 2 http://api-svc:80`), /Connection refused/);
+
+// RBAC: forbidden until the binding names the right ServiceAccount; cluster-admin is not the fix.
+c = fresh("rbac");
+const sa = "system:serviceaccount:kitchen:reporter";
+assert.match(step(c, "kubectl logs deployment/reporter"), /pods is forbidden/);
+assert.strictEqual(step(c, `kubectl auth can-i list pods --as=${sa}`), "no");
+assert.strictEqual(step(c, "kubectl auth can-i delete pods"), "yes");
+assert.match(step(c, "kubectl describe rolebinding read-pods"), /ServiceAccount\s+reporter-sa/);
+assert.match(step(c, "kubectl describe role pod-reader"), /\[get list watch\]/);
+assert.match(step(c, `kubectl create clusterrolebinding reporter-admin --clusterrole=cluster-admin --serviceaccount=kitchen:reporter`), /Least privilege/);
+assert.ok(!won(c), "cluster-admin must not count");
+step(c, "kubectl delete clusterrolebinding reporter-admin");
+step(c, "kubectl set subject rolebinding read-pods --serviceaccount=kitchen:reporter");
+assert.ok(won(c), "rbac: fixed by binding the right ServiceAccount");
+assert.match(step(c, "kubectl logs deployment/reporter"), /report sent/);
+c = fresh("rbac");
+step(c, "kubectl create rolebinding reporter-read --role=pod-reader --serviceaccount=kitchen:reporter");
+assert.ok(won(c), "rbac: also fixed by a new RoleBinding");
+
+// Bad rollout: old Pods keep serving; undo returns to the last good version.
+c = fresh("rollout");
+assert.match(step(c, "kubectl rollout status deployment/web"), /Waiting for deployment "web" rollout to finish: 1 out of 2/);
+assert.match(step(c, "kubectl get rs"), /web-\S+\s+2\s+1\s+0/);
+assert.match(step(c, "kubectl rollout history deployment/web"), /2\s+image nginx:2.0/);
+assert.strictEqual(c.pods.filter((x) => x.owner === "web" && x.ready).length, 2, "old Pods keep serving");
+step(c, "kubectl rollout restart deployment/web");
+assert.ok(!won(c), "a restart keeps the broken image");
+step(c, "kubectl rollout undo deployment/web");
+assert.ok(won(c), "rollout: fixed by undo");
+assert.strictEqual(c.podsOf("web").length, 2, "only the new ReplicaSet's Pods remain");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
