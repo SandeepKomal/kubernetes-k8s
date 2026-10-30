@@ -46,6 +46,9 @@
     location.reload();
   }
 
+  // Open a scenario in the playground, from anywhere on the site.
+  function practise(id) { location.hash = "path"; show(); window.KQPlayground.load(id); }
+
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   $("#gh-link").href = Q.repo;
   $("#cta-start").href = Q.repo + "#installation";
@@ -53,7 +56,7 @@
 
   // --- tabs ----------------------------------------------------------------
 
-  const tabs = ["path", "quiz", "xray", "doctor", "cheats"];
+  const tabs = ["path", "quiz", "xray", "doctor", "cheats", "arch"];
   let current = null;
   function show() {
     const [want, sub] = location.hash.slice(1).split("/");
@@ -424,7 +427,7 @@
       h("pre", null, h("code", null, d.commands.join("\n"))),
       practise.length ? h("div.doctor-practise", null, h("span.muted.small", null, "Try the fix in the playground:"),
         practise.map((id) => h("button.chip", {
-          type: "button", onclick: () => { location.hash = "path"; show(); window.KQPlayground.load(id); }
+          type: "button", onclick: () => practise(id)
         }, titles[id]))) : null,
       h("p.note", null, "Practise it on a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))
     ));
@@ -592,6 +595,7 @@
     { label: "YAML X-ray", kind: "Section", run: () => goTab("xray") },
     { label: "Troubleshooting reference", kind: "Section", run: () => goTab("doctor") },
     { label: "Cheat sheet", kind: "Section", run: () => goTab("cheats", () => $("#cheat-q").focus()) },
+    { label: "Kubernetes architecture: every component explained", kind: "Section", run: () => goTab("arch") },
     ...Q.levels.map((lv) => ({ label: `${lv.id} · ${lv.title}`, hint: lv.topic, kind: "Level", run: () => window.open(levelUrl(lv), "_blank", "noopener") })),
     ...Q.levels.map((lv) => ({ label: `Quiz: ${lv.id} · ${lv.topic}`, kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = lv.id; renderQuiz(); }) })),
     ...Q.doctor.map((d, i) => ({ label: `Troubleshoot: ${d.status}`, kind: "Reference", run: () => goTab("doctor", () => renderDoctor(i)) }))
@@ -655,6 +659,9 @@
       openPalette();
     }
   });
+
+  // Shared with architecture.js, which loads after this script.
+  window.KQUI = { h, rich, practise };
 
   renderGuides();
   renderFlow();
