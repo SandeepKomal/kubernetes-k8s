@@ -113,11 +113,40 @@
     return out;
   }
 
+  // What kubectl api-resources lists for the kinds this playground knows.
+  const API_RESOURCES = [
+    ["configmaps", "cm", "v1", "true", "ConfigMap"], ["endpoints", "ep", "v1", "true", "Endpoints"], ["events", "ev", "v1", "true", "Event"],
+    ["namespaces", "ns", "v1", "false", "Namespace"], ["nodes", "no", "v1", "false", "Node"],
+    ["persistentvolumeclaims", "pvc", "v1", "true", "PersistentVolumeClaim"], ["persistentvolumes", "pv", "v1", "false", "PersistentVolume"],
+    ["pods", "po", "v1", "true", "Pod"], ["resourcequotas", "quota", "v1", "true", "ResourceQuota"], ["secrets", "", "v1", "true", "Secret"],
+    ["serviceaccounts", "sa", "v1", "true", "ServiceAccount"], ["services", "svc", "v1", "true", "Service"],
+    ["validatingadmissionpolicies", "", "admissionregistration.k8s.io/v1", "false", "ValidatingAdmissionPolicy"],
+    ["validatingadmissionpolicybindings", "", "admissionregistration.k8s.io/v1", "false", "ValidatingAdmissionPolicyBinding"],
+    ["daemonsets", "ds", "apps/v1", "true", "DaemonSet"], ["deployments", "deploy", "apps/v1", "true", "Deployment"],
+    ["replicasets", "rs", "apps/v1", "true", "ReplicaSet"], ["statefulsets", "sts", "apps/v1", "true", "StatefulSet"],
+    ["horizontalpodautoscalers", "hpa", "autoscaling/v2", "true", "HorizontalPodAutoscaler"],
+    ["cronjobs", "cj", "batch/v1", "true", "CronJob"], ["jobs", "", "batch/v1", "true", "Job"],
+    ["certificatesigningrequests", "csr", "certificates.k8s.io/v1", "false", "CertificateSigningRequest"],
+    ["endpointslices", "", "discovery.k8s.io/v1", "true", "EndpointSlice"],
+    ["gatewayclasses", "gc", "gateway.networking.k8s.io/v1", "false", "GatewayClass"], ["gateways", "gtw", "gateway.networking.k8s.io/v1", "true", "Gateway"],
+    ["httproutes", "", "gateway.networking.k8s.io/v1", "true", "HTTPRoute"],
+    ["ingressclasses", "", "networking.k8s.io/v1", "false", "IngressClass"], ["ingresses", "ing", "networking.k8s.io/v1", "true", "Ingress"],
+    ["networkpolicies", "netpol", "networking.k8s.io/v1", "true", "NetworkPolicy"],
+    ["poddisruptionbudgets", "pdb", "policy/v1", "true", "PodDisruptionBudget"],
+    ["clusterrolebindings", "", "rbac.authorization.k8s.io/v1", "false", "ClusterRoleBinding"], ["clusterroles", "", "rbac.authorization.k8s.io/v1", "false", "ClusterRole"],
+    ["rolebindings", "", "rbac.authorization.k8s.io/v1", "true", "RoleBinding"], ["roles", "", "rbac.authorization.k8s.io/v1", "true", "Role"],
+    ["priorityclasses", "pc", "scheduling.k8s.io/v1", "false", "PriorityClass"], ["storageclasses", "sc", "storage.k8s.io/v1", "false", "StorageClass"],
+    ["verticalpodautoscalers", "vpa", "autoscaling.k8s.io/v1", "true", "VerticalPodAutoscaler"]
+  ];
+  // While kubectl get all prints a kind, its names carry the type: pod/web-...
+  let typePrefix = "";
+
   const KINDS = {
     po: "pods", pod: "pods", pods: "pods",
     deploy: "deployments", deployment: "deployments", deployments: "deployments",
     svc: "services", service: "services", services: "services",
     ep: "endpoints", endpoints: "endpoints",
+    endpointslice: "endpointslices", endpointslices: "endpointslices",
     no: "nodes", node: "nodes", nodes: "nodes",
     ev: "events", event: "events", events: "events",
     cm: "configmaps", configmap: "configmaps", configmaps: "configmaps",
@@ -2263,6 +2292,8 @@
     "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
     "kubeadm certs check-expiration | renew all     openssl x509 -in <crt> -noout -enddate     mv | cp <files> <dest>     export KUBECONFIG=<file>",
     "kubectl create secret tls <name> --cert=<file> --key=<file>     curl -v https://<host>/  (-k skips the check)",
+    "kubectl get all [-l app=<name>]     kubectl get endpointslices     kubectl api-resources     kubectl wait --for=condition=Ready pod -l app=<name>",
+    "kubectl logs -l app=<name> --tail=N     kubectl autoscale deployment/<name> --min=N --max=N     kubectl auth can-i --list     a; b runs both",
     "kubectl get sts | describe sts <name>     kubectl get priorityclass     kubectl create priorityclass <name> --value=N",
     "kubectl rollout pause | resume deployment/<name>     kubectl get nodes -o wide     curl http://<node-ip>:<nodePort>/",
     "kubectl get ds | describe ds <name>     docker buildx imagetools inspect <image>     curl http://localhost:5000/v2/<repo>/tags/list",
@@ -2449,7 +2480,7 @@
     if (["kubeadm", "apt-get", "apt", "apt-mark", "apt-cache", "systemctl", "journalctl"].includes(cmd)) {
       if (c.kadm) return kubeadmTools(c, words, say);
       if (cmd === "systemctl" || cmd === "journalctl") return say(`You are on the control-plane node. For a worker's kubelet: ssh <node> sudo ${cmd} ...`, "dim");
-      return say(`${cmd}: the kubeadm upgrade scenario simulates this; here nothing needs it.`, "dim");
+      return say(`${cmd}: the kubeadm upgrade scenario simulates this; here nothing needs it.`, "na");
     }
     if (cmd === "trivy") return trivy(words, say);
     if (cmd === "docker" || cmd === "crane") {
@@ -2890,7 +2921,7 @@
   function helm(c, words, say, opt) {
     const h = c.helm;
     const sub = words[1];
-    if (!h) return say("Error: no Helm releases in this scenario", "dim");
+    if (!h) return say("Error: no Helm releases in this scenario", "na");
     const name = words[2];
     const valuesYaml = (v) => (v.image && v.image.tag ? ["image:", `  tag: "${v.image.tag}"`] : ["{}"]);
     const latest = () => h.revisions[h.revisions.length - 1];
@@ -2960,7 +2991,10 @@
       c.currentNs = flags.namespace || flags.n;
       return say('Context "kind-k8s-quest" modified.');
     }
-    if (sub === "use-context") return say(`error: no context exists with the name: "${args[2] || ""}" (kubectl config get-contexts lists them)`, "warn");
+    if (sub === "use-context") {
+      if (args[2] === "kind-k8s-quest") return say('Switched to context "kind-k8s-quest".');
+      return say(`error: no context exists with the name: "${args[2] || ""}" (kubectl config get-contexts lists them)`, "warn");
+    }
     return say("Try: kubectl config get-contexts, current-context, view --minify, set-context --current --namespace=<ns>", "dim");
   }
 
@@ -3073,6 +3107,8 @@
 
   // Runs one command line against a cluster. Returns [text, class] lines.
   function kubectl(c, line) {
+    // a; b: run each in turn (outside quotes, where ; could be data).
+    if (/;\s/.test(line) && !/['"]/.test(line)) return line.split(/\s*;\s+/).filter(Boolean).flatMap((part) => kubectl(c, part));
     // a && b: run in order, stop at the first error.
     if (/\s&&\s/.test(line)) {
       const res = [];
@@ -3093,7 +3129,7 @@
     }
     const authErr = /^kubectl\b/.test(line.trim()) && c.authError(/--kubeconfig[= ]\/etc\/kubernetes\/admin\.conf/.test(line));
     if (authErr) { say(authErr, "warn"); return out; }
-    const table = (rows) => table3(say, rows);
+    const table = (rows) => table3(say, typePrefix ? rows.map((r, i) => (i ? [typePrefix + r[0], ...r.slice(1)] : r)) : rows);
     const all = tokenize(line);
     const dash = all.indexOf("--");
     const words = dash < 0 ? all : all.slice(0, dash);
@@ -3164,6 +3200,8 @@
 
     const ipOf = (p) => `10.244.${NODES.indexOf(p.node) + 1}.${10 + c.pods.indexOf(p)}`;
     const labelsOf = (p) => Object.entries(p.labels).map(([k, v]) => `${k}=${v}`).join(",") + (p.hash ? `,pod-template-hash=${p.hash}` : "");
+    // -l on objects other than Pods: app=<name> plus any extra labels.
+    const selected = (labels) => !flags.l || String(flags.l).split(",").every((pair) => { const [k, v] = pair.split("="); return labels[k] === v; });
     const matches = (p) => {
       if (!flags.l) return true;
       return String(flags.l).split(",").every((pair) => {
@@ -3232,6 +3270,22 @@
     }
 
     if (verb === "get") {
+      if (/^(jsonpath|go-template|custom-columns)/.test(flags.o || "")) return say("This playground prints tables, -o wide and -o yaml; jsonpath and templates need a real cluster.", "na"), out;
+      if (args[1] === "all") {
+        const sel = flags.l ? ` -l ${flags.l}` : "";
+        const kinds = [["pods", "pod/"], ["services", "service/"], ["deployments", "deployment.apps/"], ["replicasets", "replicaset.apps/"]];
+        for (const [k, prefix] of kinds) {
+          if (k === "services" && flags.l) continue; // these Services carry no labels
+          typePrefix = prefix;
+          let lines;
+          try { lines = kubectl(c, `kubectl get ${k}${sel}`); } finally { typePrefix = ""; }
+          if (lines.some(([t]) => t.startsWith("No resources"))) continue;
+          if (out.length) say("");
+          out.push(...lines);
+        }
+        if (!out.length) say(`No resources found in ${NS} namespace.`);
+        return out;
+      }
       const { kind, name } = target(null);
       if (!kind) return say('error: say what to get, for example "kubectl get pods"', "warn"), out;
       if (ns !== NS && !flags["all-namespaces"] && !["services", "nodes", "namespaces", "csrs", "storageclasses", "ingressclasses", "gatewayclasses", "pvs", "clusterroles", "clusterrolebindings"].includes(kind)) {
@@ -3272,8 +3326,9 @@
         return out;
       }
       if (kind === "deployments") {
-        const deps = c.deployments.filter((d) => !name || d.name === name);
+        const deps = c.deployments.filter((d) => (!name || d.name === name) && selected({ app: d.name, ...d.labels }));
         if (name && !deps.length) return notFound("deployments", name), out;
+        if (!deps.length) return say(`No resources found in ${NS} namespace.`), out;
         if (name && flags.o === "yaml") {
           const d = deps[0];
           ["apiVersion: apps/v1", "kind: Deployment", "metadata:", `  name: ${d.name}`, `  namespace: ${NS}`, "spec:",
@@ -3298,6 +3353,18 @@
         table([everywhere ? ["NAMESPACE", ...head] : head, ...svcs.map((s) => {
           const row = [s.name, s.type || "ClusterIP", s.ip, s.type === "LoadBalancer" ? "<pending>" : "<none>", s.nodePort ? `${s.port}:${s.nodePort}/TCP` : `${s.port}/TCP`, age(nowMs - s.created)];
           return everywhere ? [s.ns || NS, ...row] : row;
+        })]);
+        return out;
+      }
+      if (kind === "endpointslices") {
+        const want = /kubernetes\.io\/service-name=([\w.-]+)/.exec(flags.l || "");
+        const svcs = c.services.filter((s) => !s.static && (!want || s.name === want[1]) && (!name || name.startsWith(`${s.name}-`)));
+        if (!svcs.length) return say(`No resources found in ${NS} namespace.`), out;
+        const id = (n) => [...n].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7).toString(36).slice(-5);
+        table([["NAME", "ADDRESSTYPE", "PORTS", "ENDPOINTS", "AGE"], ...svcs.map((s) => {
+          const ips = c.endpointsOf(s.name).map(ipOf);
+          return [`${s.name}-${id(s.name)}`, "IPv4", ips.length ? (s.targetPort === undefined ? s.port : s.targetPort) : "<unset>",
+            ips.length ? ips.slice(0, 3).join(",") + (ips.length > 3 ? ` + ${ips.length - 3} more...` : "") : "<unset>", age(nowMs - s.created)];
         })]);
         return out;
       }
@@ -3515,7 +3582,7 @@
       }
       if (kind === "replicasets") {
         const rows = [];
-        for (const d of c.deployments) {
+        for (const d of c.deployments.filter((x) => selected({ app: x.name, ...x.labels }))) {
           const hashes = [...new Set([...c.podsOf(d.name).map((p) => p.hash), d.hash])];
           for (const hsh of hashes) {
             const pods = c.podsOf(d.name).filter((p) => p.hash === hsh && !p.terminating);
@@ -3535,7 +3602,7 @@
         table([["TYPE", "REASON", "OBJECT", "MESSAGE"], ...rows]);
         return out;
       }
-      return say(`This playground does not simulate "${args[1]}". Type 'help'.`, "dim"), out;
+      return say(`This playground does not simulate "${args[1]}". Type 'help'.`, "na"), out;
     }
 
     if (verb === "describe") {
@@ -3955,10 +4022,27 @@
         table([["  Kind", "Name", "Namespace"], ["  ----", "----", "---------"], ...b.subjects.map((x) => ["  " + x.kind, x.name, x.namespace || ""])]);
         return out;
       }
-      return say(`This playground does not simulate describe ${kind}. Type 'help'.`, "dim"), out;
+      return say(`This playground does not simulate describe ${kind}. Type 'help'.`, "na"), out;
     }
 
     if (verb === "logs") {
+      if (flags.f || flags.follow) {
+        const res = kubectl(c, line.replace(/\s(-f|--follow)(?=\s|$)/, ""));
+        return [...res, ["(following is not simulated; these are the logs so far)", "dim"]];
+      }
+      if (flags.tail !== undefined) {
+        const n = Number(flags.tail);
+        const res = kubectl(c, line.replace(/\s--tail(=|\s)\S+/, ""));
+        return n >= 0 && !flags.l ? res.slice(-n) : res;
+      }
+      if (flags.l && !args[1]) {
+        const pods = c.pods.filter((p) => matches(p) && !p.terminating);
+        if (!pods.length) return say(`No resources found in ${NS} namespace.`), out;
+        const pass = [flags.c && `-c ${flags.c}`, flags.previous && "--previous"].filter(Boolean).join(" ");
+        const n = flags.tail === undefined ? 10 : Number(flags.tail);
+        for (const p of pods.slice(0, 5)) out.push(...kubectl(c, `kubectl logs ${p.name} ${pass}`).slice(-n));
+        return out;
+      }
       let { kind, name } = target("pods");
       if (!name) return say("error: say which Pod, for example: kubectl logs <pod>", "warn"), out;
       if (kind === "deployments") {
@@ -3972,7 +4056,7 @@
           if (!j) return notFound("jobs.batch", name), out;
           name = j.pods[j.pods.length - 1];
           say(`Found ${j.pods.length} pods, using pod/${name}`, "dim");
-        } else return say(`This playground shows logs for Pods, Deployments and Jobs.`, "dim"), out;
+        } else return say(`This playground shows logs for Pods, Deployments and Jobs.`, "na"), out;
       }
       const p = podByName(name);
       if (!p) return notFound("pods", name), out;
@@ -4472,7 +4556,7 @@
         if (c.configMaps[name]) return say(`error: failed to create configmap: configmaps "${name}" already exists`, "warn"), out;
         const data = {};
         for (const kv of many["from-literal"] || []) { const i = kv.indexOf("="); if (i > 0) data[kv.slice(0, i)] = kv.slice(i + 1); }
-        if (many["from-file"]) return say("There are no files here. Use --from-literal=KEY=value.", "dim"), out;
+        if (many["from-file"]) return say("There are no files here. Use --from-literal=KEY=value.", "na"), out;
         c.configMaps[name] = data;
         c.retry = true;
         say(`configmap/${name} created`);
@@ -4510,7 +4594,14 @@
         say(`job.batch/${name} created`);
         return out;
       }
-      return say("This playground creates configmaps, jobs, rolebindings and clusterrolebindings. There are no files to create from.", "dim"), out;
+      if (what === "deployments" && name && flags.image && flags["dry-run"] === "client" && flags.o === "yaml") {
+        ["apiVersion: apps/v1", "kind: Deployment", "metadata:", "  labels:", `    app: ${name}`, `  name: ${name}`, "spec:",
+          `  replicas: ${Number(flags.replicas) || 1}`, "  selector:", "    matchLabels:", `      app: ${name}`, "  strategy: {}", "  template:",
+          "    metadata:", "      labels:", `        app: ${name}`, "    spec:", "      containers:", `      - image: ${flags.image}`,
+          `        name: ${appOf(flags.image).split("/").pop()}`, "        resources: {}", "status: {}"].forEach((l) => say(l));
+        return out;
+      }
+      return say("This playground creates configmaps, secrets, jobs, priorityclasses and role bindings, and prints Deployments with --dry-run=client -o yaml. There are no files to create from.", "na"), out;
     }
 
     if (verb === "certificate") {
@@ -4525,6 +4616,15 @@
 
     if (verb === "auth") {
       if (args[1] !== "can-i") return say("Try: kubectl auth can-i <verb> <resource> [--as=system:serviceaccount:<ns>:<name>]", "dim"), out;
+      if (flags.list) {
+        const verbs = ["get", "list", "watch", "create", "update", "patch", "delete"];
+        const api = { deployments: "deployments.apps", jobs: "jobs.batch" };
+        const rows = ["pods", "deployments", "services", "configmaps", "secrets", "jobs"]
+          .map((r) => [api[r] || r, verbs.filter((v) => c.canI(flags.as, v, r))]).filter(([, v]) => v.length);
+        table([["Resources", "Non-Resource URLs", "Resource Names", "Verbs"], ["selfsubjectreviews.authentication.k8s.io", "[]", "[]", "[create]"],
+          ...rows.map(([r, v]) => [r, "[]", "[]", `[${v.join(" ")}]`])]);
+        return out;
+      }
       const v = args[2];
       const res = KINDS[(args[3] || "").split(".")[0]] || args[3];
       if (!v || !res) return say("error: you must specify two arguments: verb resource", "warn"), out;
@@ -4829,11 +4929,38 @@
         if (!res.ok) say("command terminated with exit code 1", "dim");
         return out;
       }
-      return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./quest start 0", "dim"), out;
+      return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./quest start 0", "na"), out;
     }
-    if (verb === "edit") return say("kubectl edit opens an editor, which this playground does not have. Use kubectl set ... instead.", "dim"), out;
-    if (verb === "apply") return say("There are no files in this playground. Use kubectl set, create, label or patch to change live objects.", "dim"), out;
-    if (verb === "run" || verb === "port-forward") return say(`kubectl ${verb} needs a real cluster. Try it in the course: ./quest start 0`, "dim"), out;
+    if (verb === "wait") {
+      if (!/^condition=\w+$/i.test(flags.for || "")) return say("error: give --for=condition=<name>, for example --for=condition=Ready", "warn"), out;
+      const { kind, name } = target("pods");
+      for (let i = 0; i < 5 && c.dirty; i++) c.settle();
+      if (kind === "deployments") {
+        if (!depByName(name)) return notFound("deployments", name), out;
+        return say(c.deploymentReady(name) ? `deployment.apps/${name} condition met` : `error: timed out waiting for the condition on deployments/${name}`, c.deploymentReady(name) ? "" : "warn"), out;
+      }
+      const pods = c.pods.filter((p) => (name ? p.name === name : matches(p)) && !p.terminating);
+      if (!pods.length) return say("error: no matching resources found", "warn"), out;
+      for (const p of pods) say(p.ready ? `pod/${p.name} condition met` : `error: timed out waiting for the condition on pods/${p.name}`, p.ready ? "" : "warn");
+      return out;
+    }
+    if (verb === "autoscale") {
+      const { kind, name } = target("deployments");
+      if (kind !== "deployments" || !depByName(name)) return name ? notFound("deployments", name) : say("error: kubectl autoscale deployment/<name> --min=N --max=N --cpu-percent=N", "warn"), out;
+      if (!(Number(flags.max) >= 1)) return say("error: --max=MAXPODS is required and must be at least 1", "warn"), out;
+      if (c.hpas.some((x) => x.name === name)) return say(`Error from server (AlreadyExists): horizontalpodautoscalers.autoscaling "${name}" already exists`, "warn"), out;
+      c.hpas.push({ name, target: name, min: Number(flags.min) || 1, max: Number(flags.max), cpu: Number(flags["cpu-percent"]) || 80 });
+      say(`horizontalpodautoscaler.autoscaling/${name} autoscaled`);
+      return out;
+    }
+    if (verb === "api-resources") {
+      const ns = flags.namespaced === undefined ? null : String(flags.namespaced);
+      table([["NAME", "SHORTNAMES", "APIVERSION", "NAMESPACED", "KIND"], ...API_RESOURCES.filter((r) => !ns || r[3] === ns)]);
+      return out;
+    }
+    if (verb === "edit") return say("kubectl edit opens an editor, which this playground does not have. Use kubectl set ... instead.", "na"), out;
+    if (verb === "apply") return say("There are no files in this playground. Use kubectl set, create, label or patch to change live objects.", "na"), out;
+    if (verb === "run" || verb === "port-forward") return say(`kubectl ${verb} needs a real cluster. Try it in the course: ./quest start 0`, "na"), out;
     if (verb === "version" && c.kadm) {
       say(`Client Version: v${c.kadm.pkgs.kubectl}`);
       say("Kustomize Version: v5.7.1");
@@ -4841,11 +4968,33 @@
       return out;
     }
     if (verb === "config" || verb === "cluster-info" || verb === "version") return say(`Simulated cluster "kitchen" on Kubernetes v1.34.0.`, "dim"), out;
-    say(`This playground does not simulate "kubectl ${args.join(" ")}". Type 'help'.`, "dim");
+    say(`This playground does not simulate "kubectl ${args.join(" ")}". Type 'help'.`, "na");
     return out;
   }
 
-  root.KQSim = { SCENARIOS, Cluster, kubectl, tokenize, parseMem };
+  // Fill a reference command's <blanks> from what the open scenario really has,
+  // so a cheat sheet command runs as written. The troubled Pod comes first.
+  function fillBlanks(c, cmd) {
+    const pod = [...c.pods].filter((p) => !p.job).sort((a, b) => a.ready - b.ready)[0];
+    const svc = c.services.find((x) => !x.static) || c.services[0];
+    const dep = c.deployments[0];
+    const file = (ext) => Object.keys(c.files).find((f) => f.endsWith(ext) && !f.includes("staging"));
+    const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0] };
+    const v = {
+      ctx: "kind-k8s-quest", ns: c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
+      container: pod && (pod.owner || pod.name), svc: svc && svc.name, "node-ip": "172.18.0.2", nodePort: svc && svc.nodePort,
+      cj: c.cronjobs[0] && c.cronjobs[0].name, image: pod && pod.spec.image, n: 1, revision: 1, release: c.helm && c.helm.name,
+      chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
+      registry: "registry.kitchen.example", user: "ci", token: "practice-token", sa: "default", "1.x.y": "1.34.1", snapshot: "etcd-0300",
+      "file.crt": file(".crt"), "file.key": file(".key")
+    };
+    return cmd.replace(/(\S*)\s+<name>/g, (m, before) => {
+      const obj = named[before];
+      return `${before} ${obj ? obj.name : before === "priorityclass" ? "critical" : before === "tls" ? "menu-tls" : dep ? dep.name : "web"}`;
+    }).replace(/<([^>]+)>/g, (m, k) => (v[k] == null ? m : String(v[k])));
+  }
+
+  root.KQSim = { SCENARIOS, Cluster, kubectl, tokenize, parseMem, fillBlanks };
 
   // --- UI ------------------------------------------------------------------------
 
@@ -5106,11 +5255,14 @@
   window.KQPlayground = {
     scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title })),
     load: (id) => { load(id); reveal(); },
-    // From the cheat sheet: run a ready command, or leave one with blanks to edit.
-    prefill: (cmd, runIt) => {
+    // From the cheat sheet: open the scenario a command needs, if any, fill its
+    // blanks from that cluster and run it; what cannot be filled is left to edit.
+    prefill: (cmd, where) => {
+      if (where && where !== "any" && where !== scenario.id) load(where);
       reveal();
-      if (runIt) run(cmd);
-      else input.value = cmd;
+      const full = fillBlanks(cluster, cmd);
+      if (/<[^>]+>/.test(full)) input.value = full;
+      else run(full);
     }
   };
   load(SCENARIOS[0].id);

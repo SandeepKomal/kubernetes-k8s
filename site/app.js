@@ -459,8 +459,6 @@
     { key: "image", label: "Image", tags: ["image"], example: "nginx:1.27" }
   ];
   const fills = store.get("fill", {});
-  // Commands the playground can run.
-  const RUNNABLE = /^(kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events|networkpolicy|configmaps?|rs|hpa|vpa|csr|gateway,httproute)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|history|restart|undo) |scale |set (image|env|resources|selector) |auth can-i (?!--list)|label node |certificate approve )|helm (list|history|get values|rollback) |(ETCDCTL_API=3 )?etcd(ctl|utl) snapshot )/;
 
   // Split a command into text and placeholder parts, filling in what we know.
   function fillParts(cmd) {
@@ -491,23 +489,27 @@
     const out = $("#cheat-out");
     out.replaceChildren();
     const groups = new Map();
-    for (const [cmd, what, group] of Q.cheats) {
+    for (const [cmd, what, group, where] of Q.cheats) {
       if (q && !(cmd + " " + what + " " + group).toLowerCase().includes(q)) continue;
       if (!groups.has(group)) groups.set(group, []);
-      groups.get(group).push([cmd, what]);
+      groups.get(group).push([cmd, what, where]);
     }
     if (!groups.size) { out.append(h("p.muted", null, "No match. Try a resource name like pod, node or secret.")); return; }
+    const titles = window.KQPlayground ? Object.fromEntries(window.KQPlayground.scenarios.map((x) => [x.id, x.title])) : {};
     for (const [group, rows] of groups) {
-      out.append(h("h3.group", null, group), h("ul.cheats", null, rows.map(([cmd, what]) => {
+      out.append(h("h3.group", null, group), h("ul.cheats", null, rows.map(([cmd, what, where]) => {
         const parts = fillParts(cmd);
         const full = parts.map((p) => p.text).join("");
-        const ready = !parts.some((p) => p.hole);
         const code = h("code", null, parts.map((p) => p.filled ? h("span.filled", null, p.text) : p.hole ? h("span.hole", null, p.text) : p.text));
+        // Where tells which scenario a command needs ("any" for whichever is open);
+        // without one it needs a real cluster, which the free local lab provides.
         const actions = h("div.cheat-actions", null,
-          RUNNABLE.test(cmd) && window.KQPlayground ? h("button.copy", {
-            type: "button", title: "Run it in the playground on the Path page",
-            onclick: () => { location.hash = "path"; show(); window.KQPlayground.prefill(full, ready); }
-          }, "Try") : null,
+          where && window.KQPlayground ? h("button.copy", {
+            type: "button", title: where === "any" ? "Run it in the playground" : `Run it in the playground scenario "${titles[where]}"`,
+            onclick: () => { location.hash = "path"; show(); window.KQPlayground.prefill(full, where); }
+          }, "Try") : h("a.copy.lab", {
+            href: Q.repo + "#installation", title: "Needs a real cluster: run it in the free local lab (./quest up)"
+          }, "Lab"),
           copyButton(full));
         return h("li", null, h("div", null, code, h("span.muted", null, what)), actions);
       })));
