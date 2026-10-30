@@ -1,3 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: checkout-page
+data:
+  index.html: "checkout-api ok\n"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,10 +21,20 @@ spec:
     spec:
       containers:
         - name: api
-          image: nginxinc/nginx-unprivileged:1.27-alpine
+          image: busybox:1.36
+          # busybox's built-in web server, serving the ConfigMap on port 8080.
+          command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
           ports:
             - name: http
               containerPort: 8080
+          volumeMounts:
+            - name: page
+              mountPath: /www
+              readOnly: true
+      volumes:
+        - name: page
+          configMap:
+            name: checkout-page
 ---
 apiVersion: v1
 kind: Service

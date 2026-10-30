@@ -1,17 +1,36 @@
+# Requests, limits and what happens when a container goes over them.
+#
+# The container burns CPU in a loop and then keeps growing its memory use:
+#   - CPU above the limit (200m) is throttled: the loop just runs slower.
+#   - Memory above the limit (256Mi) is not throttled: the container is
+#     OOMKilled and restarted.
+#
+# Try it:
+#   kubectl apply -f resource-pod.yaml
+#   kubectl top pod resources-demo                  # CPU stays near 200m (needs metrics-server)
+#   kubectl get pod resources-demo -w               # RESTARTS climbs
+#   kubectl describe pod resources-demo | grep -A3 'Last State'   # Reason: OOMKilled
 apiVersion: v1
 kind: Pod
 metadata:
   name: resources-demo
 spec:
   containers:
-  - name: resources-demo
-    image: polinux/stress
-    command: ["stress"]
-    args: ["--cpu", "2", "--vm", "1", "--vm-bytes", "1G", "--vm-hang", "1"]
-    resources:
-      requests:
-        cpu: "200m"
-        memory: "200Mi"
-      limits:
-        cpu: "0.2"
-        memory: "1Gi"
+    - name: resources-demo
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          # Busy loop: uses all the CPU it is allowed.
+          while true; do :; done &
+          # Wait, then grow memory by keeping /dev/zero in a pipe buffer.
+          sleep 20
+          tail /dev/zero
+      resources:
+        requests:
+          cpu: 100m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi

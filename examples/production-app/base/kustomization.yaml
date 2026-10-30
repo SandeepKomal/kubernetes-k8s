@@ -21,3 +21,7 @@ configMapGenerator:
   - name: web-api-config
     literals:
       - LOG_LEVEL=info
+  # The page the stand-in app serves.
+  - name: web-api-content
+    literals:
+      - index.html=web-api ok

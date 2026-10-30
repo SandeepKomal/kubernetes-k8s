@@ -33,6 +33,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        # busybox runs as root unless told otherwise; 65534 is "nobody".
+        runAsUser: 65534
         seccompProfile:
           type: RuntimeDefault
       # At most one replica more on any node than on another. Tainted
@@ -52,7 +54,8 @@ spec:
           matchLabelKeys: ["pod-template-hash"]
       containers:
         - name: api
-          image: nginxinc/nginx-unprivileged:1.27-alpine
+          image: busybox:1.36
+          command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
           ports:
             - name: http
               containerPort: 8080
@@ -78,12 +81,13 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # nginx writes temp files and its pid here.
-            - name: tmp
-              mountPath: /tmp
+            - name: page
+              mountPath: /www
+              readOnly: true
       volumes:
-        - name: tmp
-          emptyDir: {}
+        - name: page
+          configMap:
+            name: checkout-page
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

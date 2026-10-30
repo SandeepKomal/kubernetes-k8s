@@ -2,9 +2,10 @@
   <title>Kubernetes Quest</title>
   <rect width="880" height="200" rx="24" fill="#f5f5f7"/>
   <g transform="translate(48 44) scale(1.75)">
-    <rect width="64" height="64" rx="15" fill="#326ce5"/>
-    <path d="M32 13.5 48 22.75v18.5L32 50.5 16 41.25v-18.5z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M24.5 32.5 30 38l10-10.5" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect width="64" height="64" rx="15" fill="#0b1220"/>
+    <path d="M32 10l19 11v22L32 54 13 43V21z" fill="none" stroke="#326ce5" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M23 26l7 6-7 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M33 39h9" fill="none" stroke="#5ec8ff" stroke-width="4" stroke-linecap="round"/>
   </g>
   <text x="196" y="98" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="46" font-weight="700" fill="#1d1d1f" letter-spacing="-1.5">Kubernetes Quest</text>
   <text x="198" y="140" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#6e6e73" letter-spacing="-.3">Learn Kubernetes by fixing it. Free and open source.</text>

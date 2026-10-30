@@ -22,6 +22,8 @@ spec:
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
+        # busybox defaults to root; your own image should set a non-root USER.
+        runAsUser: 65534
         seccompProfile:
           type: RuntimeDefault
       topologySpreadConstraints:
@@ -38,7 +40,9 @@ spec:
       containers:
         - name: web-api
           # Replace with your own image. Pin a version or digest, never latest.
-          image: nginxinc/nginx-unprivileged:1.27-alpine
+          # Stand-in app: busybox's built-in web server on port 8080.
+          image: busybox:1.36
+          command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
           ports:
             - name: http
               containerPort: 8080
@@ -78,8 +82,16 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
+            - name: content
+              mountPath: /www
+              readOnly: true
+            # Most apps need one writable scratch folder when the root
+            # filesystem is read-only.
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: content
+          configMap:
+            name: web-api-content
         - name: tmp
           emptyDir: {}
