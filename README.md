@@ -269,6 +269,7 @@ kubectl -n shop-dev get all,pdb,hpa,networkpolicy
 | [docs/setup.md](docs/setup.md) | Installing Docker, kind and kubectl on macOS, Linux and Windows |
 | [docs/roadmap.md](docs/roadmap.md) | The levels as a five-stage path, and what to learn after the course |
 | [docs/production-checklist.md](docs/production-checklist.md) | Review checklist for workloads going to production |
+| [docs/databases.md](docs/databases.md) | How applications connect to databases, and how databases run on Kubernetes (explanation only) |
 | [docs/](docs/) | Guides on probes, network policies, PodDisruptionBudgets and troubleshooting |
 | [k8s-security.md](k8s-security.md) | Kubernetes security controls, with exercises on kind |
 | [k8s-steps.md](k8s-steps.md) | Creating an EKS cluster with eksctl and a least-privilege CI identity |

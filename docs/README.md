@@ -7,6 +7,7 @@ Reference guides that go with the hands-on [quest levels](../labs/).
 - [Learning roadmap](roadmap.md): the levels in five stages, and what to learn next
 - [Set up your practice cluster](setup.md): Docker, kind and kubectl on macOS, Linux and Windows
 - [Production readiness checklist](production-checklist.md): review any workload before it goes live
+- [Databases and Kubernetes](databases.md): how apps use databases, explained (reading only)
 
 ## Topics
 

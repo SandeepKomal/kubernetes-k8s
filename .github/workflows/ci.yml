@@ -151,8 +151,19 @@ jobs:
           kubectl -n daemonset-demo rollout status daemonset/node-heartbeat --timeout=120s
           test "$(kubectl -n daemonset-demo get ds node-heartbeat -o jsonpath='{.status.numberReady}')" = 1
 
+      - name: The StatefulSet example keeps its data across restarts
+        run: |
+          kubectl create namespace statefulset-demo
+          kubectl -n statefulset-demo apply -f "Kubernetes/k8's_objects/statefulset1/Statefulset.yaml"
+          kubectl -n statefulset-demo rollout status statefulset/records --timeout=180s
+          kubectl -n statefulset-demo delete pod records-0
+          kubectl -n statefulset-demo wait --for=condition=Ready pod/records-0 --timeout=120s
+          # Two lines: one from the first start, one from the restart.
+          test "$(kubectl -n statefulset-demo exec records-0 -- wc -l /data/starts.log | awk '{print $1}')" -ge 2
+
       - name: Cluster state on failure
         if: failure()
         run: |
           kubectl get all,events -n shop-prod || true
+          kubectl get all,pvc,events -n statefulset-demo || true
           kubectl get all,events -n scheduling-demo || true
