@@ -293,7 +293,7 @@
   }
 
   function renderXray(index) {
-    document.querySelectorAll("#xray-pick button").forEach((b, i) => b.setAttribute("aria-selected", String(i === index)));
+    document.querySelectorAll("#xray-pick button").forEach((b) => b.setAttribute("aria-selected", String(Number(b.dataset.index) === index)));
     const paste = index === Q.xray.length;
     $("#xray-paste").hidden = !paste;
     if (paste) {
@@ -477,8 +477,9 @@
   $("#quiz-level").value = "00";
   $("#quiz-level").addEventListener("change", renderQuiz);
   $("#quiz-again").addEventListener("click", () => { renderQuiz(); $("#quiz-list").scrollIntoView({ block: "start" }); });
-  Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => renderXray(i) }, m.name)));
-  $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => { renderXray(Q.xray.length); $("#xray-input").focus(); } }, "Your YAML"));
+  // Pasting your own manifest comes first; the annotated examples follow.
+  $("#xray-pick").append(h("button", { type: "button", role: "tab", "data-index": Q.xray.length, onclick: () => { renderXray(Q.xray.length); $("#xray-input").focus(); } }, "Paste your YAML"));
+  Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", "data-index": i, onclick: () => renderXray(i) }, m.name)));
   $("#xray-go").addEventListener("click", explainPasted);
   $("#xray-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) explainPasted(); });
   $("#xray-example").addEventListener("click", () => {
@@ -582,7 +583,7 @@
   renderFlow();
   renderPath();
   renderQuiz();
-  renderXray(0);
+  renderXray(Q.xray.length);
   show();
   // The Try buttons need the playground, which loads after this script.
   window.addEventListener("DOMContentLoaded", () => {
