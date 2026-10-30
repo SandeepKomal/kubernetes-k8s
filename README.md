@@ -245,7 +245,7 @@ It is published with GitHub Pages at
 | Path | All levels, with progress saved in the browser |
 | Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
 | YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
-| Troubleshoot | A searchable reference of 25 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC, Pod Security, rollouts, HPA and VPA, storage, Jobs, nodes): what each means, the likely causes, the commands that confirm them, and a link to practise the fix. Every entry has its own shareable link |
+| Troubleshoot | A reference of 58 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC and admission, rollouts, autoscaling, storage, Jobs, nodes and the control plane). Paste an error to find its entry; each gives the symptom, the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and the playground scenario to practise it. Every entry and every scenario has its own link (`#fix/<id>`, `#play/<id>`) with a Copy link button, and [`problems.html`](site/problems.html) lists them all as one plain page that reads without JavaScript |
 | Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
 | K8s arch | An interactive diagram of the control plane, worker nodes and add-ons. Point at a component to see what it does and how it fails; click for the commands to inspect it and the playground scenarios that break it; follow a `kubectl apply` through the cluster step by step |
 

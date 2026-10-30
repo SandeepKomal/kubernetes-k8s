@@ -1109,9 +1109,4 @@ assert.match(text(c, "kubectl scale deployment/orders --replicas=99"), /0 to 6/)
 const levelTitles = Object.fromEntries(window.QUEST.levels.map((l) => [l.id, l.title]));
 for (const s of SCENARIOS) assert.strictEqual(s.level.text, `Level ${s.level.id} · ${levelTitles[s.level.id]}`, `${s.id}: level text`);
 
-// The troubleshooting reference links only to scenarios that exist.
-const ids = new Set(SCENARIOS.map((x) => x.id));
-for (const d of window.QUEST.doctor) for (const id of d.scenarios || []) assert.ok(ids.has(id), `doctor "${d.status}" links to unknown scenario ${id}`);
-assert.strictEqual(new Set(window.QUEST.doctor.map((d) => d.status.toLowerCase().replace(/[^a-z0-9]+/g, "-"))).size, window.QUEST.doctor.length, "doctor links must be unique");
-
 console.log(`playground ok: ${SCENARIOS.length} scenarios`);

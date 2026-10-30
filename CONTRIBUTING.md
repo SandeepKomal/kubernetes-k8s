@@ -25,12 +25,21 @@ find reference labs -name '*.yaml' -not -name kind.yaml -not -path '*/app/*' -pr
 python3 tests/check_links.py                # every internal link resolves
 python3 -m unittest discover -s tests      # dashboard server
 node tests/check_site_data.js               # site levels and quiz data
+node tests/check_playground.js              # playground scenarios
+node tests/check_reference.js               # deep links, Troubleshoot entries, problems.html
 ./quest up
 tests/run-level.sh 6      # starts level 6, expects failure, solves it, expects success
 ```
 
 To preview the site, serve the `site/` folder with any static server, for
 example `python3 -m http.server -d site 8000`.
+
+`site/problems.html` is generated from the Troubleshoot entries in
+`site/data.js`. After changing them, run `node tools/build-problems.js`;
+`tests/check_reference.js` fails while the committed page is out of date.
+Each entry needs an `id` (its `#fix/<id>` link: never rename one), a
+symptom, the exact error text, the causes, commands to confirm, a fix, how
+to prevent it, and at least one playground scenario to practise it.
 
 ## Adding a quest level
 

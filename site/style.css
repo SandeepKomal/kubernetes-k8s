@@ -305,13 +305,32 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 .doctor-group .chip { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 14px; font-size: .84rem; line-height: 1.3; text-align: left; }
 .doctor-group .chip[hidden] { display: none; }
 #doctor-out { scroll-margin-top: 72px; }
-#doctor-out h3 { margin-top: 0; font: 600 1.15rem "SF Mono", ui-monospace, Menlo, monospace; letter-spacing: 0; }
-#doctor-out h4 { margin: 20px 0 8px; font-size: .9rem; color: var(--muted); font-weight: 600; letter-spacing: -.01em; }
-#doctor-out ul { margin: 0; padding-left: 20px; }
-#doctor-out .card { min-width: 0; }
-#doctor-out pre { max-width: 100%; white-space: pre; }
 .doctor-practise { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .doctor-practise > span { margin-right: 4px; }
+a.chip:hover { text-decoration: none; }
+
+/* One Troubleshoot entry, in the app and on problems.html */
+.problem { min-width: 0; scroll-margin-top: 72px; }
+.problem h3 { margin: 0; min-width: 0; overflow-wrap: anywhere; font: 600 1.15rem "SF Mono", ui-monospace, Menlo, monospace; letter-spacing: 0; }
+.problem h4 { margin: 20px 0 8px; font-size: .9rem; color: var(--muted); font-weight: 600; letter-spacing: -.01em; }
+.problem p { margin: 0 0 8px; }
+.problem ul, .problem ol { margin: 0; padding-left: 22px; }
+.problem li + li { margin-top: 4px; }
+.problem pre { max-width: 100%; white-space: pre; }
+.problem pre.fix-error { white-space: pre-wrap; overflow-wrap: anywhere; }
+.problem li { overflow-wrap: anywhere; }
+.problem .doctor-practise { margin: 0 0 8px; }
+.fix-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+
+/* problems.html: every entry on one static page */
+.problems h1 { font-size: clamp(2rem, 4.5vw, 3rem); font-weight: 700; margin: 48px 0 14px; }
+.problems-toc { columns: 3 220px; column-gap: 32px; margin-bottom: 24px; font-size: .9rem; }
+.problems-toc div { break-inside: avoid; margin-bottom: 18px; }
+.problems-toc h2 { font-size: .9rem; margin: 0 0 6px; letter-spacing: -.01em; }
+.problems-toc ul { margin: 0; padding-left: 18px; }
+.problems section > h2 { font-size: 1.6rem; margin: 48px 0 16px; }
+.problems .problem + .problem { margin-top: 16px; }
+.problems + .foot .foot-base { border-top: 0; padding-top: 28px; }
 
 /* Cheat sheet */
 .group { font-size: 1rem; color: var(--muted); margin: 28px 0 10px; font-weight: 600; }
@@ -435,8 +454,9 @@ kbd {
 .playground { margin-top: 8px; }
 .pg-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
 .pg-head .section-title { margin-top: 32px; }
+.pg-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; }
 .pg-goal {
-  margin: 0 0 24px; font-size: .9rem; font-weight: 500; padding: 8px 14px; border-radius: 99px;
+  margin: 0; font-size: .9rem; font-weight: 500; padding: 8px 14px; border-radius: 99px;
   background: var(--surface); border: 1px solid var(--hair); color: var(--muted);
 }
 .pg-goal.done { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
@@ -535,7 +555,7 @@ kbd {
 @media (max-width: 720px) {
   .kbd-btn span { display: none; }
   .kbd-btn { padding: 5px; }
-  .pg-goal { margin-bottom: 16px; }
+  .pg-meta { margin-bottom: 16px; }
   .pg-out, .pg-form { font-size: 12px; padding-left: 14px; padding-right: 14px; }
   .pg-scenarios { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -22px 14px; padding: 2px 22px; scroll-snap-type: x proximity; background: none; border: 0; border-radius: 0; box-shadow: none; }
   .pg-group, .pg-group-items { display: contents; }

@@ -4,7 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-  <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 22 hands-on levels, quizzes, a YAML X-ray, a troubleshooting reference and a searchable kubectl cheat sheet.">
+  <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 22 hands-on levels, a browser playground of real incidents, quizzes, a YAML X-ray, a searchable reference of Kubernetes errors and fixes, and a kubectl cheat sheet.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Kubernetes Quest">
+  <meta property="og:title" content="Kubernetes Quest: learn Kubernetes by fixing it">
+  <meta property="og:description" content="Free hands-on Kubernetes course: fix real incidents in a browser playground, and look up any Kubernetes error with its cause, fix and the commands that confirm it.">
+  <meta property="og:url" content="https://sandeepkomal.github.io/kubernetes-k8s/">
+  <link rel="canonical" href="https://sandeepkomal.github.io/kubernetes-k8s/">
   <title>Kubernetes Quest</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
@@ -49,7 +55,9 @@
             <h2 id="pg-title" class="section-title">Fix a broken cluster. Right here.</h2>
             <p class="section-sub">Seventy-three real incidents, real kubectl commands. No install, no account.</p>
           </div>
-          <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
+          <div class="pg-meta">
+            <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
+          </div>
         </div>
         <div class="guide-slot" data-guide="playground"></div>
         <div class="pg-scenarios" id="pg-scenarios" role="group" aria-label="Scenario"></div>
@@ -172,10 +180,10 @@ cd kubernetes-k8s
 
     <section id="tab-doctor" class="tab" hidden>
       <h2>Troubleshooting reference</h2>
-      <p class="lede">What does <code>kubectl get pods</code> say, or what error do you see? Pick the symptom for what it means, the likely causes, the commands that confirm which one it is, and where to practise the fix.</p>
+      <p class="lede">Paste the error you see, or pick a symptom. Each entry gives the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and a scenario to practise it. Also as a <a href="problems.html">single page of every problem</a>.</p>
       <div class="guide-slot" data-guide="doctor"></div>
-      <label class="field">Search symptoms and errors
-        <input id="doctor-q" type="search" placeholder="Pending, 403, OOMKilled, taint, hpa..." autocomplete="off">
+      <label class="field">Search, or paste an error
+        <input id="doctor-q" type="search" placeholder="Back-off restarting failed container, 403, OOMKilled, hpa..." autocomplete="off" spellcheck="false">
       </label>
       <div id="doctor-list" class="doctor-groups"></div>
       <div id="doctor-out"></div>
@@ -248,6 +256,7 @@ cd kubernetes-k8s
   </dialog>
 
   <script src="data.js"></script>
+  <script src="reference.js"></script>
   <script src="quiz-bank.js"></script>
   <script src="app.js"></script>
   <script src="playground.js"></script>

@@ -67,9 +67,12 @@ jobs:
       - name: YAML X-ray explainer
         run: node tests/check_xray.js
 
+      - name: Deep links, Troubleshoot search and problems.html
+        run: node tests/check_reference.js
+
       - name: Site and dashboard scripts parse
         run: |
-          node --check site/app.js && node --check site/data.js && node --check site/quiz-bank.js && node --check site/playground.js && node --check site/xray-explain.js && node --check labs/ui/app.js
+          node --check site/app.js && node --check site/data.js && node --check site/quiz-bank.js && node --check site/playground.js && node --check site/reference.js && node --check site/xray-explain.js && node --check labs/ui/app.js
           python3 -m py_compile labs/ui/server.py
           python3 -c "import json; json.load(open('.devcontainer/devcontainer.json'))"
 
