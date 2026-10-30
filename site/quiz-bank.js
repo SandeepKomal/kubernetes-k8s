@@ -95,11 +95,11 @@ window.QUEST_QUIZ_BANK = {
       why: "In-place Pod resize is beta and on by default in 1.33, and changes go through the `resize` subresource; the rest of the Pod spec stays immutable. Many guides still say a replacement is needed because that was true before this feature." },
     { q: "A Pod uses `image: myapp:1.4` with no `imagePullPolicy`. You re-pushed tag `1.4` with a fix and deleted the Pod. The replacement landed on the same node and still runs the old code. Why?",
       options: [
-        "For any tag other than `latest`, the default `imagePullPolicy` is `IfNotPresent`, so the node reused its cached copy of `myapp:1.4`",
+        "The kubelet always reuses the image from the first Pod that ran on a node, whatever the policy",
         "Registries cache tags for 24 hours",
         "Deleting a Pod does not restart its containers",
-        "The kubelet always reuses the image from the first Pod that ran on a node, whatever the policy"
-      ], answer: 0,
+        "For any tag other than `latest`, the default `imagePullPolicy` is `IfNotPresent`, so the node reused its cached copy of `myapp:1.4`"
+      ], answer: 3,
       why: "With `IfNotPresent` the kubelet only pulls when the image is missing on that node. Tags are mutable, so re-pushing one is unreliable: publish a new tag or pin a digest. `imagePullPolicy: Always` also works, at the cost of a registry check on every start." }
   ],
 
@@ -233,10 +233,10 @@ window.QUEST_QUIZ_BANK = {
     { q: "Lookups of external names like `api.example.com` from Pods are slow, and CoreDNS logs show queries such as `api.example.com.shop.svc.cluster.local`. Why?",
       options: [
         "CoreDNS forwards to the wrong upstream server",
-        "The Pod's `/etc/resolv.conf` has `ndots:5`, so a name with fewer than five dots is first tried with each cluster search domain",
+        "kube-proxy intercepts DNS traffic",
         "The Service is headless",
-        "kube-proxy intercepts DNS traffic"
-      ], answer: 1,
+        "The Pod's `/etc/resolv.conf` has `ndots:5`, so a name with fewer than five dots is first tried with each cluster search domain"
+      ], answer: 3,
       why: "Cluster DNS sets search domains and `ndots:5` so short names like `db` work, which costs external names several failed lookups. A trailing dot (`api.example.com.`) or a lower `ndots` in the Pod's `dnsConfig` avoids them." },
     { q: "A `LoadBalancer` Service must log real client IP addresses, but the app only sees node IPs. Which setting helps, and what is the trade-off?",
       options: [
@@ -452,11 +452,11 @@ window.QUEST_QUIZ_BANK = {
       why: "The requested size is the one claim field you can change after creation; the CSI driver then grows the disk and, usually, the filesystem. Editing the PV object does not resize the real disk." },
     { q: "You delete a PVC and it stays in `Terminating`. A running Pod still uses it. Why?",
       options: [
-        "The `kubernetes.io/pvc-protection` finalizer keeps the claim until no Pod uses it, so storage is not pulled from under a running app",
+        "Only cluster admins may delete claims",
         "The PV's reclaim policy is Retain",
         "The CSI driver has crashed",
-        "Only cluster admins may delete claims"
-      ], answer: 0,
+        "The `kubernetes.io/pvc-protection` finalizer keeps the claim until no Pod uses it, so storage is not pulled from under a running app"
+      ], answer: 3,
       why: "Once the Pod is deleted, the claim finishes deleting by itself. The reclaim policy decides what happens to the volume after the claim is gone, not whether the claim can be deleted." }
   ],
 
@@ -514,11 +514,11 @@ window.QUEST_QUIZ_BANK = {
   "10": [
     { q: "You bind the built-in ClusterRole `view` to a user with a RoleBinding in namespace `team-a`. What can they read?",
       options: [
-        "Everything `view` allows, but only in `team-a`",
+        "Only cluster-scoped resources such as nodes",
         "Everything `view` allows, in every namespace",
         "Nothing; a ClusterRole only works with a ClusterRoleBinding",
-        "Only cluster-scoped resources such as nodes"
-      ], answer: 0,
+        "Everything `view` allows, but only in `team-a`"
+      ], answer: 3,
       why: "A RoleBinding grants a ClusterRole's rules inside its own namespace only, which lets you define common roles once and reuse them per namespace. Only a ClusterRoleBinding grants them cluster-wide." },
     { q: "A user may create Roles and RoleBindings in a namespace but cannot read Secrets. They create a Role that allows `get` on `secrets` and try to bind it to themselves. What happens?",
       options: [
@@ -703,10 +703,10 @@ window.QUEST_QUIZ_BANK = {
     { q: "How does the cluster autoscaler decide to add a node after an HPA scales a Deployment up?",
       options: [
         "It adds a node when average node CPU usage passes 80%",
-        "It reacts to Pods that cannot be scheduled for lack of resources, and adds a node that would fit their requests",
+        "It adds one node for every new replica",
         "The HPA calls the cluster autoscaler directly",
-        "It adds one node for every new replica"
-      ], answer: 1,
+        "It reacts to Pods that cannot be scheduled for lack of resources, and adds a node that would fit their requests"
+      ], answer: 3,
       why: "The node autoscaler looks at unschedulable Pods and their requests, not at usage. That is one more reason requests matter: Pods without them fit anywhere, so they never trigger a scale-up even when nodes are overloaded." }
   ],
 
@@ -805,10 +805,10 @@ window.QUEST_QUIZ_BANK = {
     { q: "Database replicas must find each other through DNS while bootstrapping, before their readiness probes pass. What helps?",
       options: [
         "Remove the readiness probe",
-        "Set `publishNotReadyAddresses: true` on the headless Service, so DNS records exist before the Pods are Ready",
+        "Set `podManagementPolicy: Parallel`",
         "Switch to a ClusterIP Service",
-        "Set `podManagementPolicy: Parallel`"
-      ], answer: 1,
+        "Set `publishNotReadyAddresses: true` on the headless Service, so DNS records exist before the Pods are Ready"
+      ], answer: 3,
       why: "Normally a headless Service only publishes ready endpoints, but peer discovery often has to happen first, and this field exists for that. Removing readiness would also send client traffic to Pods that are not ready." }
   ],
 
