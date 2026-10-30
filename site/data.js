@@ -19,7 +19,39 @@ window.QUEST = {
     { id: "11", slug: "11-network-policies", title: "Everyone can reach the database", topic: "Network policies", stage: "Securing" },
     { id: "12", slug: "12-scheduling", title: "The GPU node", topic: "Scheduling", stage: "Production" },
     { id: "13", slug: "13-autoscaling", title: "Ready for the dinner rush", topic: "Autoscaling and PDBs", stage: "Production" },
-    { id: "14", slug: "14-boss-friday-incident", title: "Boss level: the Friday night incident", topic: "Incident response", stage: "Production" }
+    { id: "14", slug: "14-boss-friday-incident", title: "Boss level: the Friday night incident", topic: "Incident response", stage: "Production" },
+    { id: "15", slug: "15-statefulsets", title: "Every replica is the same, except it is not", topic: "StatefulSets", stage: "Advanced" },
+    { id: "16", slug: "16-init-and-sidecar-containers", title: "The menu never loads", topic: "Init and sidecar containers", stage: "Advanced" },
+    { id: "17", slug: "17-pod-security", title: "Rejected at the door", topic: "Pod Security Standards", stage: "Advanced" },
+    { id: "18", slug: "18-kustomize-overlays", title: "One app, many environments", topic: "Kustomize", stage: "Advanced" },
+    { id: "19", slug: "19-daemonsets", title: "One agent per node", topic: "DaemonSets", stage: "Platform" },
+    { id: "20", slug: "20-custom-resources", title: "Teaching Kubernetes a new word", topic: "CRDs and operators", stage: "Platform" },
+    { id: "21", slug: "21-boss-production-hardening", title: "Final boss: ready for production", topic: "Production hardening", stage: "Platform" }
+  ],
+
+  // The life of `kubectl apply`, step by step, for the interactive flow.
+  flow: [
+    { name: "kubectl", role: "You",
+      text: "Reads your kubeconfig to find the cluster and your credentials, turns the YAML into JSON and sends it to the API server over HTTPS.",
+      try: "kubectl apply -f web.yaml -v=6   # shows the HTTP calls" },
+    { name: "API server", role: "Control plane",
+      text: "The front door. It authenticates you, checks RBAC, runs admission (Pod Security, quotas, webhooks), validates the object and stores it. Nothing else talks to etcd.",
+      try: "kubectl auth can-i create deployments" },
+    { name: "etcd", role: "Control plane",
+      text: "A consistent key-value store holding the desired and current state of every object. Back it up; it is the cluster.",
+      try: "kubectl get deployment web -o yaml   # what is stored" },
+    { name: "Controllers", role: "Control plane",
+      text: "Control loops watch for changes. The Deployment controller creates a ReplicaSet; the ReplicaSet controller creates Pods. Each loop only moves reality toward what you asked for.",
+      try: "kubectl get rs,pods -l app=web" },
+    { name: "Scheduler", role: "Control plane",
+      text: "Picks a node for each new Pod: filters out nodes that cannot run it (resources, taints, affinity), scores the rest, and records the choice.",
+      try: "kubectl describe pod <pod>   # Events: Scheduled" },
+    { name: "kubelet", role: "Every node",
+      text: "The agent on the chosen node. It pulls the image through the container runtime, mounts volumes, starts containers and runs the probes, then reports status back.",
+      try: "kubectl get events --sort-by=.lastTimestamp" },
+    { name: "Pod", role: "Running",
+      text: "Your containers are running with their own IP. Once readiness passes, the Pod's address is added to the Service's EndpointSlices and traffic arrives.",
+      try: "kubectl get endpointslices -l kubernetes.io/service-name=web" }
   ],
 
   // Each question: q, options, answer (index), why.
@@ -113,6 +145,48 @@ window.QUEST = {
         why: "Narrow down layer by layer, change one thing at a time, and check again." },
       { q: "What makes a postmortem useful?", options: ["Finding who to blame", "Action items that stop each cause happening again", "A long timeline", "Screenshots"], answer: 1,
         why: "Blameless postmortems focus on systems: detection, prevention and the follow-up work." }
+    ],
+    "15": [
+      { q: "Why does a StatefulSet need a headless Service?", options: ["To load-balance between replicas", "To give each Pod its own stable DNS name", "To mount the volumes", "To start Pods in order"], answer: 1,
+        why: "With `clusterIP: None`, DNS returns Pod records such as `db-0.db`, so replicas can address each other. Ordered start-up comes from the StatefulSet itself." },
+      { q: "You scale a StatefulSet from 3 to 1. What happens to the claims `data-db-1` and `data-db-2`?", options: ["They are deleted", "They are kept, by default, until you delete them", "They are moved to `db-0`", "They become ReadOnlyMany"], answer: 1,
+        why: "By default claims outlive their replicas, so scaling back up reattaches the same data. `persistentVolumeClaimRetentionPolicy` can change this." }
+    ],
+    "16": [
+      { q: "A Pod shows `Init:CrashLoopBackOff`. Where do you look first?", options: ["`kubectl logs <pod>`", "`kubectl logs <pod> -c <init-container>`", "The node's kernel log", "The Service endpoints"], answer: 1,
+        why: "The app container has not started yet, so its logs are empty. The failing init container's own logs explain the error." },
+      { q: "What makes an init container a native sidecar?", options: ["Naming it sidecar", "`restartPolicy: Always` on that init container", "Putting it last in `containers`", "A `sidecar: true` annotation"], answer: 1,
+        why: "An init container with `restartPolicy: Always` starts before the app, keeps running beside it, and stops after it." }
+    ],
+    "17": [
+      { q: "A namespace enforces `restricted`. The Deployment is created, but no Pods appear. Why?", options: ["The Deployment was rejected", "Admission rejects the Pods the ReplicaSet tries to create; see the ReplicaSet's events", "The scheduler is full", "The image is missing"], answer: 1,
+        why: "Pod Security Admission checks Pods, not Deployments. `kubectl describe rs` shows `FailedCreate` with each violated rule." },
+      { q: "An image's default user is root. You set only `runAsNonRoot: true`. What happens?", options: ["It runs as nobody", "The container fails to start because it would run as root", "Kubernetes rebuilds the image", "Nothing changes"], answer: 1,
+        why: "`runAsNonRoot` only verifies; it does not change the user. Also set a non-zero `runAsUser`, or use an image built to run as non-root." }
+    ],
+    "18": [
+      { q: "Why does Kustomize add a hash to generated ConfigMap names?", options: ["To avoid name collisions between teams", "So a content change produces a new name, which rolls out new Pods", "For encryption", "It is required by the API"], answer: 1,
+        why: "The Deployment's reference changes with the name, so the Pod template changes and a rollout picks up the new values." },
+      { q: "A patch fails with `no matches for Id Deployment.v1.apps/shop-web`. What is wrong?", options: ["The cluster is unreachable", "The patch names an object that is not in the base", "The YAML indentation", "Kustomize is not installed"], answer: 1,
+        why: "Patches merge into existing objects matched by kind and name. Fix the name to match the base." }
+    ],
+    "19": [
+      { q: "A DaemonSet runs on 2 of 3 nodes. The missing node is the control plane. Likely cause?", options: ["The node is full", "The control-plane `NoSchedule` taint is not tolerated", "DaemonSets skip one node", "The image is wrong"], answer: 1,
+        why: "Control-plane nodes are tainted to keep ordinary workloads off. Node agents that must run there need a matching toleration." },
+      { q: "You change a DaemonSet's image, but running Pods keep the old one. Which setting explains it?", options: ["`maxSurge: 0`", "`updateStrategy.type: OnDelete`", "`revisionHistoryLimit: 0`", "`minReadySeconds: 0`"], answer: 1,
+        why: "With `OnDelete`, Pods are only replaced when someone deletes them. `RollingUpdate` replaces them node by node." }
+    ],
+    "20": [
+      { q: "A custom resource is rejected with `spec.price: Invalid value: 0`. What enforced it?", options: ["The operator", "The CRD's OpenAPI schema, checked by the API server", "An admission webhook you forgot about", "kubectl"], answer: 1,
+        why: "Structural schema validation runs in the API server before the object is stored, so no controller ever sees invalid input." },
+      { q: "What turns a CRD into an operator?", options: ["Adding printer columns", "A controller that watches the custom resources and acts on them", "A `ClusterRole`", "A short name"], answer: 1,
+        why: "A CRD only teaches the API a new type. An operator is the control loop that makes the real world match those objects." }
+    ],
+    "21": [
+      { q: "With `readOnlyRootFilesystem: true`, nginx fails to start. What is the usual fix?", options: ["Run as root", "Mount an `emptyDir` where it writes temporary files, such as `/tmp`", "Turn the setting off in prod only", "Add `CAP_SYS_ADMIN`"], answer: 1,
+        why: "Give the app a writable scratch volume for the paths it really writes to, and keep the rest of the filesystem read-only." },
+      { q: "Why leave `replicas` out of a Deployment managed by an HPA?", options: ["It is invalid", "Every apply would reset the count and fight the autoscaler", "The HPA ignores it", "It disables rolling updates"], answer: 1,
+        why: "The HPA owns `spec.replicas`. A fixed value in Git snaps it back on each deploy, causing scale flapping." }
     ]
   },
 

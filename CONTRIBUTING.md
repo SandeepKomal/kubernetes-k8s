@@ -22,6 +22,8 @@ explanations, new levels and new examples are all welcome.
 ```bash
 shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
 find Kubernetes labs -name '*.yaml' -not -name kind.yaml -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
+python3 -m unittest discover -s tests      # dashboard server
+node tests/check_site_data.js               # site levels and quiz data
 ./quest up
 tests/run-level.sh 6      # starts level 6, expects failure, solves it, expects success
 ```
@@ -47,9 +49,16 @@ example `python3 -m http.server -d site 8000`.
 6. `solution.sh` (executable): the reference fix, with comments. CI runs it.
 7. `cleanup.sh` (optional): undo anything cluster-wide (node labels,
    taints, cluster roles). It must be safe to run at any time.
-8. Add the level to [`labs/README.md`](labs/README.md), to `levels` and
-   `quiz` in [`site/data.js`](site/data.js), and to the matrix in
+8. Add the level to [`labs/README.md`](labs/README.md), the README,
+   [`docs/roadmap.md`](docs/roadmap.md), `levels` and `quiz` in
+   [`site/data.js`](site/data.js), questions in
+   [`site/quiz-bank.js`](site/quiz-bank.js), and the matrix in
    [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+Quiz questions should test understanding, not memory: prefer "you see X,
+what is the cause?" over definitions. Every question needs four plausible
+options and a `why` that explains the right answer and the most tempting
+wrong one.
 
 ## Pull requests
 

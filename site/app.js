@@ -39,6 +39,8 @@
 
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   $("#gh-link").href = Q.repo;
+  $("#cta-start").href = Q.repo + "#installation";
+  $("#cta-codespaces").href = "https://codespaces.new/SandeepKomal/kubernetes-k8s?quickstart=1";
 
   // --- tabs ----------------------------------------------------------------
 
@@ -46,6 +48,7 @@
   function show() {
     const want = location.hash.slice(1);
     const tab = tabs.includes(want) ? want : "path";
+    if (tab !== "path" && flowTimer) stopFlow();
     for (const t of tabs) $("#tab-" + t).hidden = t !== tab;
     document.querySelectorAll("nav a").forEach((a) => {
       if (a.dataset.tab === tab) a.setAttribute("aria-current", "page");
@@ -66,7 +69,7 @@
       if (lv.stage !== stage) {
         stage = lv.stage;
         list = h("ol.levels");
-        box.append(h("h2.stage", null, stage), list);
+        box.append(h("h3.stage", { id: "stage-" + stage.toLowerCase().replace(/\s+/g, "-") }, stage), list);
       }
       const id = "lv-" + lv.id;
       const isDone = done.has(lv.id);
@@ -84,44 +87,174 @@
           h("a", { href: levelUrl(lv) }, lv.title),
           h("span.topic", null, lv.topic)),
         h("span.actions", null,
-          h("a.small", { href: "#quiz", onclick: () => { $("#quiz-level").value = lv.id; renderQuiz(); } }, "Quiz"),
+          h("a.small", { href: "#quiz", onclick: () => { $("#quiz-level").value = lv.id; renderQuiz(); } },
+            lv.id in quizScores() ? `Quiz ${quizScores()[lv.id]}%` : "Quiz"),
           h("code.cmd", null, `./quest start ${Number(lv.id)}`))
       ));
     }
+    renderStages(done);
     const n = done.size;
     $("#bar-fill").style.width = (n / Q.levels.length * 100) + "%";
     $("#bar").setAttribute("aria-valuenow", String(n));
     $("#bar-text").textContent = `${n} of ${Q.levels.length} levels complete`;
   }
 
+  function renderStages(done) {
+    const stages = [];
+    for (const lv of Q.levels) {
+      let st = stages.find((x) => x.name === lv.stage);
+      if (!st) stages.push(st = { name: lv.stage, levels: [] });
+      st.levels.push(lv);
+    }
+    $("#stages").replaceChildren(...stages.map((st, i) => {
+      const n = st.levels.filter((l) => done.has(l.id)).length;
+      const pct = Math.round(n / st.levels.length * 100);
+      const ring = h("span.ring", { "aria-hidden": "true" });
+      ring.style.setProperty("--p", pct);
+      return h("a.stage-card" + (n === st.levels.length ? ".complete" : ""), {
+        role: "listitem", href: "#stage-" + st.name.toLowerCase().replace(/\s+/g, "-"),
+        onclick: (e) => {
+          e.preventDefault();
+          document.getElementById("stage-" + st.name.toLowerCase().replace(/\s+/g, "-")).scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        }
+      }, ring, h("span.stage-num", null, `Stage ${i + 1}`), h("strong", null, st.name),
+        h("span.muted", null, `${n} of ${st.levels.length} levels`));
+    }));
+  }
+
+  // --- request flow ----------------------------------------------------------
+
+  let flowTimer = null;
+
+  function selectFlow(i) {
+    const steps = document.querySelectorAll("#flow .step");
+    steps.forEach((el, j) => {
+      el.classList.toggle("on", j === i);
+      el.classList.toggle("past", j < i);
+      el.querySelector("button").setAttribute("aria-pressed", String(j === i));
+    });
+    const step = Q.flow[i];
+    $("#flow-detail").replaceChildren(
+      h("p.tag", null, `Step ${i + 1} of ${Q.flow.length} · ${step.role}`),
+      h("h3", null, step.name),
+      h("p", null, ...rich(step.text)),
+      h("pre", null, h("code", null, step.try)));
+  }
+
+  function stopFlow() {
+    clearInterval(flowTimer);
+    flowTimer = null;
+    $("#flow-play").textContent = "Play the flow";
+  }
+
+  function playFlow() {
+    if (flowTimer) { stopFlow(); return; }
+    let i = 0;
+    selectFlow(i);
+    $("#flow-play").textContent = "Pause";
+    flowTimer = setInterval(() => {
+      i++;
+      if (i >= Q.flow.length) { stopFlow(); return; }
+      selectFlow(i);
+    }, 2600);
+  }
+
+  function renderFlow() {
+    $("#flow").replaceChildren(...Q.flow.map((step, i) => h("li.step", null,
+      h("button", { type: "button", "aria-pressed": "false", onclick: () => { stopFlow(); selectFlow(i); } },
+        h("span.dot", { "aria-hidden": "true" }, String(i + 1)),
+        h("span.step-name", null, step.name),
+        h("span.step-role", null, step.role)))));
+    $("#flow-play").addEventListener("click", playFlow);
+    selectFlow(0);
+  }
+
   // --- quiz ----------------------------------------------------------------
 
+  const EXAM_SIZE = 20;
+
+  // Every question for a level: the starters in data.js plus the bank.
+  function questionsFor(id) {
+    const bank = (window.QUEST_QUIZ_BANK || {})[id] || [];
+    return [...(Q.quiz[id] || []), ...bank].map((item) => ({ ...item, level: id }));
+  }
+
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function quizScores() { return store.get("quiz", {}); }
+
   function renderQuiz() {
-    const id = $("#quiz-level").value;
-    const lv = Q.levels.find((l) => l.id === id);
+    const mode = $("#quiz-level").value;
+    const exam = mode === "exam";
+    const lv = Q.levels.find((l) => l.id === mode);
+    const items = exam
+      ? shuffle(Q.levels.flatMap((l) => questionsFor(l.id))).slice(0, EXAM_SIZE)
+      : questionsFor(mode);
     const out = $("#quiz");
     out.replaceChildren();
-    (Q.quiz[id] || []).forEach((item, qi) => {
+    let answered = 0;
+    let correct = 0;
+
+    const score = h("div.score", { "aria-live": "polite" });
+    const bar = h("span.fill");
+    const updateScore = () => {
+      score.replaceChildren(
+        h("span", null, h("strong", null, `${correct}`), ` correct of ${answered} answered · ${items.length} questions`),
+        h("span.meter", { role: "progressbar", "aria-label": "Answered", "aria-valuemin": "0", "aria-valuemax": String(items.length), "aria-valuenow": String(answered) }, bar));
+      bar.style.width = (answered / items.length * 100) + "%";
+      if (answered === items.length) {
+        const pct = Math.round(correct / items.length * 100);
+        if (!exam) {
+          const all = quizScores();
+          all[mode] = Math.max(all[mode] || 0, pct);
+          store.set("quiz", all);
+          renderPath();
+        }
+        score.append(h("p.result", null,
+          h("strong", null, `${pct}%. `),
+          pct === 100 ? "Perfect score." : pct >= 75 ? "Strong. Review the explanations you missed." : "Read the explanations, then practise the level and try again.",
+          " ", h("button.linkish", { type: "button", onclick: renderQuiz }, exam ? "New exam" : "Try again")));
+      }
+    };
+
+    items.forEach((item, qi) => {
       const fb = h("p.feedback", { "aria-live": "polite" });
-      const opts = h("div.options", { role: "group", "aria-label": item.q });
-      item.options.forEach((opt, oi) => {
+      const opts = h("div.options", { role: "group", "aria-label": `Question ${qi + 1}` });
+      // Show the options in a new order each time, so position gives nothing away.
+      shuffle(item.options.map((text, index) => ({ text, index }))).forEach((opt) => {
         opts.append(h("button.opt", {
           type: "button",
+          "data-right": opt.index === item.answer ? "1" : null,
           onclick: (e) => {
-            const right = oi === item.answer;
-            opts.querySelectorAll("button").forEach((b, bi) => {
+            const right = opt.index === item.answer;
+            opts.querySelectorAll("button").forEach((b) => {
               b.disabled = true;
-              if (bi === item.answer) b.classList.add("right");
+              if (b.dataset.right) b.classList.add("right");
             });
             if (!right) e.currentTarget.classList.add("wrong");
             fb.replaceChildren(h("strong", null, right ? "Correct. " : "Not quite. "), ...rich(item.why));
             fb.className = "feedback " + (right ? "ok" : "bad");
+            answered++;
+            if (right) correct++;
+            updateScore();
           }
-        }, ...rich(opt)));
+        }, ...rich(opt.text)));
       });
-      out.append(h("div.card.question", null, h("h3", null, `${qi + 1}. `, ...rich(item.q)), opts, fb));
+      const from = exam ? Q.levels.find((l) => l.id === item.level) : null;
+      out.append(h("div.card.question", null,
+        from ? h("p.tag", null, `Level ${from.id} · ${from.topic}`) : null,
+        h("h3", null, `${qi + 1}. `, ...rich(item.q)), opts, fb));
     });
-    out.append(h("p.note", null, "Go deeper: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`)));
+    out.prepend(score);
+    updateScore();
+    if (lv) out.append(h("p.note", null, "Practise it: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`)));
   }
 
   // --- YAML X-ray ----------------------------------------------------------
@@ -194,7 +327,9 @@
 
   // --- init ----------------------------------------------------------------
 
-  for (const lv of Q.levels) $("#quiz-level").append(h("option", { value: lv.id }, `${lv.id} · ${lv.title}`));
+  $("#quiz-level").append(h("option", { value: "exam" }, `Exam: ${EXAM_SIZE} random questions from every level`));
+  for (const lv of Q.levels) $("#quiz-level").append(h("option", { value: lv.id }, `${lv.id} · ${lv.topic} (${questionsFor(lv.id).length} questions)`));
+  $("#quiz-level").value = "00";
   $("#quiz-level").addEventListener("change", renderQuiz);
   Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", onclick: () => renderXray(i) }, m.name)));
   Q.doctor.forEach((d, i) => $("#doctor-list").append(h("button.chip", { type: "button", onclick: () => renderDoctor(i) }, d.status)));
@@ -208,6 +343,7 @@
     }
   });
 
+  renderFlow();
   renderPath();
   renderQuiz();
   renderXray(0);

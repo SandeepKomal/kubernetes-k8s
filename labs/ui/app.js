@@ -25,8 +25,10 @@
     return el;
   }
 
-  async function api(path, method = "GET") {
-    const res = await fetch("/api/" + path, { method, headers: { "X-Quest-Token": token } });
+  async function api(path, method = "GET", body) {
+    const headers = { "X-Quest-Token": token };
+    if (body) headers["Content-Type"] = "application/json";
+    const res = await fetch("/api/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
     return data;
@@ -167,6 +169,8 @@
     $("#checks").replaceChildren(h("li.muted", null, "Not checked yet."));
     $("#check-summary").textContent = "";
     $("#hint-box").hidden = true;
+    $("#console-out").replaceChildren();
+    $("#yaml-out").textContent = "";
     showLog("");
     const lv = await api(`levels/${id}`);
     const box = $("#mission");
@@ -182,6 +186,10 @@
     const label = button.textContent;
     document.querySelectorAll(".actions button").forEach((b) => { b.disabled = true; });
     button.textContent = action === "start" ? "Setting up…" : action === "check" ? "Checking…" : "Working…";
+    if (action === "check") {
+      $("#checks").replaceChildren(h("li.muted", null, "Running checks against the cluster. Rollouts get up to 15 seconds each."));
+      $("#check-summary").textContent = "";
+    }
     button.setAttribute("aria-busy", "true");
     try {
       const r = await api(`levels/${current}/${action}`, "POST");
@@ -207,6 +215,108 @@
     }
   }
 
+  // --- workspace: tabs, console, YAML editor ------------------------------
+
+  const QUICK = [
+    "get pods -o wide", "get all", "get events --sort-by=.lastTimestamp",
+    "describe pods", "get endpointslices", "auth can-i --list"
+  ];
+  const history = [];
+  let historyPos = 0;
+
+  function showTab(name) {
+    for (const t of ["state", "console", "yaml"]) {
+      $("#tab-" + t).setAttribute("aria-selected", String(t === name));
+      $("#pane-" + t).hidden = t !== name;
+    }
+    if (name === "console") $("#console-input").focus();
+  }
+
+  function printConsole(cmd, result) {
+    const out = $("#console-out");
+    out.append(h("span.cmdline", null, "$ kubectl " + cmd + "\n"),
+      h("span" + (result.ok ? "" : ".err"), null, result.output + "\n\n"));
+    out.scrollTop = out.scrollHeight;
+  }
+
+  async function runCommand(cmd) {
+    cmd = cmd.trim().replace(/^kubectl\s+/, "");
+    if (!cmd || !current) return;
+    history.push(cmd);
+    historyPos = history.length;
+    const input = $("#console-input");
+    input.value = "";
+    input.disabled = true;
+    try {
+      printConsole(cmd, await api(`levels/${current}/kubectl`, "POST", { command: cmd }));
+      refreshState();
+    } catch (e) {
+      printConsole(cmd, { ok: false, output: e.message });
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  async function applyYaml(dryRun) {
+    if (!current) return;
+    const out = $("#yaml-out");
+    out.textContent = dryRun ? "Checking with the API server…" : "Applying…";
+    out.className = "out";
+    try {
+      const r = await api(`levels/${current}/apply`, "POST", { yaml: $("#yaml").value, dryRun });
+      out.textContent = r.output;
+      out.className = "out " + (r.ok ? "good" : "err");
+      if (!dryRun) refreshState();
+    } catch (e) {
+      out.textContent = e.message;
+      out.className = "out err";
+    }
+  }
+
+  async function loadObject(name) {
+    name = name.trim();
+    if (!name || !current) return;
+    const r = await api(`levels/${current}/kubectl`, "POST", { command: `get ${name} -o yaml` });
+    if (!r.ok) { $("#yaml-out").textContent = r.output; $("#yaml-out").className = "out err"; return; }
+    // Drop server-managed fields so the YAML is ready to edit and apply.
+    const lines = [];
+    let skip = -1;
+    for (const line of r.output.split("\n")) {
+      const indent = line.search(/\S/);
+      if (skip >= 0 && (indent > skip || line.trim() === "")) continue;
+      skip = -1;
+      if (/^status:/.test(line) || /^\s{2}(managedFields|resourceVersion|uid|creationTimestamp|generation):/.test(line) ||
+          /^\s{4}(kubectl\.kubernetes\.io\/last-applied-configuration|deployment\.kubernetes\.io\/revision):/.test(line)) {
+        skip = indent;
+        continue;
+      }
+      lines.push(line);
+    }
+    // An annotations block left empty by the clean-up above is removed too.
+    const cleaned = lines.filter((line, i) => {
+      if (!/^\s+annotations:\s*(\{\})?$/.test(line)) return true;
+      const next = lines[i + 1] || "";
+      return next.search(/\S/) > line.search(/\S/);
+    });
+    $("#yaml").value = cleaned.join("\n");
+    $("#yaml-out").textContent = "Loaded " + name + ". Edit, then Dry run or Apply.";
+    $("#yaml-out").className = "out";
+  }
+
+  function initWorkspace() {
+    for (const t of ["state", "console", "yaml"]) $("#tab-" + t).addEventListener("click", () => showTab(t));
+    $("#quick").replaceChildren(...QUICK.map((q) => h("button.chip", { type: "button", onclick: () => { showTab("console"); runCommand(q); } }, q)));
+    $("#console-form").addEventListener("submit", (e) => { e.preventDefault(); runCommand($("#console-input").value); });
+    $("#console-input").addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp" && historyPos > 0) { historyPos--; e.target.value = history[historyPos]; e.preventDefault(); }
+      if (e.key === "ArrowDown") { historyPos = Math.min(history.length, historyPos + 1); e.target.value = history[historyPos] || ""; e.preventDefault(); }
+    });
+    $("#load-form").addEventListener("submit", (e) => { e.preventDefault(); loadObject($("#load-input").value); });
+    $("#btn-dry").addEventListener("click", () => applyYaml(true));
+    $("#btn-apply").addEventListener("click", () => applyYaml(false));
+  }
+
   async function loadLevels() {
     const data = await api("levels");
     levels = data.levels;
@@ -225,6 +335,7 @@
     $("#btn-hint").addEventListener("click", (e) => act("hint", e.currentTarget));
     $("#btn-solution").addEventListener("click", (e) => act("solution", e.currentTarget));
     $("#auto").addEventListener("change", setAuto);
+    initWorkspace();
     try {
       const data = await loadLevels();
       const wanted = new URLSearchParams(location.hash.slice(1)).get("level");

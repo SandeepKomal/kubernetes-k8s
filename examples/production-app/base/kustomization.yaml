@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Labels go on every object and Pod template, but never into selectors:
+# with includeSelectors, Kustomize would also rewrite the NetworkPolicy's
+# `from` selector and lock out every caller. Selectors are written out in
+# each file instead.
+labels:
+  - pairs:
+      app.kubernetes.io/name: web-api
+      app.kubernetes.io/part-of: shop
+    includeSelectors: false
+    includeTemplates: true
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - pdb.yaml
+  - hpa.yaml
+  - networkpolicy.yaml
+configMapGenerator:
+  - name: web-api-config
+    literals:
+      - LOG_LEVEL=info

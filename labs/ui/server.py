@@ -9,8 +9,9 @@ Security model:
   * listens on 127.0.0.1 only;
   * every API call needs the random token printed at start-up, so other web
     pages open in the same browser cannot drive it (CSRF, DNS rebinding);
-  * level arguments are validated, and only fixed ./quest sub-commands and a
-    read-only `kubectl get` are ever run.
+  * level arguments are validated; the console runs kubectl only (never a
+    shell), only against the practice cluster's context, and refuses flags
+    that would point it at another cluster or identity.
 """
 
 import argparse
@@ -18,6 +19,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import subprocess
 import sys
 from http import HTTPStatus
@@ -35,9 +37,26 @@ STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/logo.svg": ("logo.svg", "image/svg+xml"),
 }
 # Long enough for a level whose setup waits for a rollout.
 COMMAND_TIMEOUT = 300
+CONSOLE_TIMEOUT = 60
+MAX_BODY = 256 * 1024
+MAX_OUTPUT = 200 * 1024
+PRACTICE_CONTEXT = "kind-k8s-quest"
+# Flags that would send kubectl to another cluster or act as someone else.
+BLOCKED_FLAGS = (
+    "--kubeconfig", "--context", "--cluster", "--server", "-s", "--token", "--user",
+    "--as", "--as-group", "--as-uid", "--username", "--password",
+    "--certificate-authority", "--client-certificate", "--client-key", "--insecure-skip-tls-verify",
+    # Flags that write files on this machine.
+    "--log-file", "--log-dir", "--output-directory", "--cache-dir",
+)
+# Sub-commands that need a real terminal, never finish, or touch local files.
+# `cp` is blocked because it can write files on this machine.
+BLOCKED_COMMANDS = {"config", "proxy", "port-forward", "attach", "edit", "plugin", "completion", "alpha", "cp"}
+NAMESPACE_FLAGS = ("-n", "--namespace", "-A", "--all-namespaces")
 
 
 def level_dirs():
@@ -60,18 +79,58 @@ def read_state(name):
         return []
 
 
-def run(args, timeout=COMMAND_TIMEOUT):
+def run(args, timeout=COMMAND_TIMEOUT, stdin_text=None):
     """Run a command, returning (exit code, output without colour codes)."""
     try:
         proc = subprocess.run(
-            args, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, timeout=timeout,
+            args, cwd=ROOT, input=stdin_text,
+            stdin=None if stdin_text is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout,
         )
-        return proc.returncode, ANSI.sub("", proc.stdout)
+        out = ANSI.sub("", proc.stdout)
+        if len(out) > MAX_OUTPUT:
+            out = out[:MAX_OUTPUT] + "\n... output truncated"
+        return proc.returncode, out
     except subprocess.TimeoutExpired:
         return 124, f"Timed out after {timeout} seconds."
     except OSError as err:
         return 127, str(err)
+
+
+def practice_context():
+    """The context kubectl may use from the dashboard, or None."""
+    _, ctx = run(["kubectl", "config", "current-context"], timeout=10)
+    ctx = ctx.strip()
+    if ctx == PRACTICE_CONTEXT or (ctx and os.environ.get("QUEST_ANY_CONTEXT") == "1"):
+        return ctx
+    return None
+
+
+def kubectl_args(line, namespace):
+    """Turn a console line into kubectl arguments, or raise ValueError."""
+    try:
+        args = shlex.split(line)
+    except ValueError as err:
+        raise ValueError(f"cannot parse the command: {err}") from None
+    if args and args[0] == "kubectl":
+        args = args[1:]
+    if not args:
+        raise ValueError("type a kubectl command, for example: get pods")
+    for arg in args:
+        if arg.split("=", 1)[0] in BLOCKED_FLAGS:
+            raise ValueError(f"{arg.split('=', 1)[0]} is not allowed here: the dashboard only talks to the practice cluster")
+        if arg in ("|", ">", ">>", "<", "&&", ";", "||"):
+            raise ValueError("this console runs one kubectl command, without a shell (no pipes or redirects)")
+    command = args[0]
+    if command.startswith("-"):
+        raise ValueError("start with the sub-command, for example: get pods -o wide")
+    if command in BLOCKED_COMMANDS:
+        raise ValueError(f"'kubectl {command}' needs a real terminal; use your terminal for it"
+                         + (", or the YAML editor instead of edit" if command == "edit" else ""))
+    if not any(a.split("=", 1)[0] in NAMESPACE_FLAGS for a in args):
+        # Before the sub-command, so it never lands after `--` in exec.
+        args = ["-n", namespace] + args
+    return args
 
 
 def parse_checks(output):
@@ -151,8 +210,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json({"id": level.name[:2], "readme": (level / "README.md").read_text()})
 
+    def read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            raise ValueError("request too large")
+        if not self.headers.get("Content-Type", "").startswith("application/json"):
+            raise ValueError("expected JSON")
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_POST(self):
         if not self.authorised():
+            return
+        m = re.match(r"^/api/levels/([0-9]{2})/(kubectl|apply)$", self.path)
+        if m:
+            self.console(m.group(1), m.group(2))
             return
         m = re.match(r"^/api/levels/([0-9]{2})/(start|check|hint|solution)$", self.path)
         level = find_level(m.group(1)) if m else None
@@ -165,6 +236,35 @@ class Handler(BaseHTTPRequestHandler):
         if action == "check":
             result["checks"] = parse_checks(out)
         self.send_json(result)
+
+
+    def console(self, level_id, action):
+        level = find_level(level_id)
+        if not level:
+            self.send_json({"error": "no such level"}, HTTPStatus.NOT_FOUND)
+            return
+        ctx = practice_context()
+        if not ctx:
+            self.send_json({"ok": False, "output": "kubectl is not pointing at the practice cluster. Run ./quest up first."})
+            return
+        ns = "quest-" + level_id
+        try:
+            body = self.read_json()
+            if action == "kubectl":
+                args = kubectl_args(str(body.get("command", "")), ns)
+                code, out = run(["kubectl", "--context", ctx] + args, timeout=CONSOLE_TIMEOUT)
+            else:
+                yaml_text = str(body.get("yaml", ""))
+                if not yaml_text.strip():
+                    raise ValueError("paste some YAML first")
+                cmd = ["kubectl", "--context", ctx, "apply", "-n", ns, "-f", "-"]
+                if body.get("dryRun"):
+                    cmd.append("--dry-run=server")
+                code, out = run(cmd, timeout=CONSOLE_TIMEOUT, stdin_text=yaml_text)
+        except ValueError as err:
+            self.send_json({"ok": False, "output": str(err)})
+            return
+        self.send_json({"ok": code == 0, "output": out.rstrip() or "(no output)"})
 
 
 def main():

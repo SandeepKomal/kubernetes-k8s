@@ -24,14 +24,22 @@ jobs:
 
       - name: Validate every manifest against the Kubernetes schema
         run: |
-          find Kubernetes labs -type f \( -name '*.yaml' -o -name '*.yml' \) -not -name kind.yaml -print0 |
+          # Kustomize inputs (partial patches) are validated after rendering, below.
+          find Kubernetes labs -type f \( -name '*.yaml' -o -name '*.yml' \) -not -name kind.yaml -not -path '*/app/*' -print0 |
             xargs -0 kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0
+
+      - name: Validate rendered Kustomize output
+        run: |
+          for dir in examples/production-app/overlays/dev examples/production-app/overlays/prod labs/18-kustomize-overlays/app/base; do
+            echo "== $dir"
+            kubectl kustomize "$dir" | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+          done
 
       - name: Validate YAML embedded in solutions
         run: |
           for f in labs/*/solution.sh; do
             awk "/<<'YAML'/{f=1;next} /^YAML\$/{f=0} f" "$f"; echo ---
-          done | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+          done | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0 -
 
       - name: Every level has the files it needs
         run: |
@@ -42,9 +50,15 @@ jobs:
             test -x "${d}solution.sh" || { echo "${d}solution.sh is not executable"; exit 1; }
           done
 
+      - name: Dashboard server tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Site data is complete and well formed
+        run: node tests/check_site_data.js
+
       - name: Site and dashboard scripts parse
         run: |
-          node --check site/app.js && node --check site/data.js && node --check labs/ui/app.js
+          node --check site/app.js && node --check site/data.js && node --check site/quiz-bank.js && node --check labs/ui/app.js
           python3 -m py_compile labs/ui/server.py
           python3 -c "import json; json.load(open('.devcontainer/devcontainer.json'))"
 
@@ -55,7 +69,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        level: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"]
+        level: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+                "15", "16", "17", "18", "19", "20", "21"]
     steps:
       - uses: actions/checkout@v4
 
@@ -76,3 +91,44 @@ jobs:
         run: |
           kubectl get all,events -n "quest-$(printf '%02d' ${{ matrix.level }})" || true
           kubectl get nodes -o wide || true
+
+  example:
+    name: Example app on kind
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kind
+        run: |
+          curl -sSLo "$RUNNER_TEMP/kind" https://github.com/kubernetes-sigs/kind/releases/download/v0.30.0/kind-linux-amd64
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+
+      - name: Create the practice cluster
+        run: ./quest up
+
+      - name: Deploy both overlays
+        run: |
+          for env in dev prod; do
+            kubectl apply -k "examples/production-app/overlays/$env"
+            kubectl -n "shop-$env" rollout status deployment/web-api --timeout=180s
+          done
+
+      - name: The NetworkPolicy lets the product in and keeps others out
+        run: |
+          # The namespace enforces the restricted standard, so probes must comply too.
+          probe() {
+            kubectl -n shop-prod run "$1" --image=busybox:1.36 --restart=Never \
+              --labels="app.kubernetes.io/part-of=$2" --overrides='{"spec":{
+                "securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},
+                "containers":[{"name":"probe","image":"busybox:1.36","command":["wget","-qO-","-T","5","http://web-api"],
+                  "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
+          }
+          probe allowed shop
+          probe blocked other
+          kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Succeeded pod/allowed --timeout=90s
+          kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Failed pod/blocked --timeout=90s
+
+      - name: Cluster state on failure
+        if: failure()
+        run: kubectl get all,events -n shop-prod || true

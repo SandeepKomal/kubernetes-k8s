@@ -1,6 +1,6 @@
 # Kubernetes Quest: the labs
 
-Fifteen hands-on levels. Each one is a ticket from the on-call queue of
+Twenty-two hands-on levels, from a first Pod to production hardening. Each one is a ticket from the on-call queue of
 **Kubelet Kitchen**, a made-up food-delivery startup, and each one starts
 with something already broken in your practice cluster.
 
@@ -24,6 +24,13 @@ check, when you have got it right.
 | 12 | [The GPU node](12-scheduling/) | nodeSelector, taints, tolerations |
 | 13 | [Ready for the dinner rush](13-autoscaling/) | HPA, PodDisruptionBudget |
 | 14 | [Boss level: the Friday night incident](14-boss-friday-incident/) | Everything, plus a postmortem |
+| 15 | [Every replica is the same, except it is not](15-statefulsets/) | StatefulSets, headless Services, per-replica storage |
+| 16 | [The menu never loads](16-init-and-sidecar-containers/) | Init containers, native sidecars, `emptyDir` |
+| 17 | [Rejected at the door](17-pod-security/) | Pod Security Standards, `securityContext` |
+| 18 | [One app, many environments](18-kustomize-overlays/) | Kustomize bases, overlays, generators |
+| 19 | [One agent per node](19-daemonsets/) | DaemonSets, update strategies, control-plane taints |
+| 20 | [Teaching Kubernetes a new word](20-custom-resources/) | CRDs, validation, the operator pattern |
+| 21 | [Final boss: ready for production](21-boss-production-hardening/) | The full production checklist on one workload |
 
 ## How a level works
 

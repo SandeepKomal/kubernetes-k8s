@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kubernetes Quest · Practice</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 8v16L16 30 4 24V8z' fill='%23326ce5'/%3E%3C/svg%3E">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
 </head>
 <body>
   <header class="top">
     <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 8v16L16 30 4 24V8z"/></svg>
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" class="logo-bg"/><path d="M32 13.5 48 22.75v18.5L32 50.5 16 41.25v-18.5z" class="logo-line"/><path d="M24.5 32.5 30 38l10-10.5" class="logo-line logo-check"/></svg>
       Kubernetes Quest <span class="muted">· practice</span>
     </div>
     <div id="context" class="context" title="Current kubectl context"></div>
@@ -37,7 +37,7 @@
         <button id="btn-hint" type="button">Hint</button>
         <button id="btn-solution" type="button" class="quiet">Solution</button>
       </div>
-      <p class="muted small">Start resets the level to its broken state. Fix it with <code>kubectl</code> in your terminal, then press Check.</p>
+      <p class="muted small">Start resets the level to its broken state. Fix it in your terminal or with the Console and YAML editor below, then press Check.</p>
 
       <section>
         <h2>Checks</h2>
@@ -50,12 +50,42 @@
         <pre id="hint" class="out"></pre>
       </section>
 
-      <section>
-        <div class="row">
-          <h2>Namespace</h2>
-          <label class="small"><input id="auto" type="checkbox" checked> Refresh every 5s</label>
+      <section class="work">
+        <div class="tabs" role="tablist" aria-label="Workspace">
+          <button type="button" role="tab" id="tab-state" aria-controls="pane-state" aria-selected="true">Namespace</button>
+          <button type="button" role="tab" id="tab-console" aria-controls="pane-console" aria-selected="false">Console</button>
+          <button type="button" role="tab" id="tab-yaml" aria-controls="pane-yaml" aria-selected="false">YAML editor</button>
         </div>
-        <pre id="state" class="out state">Start a level to see its resources.</pre>
+
+        <div id="pane-state" role="tabpanel" aria-labelledby="tab-state">
+          <label class="small refresh"><input id="auto" type="checkbox" checked> Refresh every 5s</label>
+          <pre id="state" class="out state">Start a level to see its resources.</pre>
+        </div>
+
+        <div id="pane-console" role="tabpanel" aria-labelledby="tab-console" hidden>
+          <p class="muted small">Runs <code>kubectl</code> against the practice cluster, in this level's namespace. Use ↑ and ↓ for history.</p>
+          <div class="chips" id="quick"></div>
+          <form id="console-form" class="console-line" autocomplete="off">
+            <span class="prompt" aria-hidden="true">kubectl</span>
+            <input id="console-input" type="text" spellcheck="false" aria-label="kubectl command" placeholder="get pods -o wide">
+            <button type="submit">Run</button>
+          </form>
+          <pre id="console-out" class="out console-out" aria-live="polite"></pre>
+        </div>
+
+        <div id="pane-yaml" role="tabpanel" aria-labelledby="tab-yaml" hidden>
+          <p class="muted small">Load an object, change it, then dry-run or apply it. This is the browser version of <code>kubectl edit</code>.</p>
+          <form id="load-form" class="console-line" autocomplete="off">
+            <input id="load-input" type="text" spellcheck="false" aria-label="Object to load" placeholder="deployment/web">
+            <button type="submit">Load</button>
+          </form>
+          <textarea id="yaml" spellcheck="false" aria-label="YAML to apply" placeholder="Paste or write YAML here"></textarea>
+          <div class="row-buttons">
+            <button id="btn-dry" type="button">Dry run</button>
+            <button id="btn-apply" type="button" class="primary">Apply</button>
+          </div>
+          <pre id="yaml-out" class="out" aria-live="polite"></pre>
+        </div>
       </section>
 
       <section id="log-box" hidden>
