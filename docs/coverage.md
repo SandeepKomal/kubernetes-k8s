@@ -32,7 +32,7 @@ nothing.
 | DaemonSets | Level 19 · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
 | Init containers and native sidecars | Level 16 · Playground: Init container |
 | nodeSelector, affinity, taints, tolerations, topology spread | Level 12 · Playground: Node selector, Untolerated taint · [reference/manifests/scheduling](../reference/manifests/scheduling/) |
-| HorizontalPodAutoscaler | Level 13 · Playground: HPA `<unknown>` · [reference/manifests/autoscaling](../reference/manifests/autoscaling/) |
+| HorizontalPodAutoscaler | Level 13 · Playground: HPA not scaling · [reference/manifests/autoscaling](../reference/manifests/autoscaling/) |
 | VerticalPodAutoscaler | Playground: VPA recommendation · reading in reference/manifests/autoscaling |
 | PodDisruptionBudgets, node drain | Level 13 · Playground: Drain blocked · [pod-disruption-budgets.md](pod-disruption-budgets.md) |
 | Kustomize | Level 18 · [examples/production-app](../examples/production-app/) |

@@ -418,7 +418,7 @@
     },
     {
       id: "hpa",
-      title: "HPA <unknown>",
+      title: "HPA not scaling",
       done: "The HPA reads CPU and has scaled web out.",
       level: { id: "13", text: "Level 13 · Ready for the dinner rush" },
       story: "Dinner rush. web is slow, CPU is high, but the autoscaler has not added a single Pod.",

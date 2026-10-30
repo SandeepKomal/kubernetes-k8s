@@ -224,7 +224,7 @@ step(c, `kubectl patch deployment trainer -p '{"spec":{"template":{"spec":{"tole
 assert.ok(won(c), "taint: fixed by a matching toleration");
 assert.match(step(c, "kubectl get pods -o wide"), /trainer-\S+\s+1\/1\s+Running.*worker-3/);
 
-// HPA <unknown>: needs CPU requests; scaling by hand is not the fix.
+// HPA not scaling: needs CPU requests; scaling by hand is not the fix.
 c = fresh("hpa");
 assert.match(step(c, "kubectl get hpa"), /cpu: <unknown>\/70%\s+2\s+6\s+2/);
 assert.match(step(c, "kubectl describe hpa web"), /missing request for cpu/);
