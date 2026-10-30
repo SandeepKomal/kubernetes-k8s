@@ -1174,7 +1174,55 @@ window.QUEST_QUIZ_BANK = {
         "The API server caches every object and must be deleted",
         "Restores only take effect after a node reboot"
       ], answer: 1,
-      why: "Restore only writes a fresh data directory. etcd is a static Pod, so changing its manifest is what switches it over. `etcdutl` works on files and needs no certificates." }
+      why: "Restore only writes a fresh data directory. etcd is a static Pod, so changing its manifest is what switches it over. `etcdutl` works on files and needs no certificates." },
+    { q: "In etcd 3.6, which tool restores a snapshot, and does it need the etcd client certificates?",
+      options: [
+        "`etcdctl snapshot restore`, with `--cacert`, `--cert` and `--key`",
+        "`kubeadm restore etcd`, which reads the certificates from /etc/kubernetes/pki",
+        "`etcdutl snapshot restore`; no certificates, because it works on files and never talks to a running etcd",
+        "`etcdctl` with `ETCDCTL_API=2`"
+      ], answer: 2,
+      why: "Restore builds a new data directory from the snapshot file offline, so there is no server to authenticate to. Taking a snapshot is different: `etcdctl snapshot save` talks to a running member and needs the endpoint and certificates." },
+    { q: "You restore the 03:00 etcd snapshot at 09:00. What happens to a Deployment someone created at 08:00?",
+      options: [
+        "It is merged back in automatically",
+        "It is gone: the cluster is exactly as it was at 03:00, so anything created later must be re-applied, for example from Git",
+        "It survives because the kubelet still runs its Pods",
+        "It comes back after the controller manager restarts"
+      ], answer: 1,
+      why: "A restore replaces the whole cluster state with the snapshot. The kubelets reconcile to that state, so Pods of objects that no longer exist are removed. Keep manifests in Git and snapshot often." },
+    { q: "To switch etcd to a restored directory you change only `--data-dir=/var/lib/etcd-restore` in etcd.yaml, and leave the volume alone. What happens?",
+      options: [
+        "etcd starts on a path inside the container that is not on the host volume, so it does not see the restored data",
+        "It works: --data-dir is the only setting that matters",
+        "kubeadm rewrites the manifest back",
+        "The API server refuses to start until you reboot"
+      ], answer: 0,
+      why: "The data directory must be on the hostPath volume. Either change the hostPath to /var/lib/etcd-restore and keep --data-dir and mountPath as they were, or change all three together." },
+    { q: "Your kubeadm cluster runs v1.32 and the target is v1.34. How do you get there?",
+      options: [
+        "One `kubeadm upgrade apply v1.34.x`",
+        "Upgrade the workers to v1.34 first, then the control plane",
+        "Reinstall with kubeadm init at v1.34",
+        "Two upgrades, one minor version at a time: v1.32 to v1.33, then v1.33 to v1.34, each with its own kubeadm package"
+      ], answer: 3,
+      why: "kubeadm supports upgrading one minor version at a time, and the version skew policy keeps the components close to each other. Skipping a minor version is not supported." },
+    { q: "Why are the kubeadm, kubelet and kubectl packages put on hold with `apt-mark hold`?",
+      options: [
+        "So that a routine `apt-get upgrade` or unattended upgrade cannot move Kubernetes to a new version outside a planned upgrade",
+        "Holding is required for the kubelet to start",
+        "It stops kubeadm from writing certificates",
+        "It makes the packages download faster"
+      ], answer: 0,
+      why: "An unplanned kubelet upgrade can put a node ahead of the control plane or restart it without a drain. Unhold during the planned upgrade, then hold again (or install with `--allow-change-held-packages`, which keeps the hold)." },
+    { q: "The first control-plane node is upgraded with `kubeadm upgrade apply`. What do you run on each worker?",
+      options: [
+        "`kubeadm upgrade apply` again on every worker",
+        "Upgrade the kubeadm package, `kubeadm upgrade node`, then drain, upgrade kubelet and kubectl, `systemctl daemon-reload` and restart the kubelet, and uncordon",
+        "Only `systemctl restart kubelet`",
+        "`kubeadm reset` and `kubeadm join`"
+      ], answer: 1,
+      why: "`apply` upgrades the cluster once; `upgrade node` updates the local kubelet configuration on every other node. The drain keeps workloads running elsewhere while the kubelet restarts." }
   ],
 
   "15": [
@@ -1399,7 +1447,23 @@ window.QUEST_QUIZ_BANK = {
         "The Pod needs `privileged: true` for AppArmor",
         "worker-2 needs the profile as a ConfigMap"
       ], answer: 1,
-      why: "Localhost profiles are not Kubernetes objects; they live on each node. `aa-status` on the node shows what is loaded. Switching to Unconfined would hide the problem by removing the protection." }
+      why: "Localhost profiles are not Kubernetes objects; they live on each node. `aa-status` on the node shows what is loaded. Switching to Unconfined would hide the problem by removing the protection." },
+    { q: "Since Kubernetes v1.30, how does a Pod ask for an AppArmor profile?",
+      options: [
+        "Only with the annotation `container.apparmor.security.beta.kubernetes.io/<container>`",
+        "With a ConfigMap named after the profile",
+        "With `securityContext.appArmorProfile` at Pod or container level; the old beta annotation is deprecated",
+        "With `spec.runtimeClassName: apparmor`"
+      ], answer: 2,
+      why: "The field went GA in v1.30. `type` is RuntimeDefault, Localhost (with `localhostProfile`) or Unconfined. The annotation still works but should be migrated." },
+    { q: "Which AppArmor profile type needs nothing loaded on the node by you?",
+      options: [
+        "Localhost",
+        "RuntimeDefault, the container runtime's default profile",
+        "Custom",
+        "Every type needs `apparmor_parser` first"
+      ], answer: 1,
+      why: "RuntimeDefault ships with the container runtime. Localhost names a profile that must already be loaded in each node's kernel, and Unconfined turns AppArmor off for the container." }
   ],
 
   "18": [
@@ -1657,6 +1721,70 @@ window.QUEST_QUIZ_BANK = {
         "Pin the old tag by digest",
         "Lower the scanner's severity threshold"
       ], answer: 1,
-      why: "A tag is only a name; what matters is the packages inside the image. Scan the target too, and in CI let `trivy image --exit-code 1 --severity CRITICAL` stop the build." }
+      why: "A tag is only a name; what matters is the packages inside the image. Scan the target too, and in CI let `trivy image --exit-code 1 --severity CRITICAL` stop the build." },
+    { q: "Your audit policy logs Secrets at level `RequestResponse`. What is the problem?",
+      options: [
+        "Nothing; it is the recommended level",
+        "Secrets are never audited",
+        "Request bodies are only logged for Pods",
+        "The audit log now contains the Secret values themselves; log Secrets at `Metadata`"
+      ], answer: 3,
+      why: "`Request` and `RequestResponse` record bodies, which for a Secret are its data. `Metadata` records who, what and when, which is what an investigation needs." },
+    { q: "An audit policy has `- level: None` as its first rule and `- level: Metadata` for secrets as its second. What gets logged for Secrets?",
+      options: [
+        "Nothing: rules are checked in order and the first match wins",
+        "Metadata, because the more specific rule wins",
+        "Both levels",
+        "The API server refuses the policy"
+      ], answer: 0,
+      why: "The first rule that matches a request sets its level. Put specific rules first and a catch-all `None` last." },
+    { q: "With the `aescbc` provider, where is the encryption key, and why do many teams use a KMS provider instead?",
+      options: [
+        "In etcd, next to the data",
+        "In each Secret's annotations",
+        "In the EncryptionConfiguration file on the control-plane nodes; KMS v2 keeps the key in an external key service, so a stolen etcd backup plus a copy of that file is not enough",
+        "In the kubelet's config"
+      ], answer: 2,
+      why: "With aescbc or secretbox the key sits on disk on every control-plane node. KMS v2 encrypts with a key held outside the cluster." },
+    { q: "How do you rotate the encryption key without making any Secret unreadable?",
+      options: [
+        "Replace the key in place and restart the API servers",
+        "Add the new key first in the provider's key list, restart every API server, rewrite all Secrets, then remove the old key and restart again",
+        "Delete all Secrets and recreate them",
+        "Turn encryption off, then on again with the new key"
+      ], answer: 1,
+      why: "The first key encrypts new writes; the others can still decrypt. Removing the old key before every Secret is rewritten with the new one leaves those Secrets unreadable." },
+    { q: "You wrote a ValidatingAdmissionPolicy, but Pods that break it are still admitted. What is the most likely cause?",
+      options: [
+        "There is no ValidatingAdmissionPolicyBinding, so the policy applies nowhere",
+        "Policies only apply after a node reboot",
+        "CEL expressions are evaluated once a day",
+        "The policy must be in the same namespace as the Pods"
+      ], answer: 0,
+      why: "A policy defines the rule; a binding says where it applies and what to do (Deny, Warn, Audit). Both are cluster-scoped." },
+    { q: "You want to introduce a new admission policy without breaking teams on day one. Which binding setting helps?",
+      options: [
+        "`failurePolicy: Ignore`",
+        "Delete the policy at night",
+        "Start with `validationActions: [Warn, Audit]`, fix what it reports, then switch to `[Deny]`",
+        "Bind it only to kube-system"
+      ], answer: 2,
+      why: "Warn shows violations to the person applying the object and Audit records them in the audit log, without blocking. `failurePolicy` only matters when the expression itself fails to evaluate." },
+    { q: "A trivy report is full of findings with status `affected` and no fixed version. Which flag focuses it on what you can act on now?",
+      options: [
+        "`--quiet`",
+        "`--ignore-unfixed`, which hides vulnerabilities that have no fix yet",
+        "`--skip-db-update`",
+        "`--severity UNKNOWN`"
+      ], answer: 1,
+      why: "Without a fixed version there is no package to upgrade to. Hide them for the day-to-day gate, but review them now and then: a fix may need a different base image." },
+    { q: "You scanned `menu:2.1` and it was clean. Why pin the Deployment to the image digest (`menu@sha256:...`) rather than the tag?",
+      options: [
+        "Digests download faster",
+        "Tags cannot be scanned",
+        "Kubernetes rejects tags in production",
+        "A tag can be pushed again with different content, so the image that runs may not be the one you scanned; a digest always names the same image"
+      ], answer: 3,
+      why: "Tags move; digests do not. Pinning by digest makes the scan result, the deploy and a rollback all refer to the same bytes." }
   ]
 };
