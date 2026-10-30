@@ -319,7 +319,7 @@ window.QUEST = {
     xray: {
       what: "A line-by-line explanation of Kubernetes YAML. Pick a sample manifest, or paste your own: every field is explained, risky values are flagged, and missing essentials are listed. It runs entirely in your browser from a built-in dictionary of Kubernetes fields; nothing is uploaded.",
       steps: [
-        "Choose Deployment, Service or NetworkPolicy to study an annotated example, or Your YAML to use your own.",
+        "Paste your YAML is open first: paste any manifest and choose Explain. Or pick Deployment, Service or NetworkPolicy to study an annotated example.",
         "For your own YAML, paste one or more manifests (separated by `---`) and choose Explain, or press Ctrl+Enter. Load an example shows the format.",
         "Select any line on the left. The panel on the right explains it, with an amber warning when the value is risky.",
         "Read Worth a look: settings that are missing rather than wrong, such as requests, limits, probes and a securityContext."
