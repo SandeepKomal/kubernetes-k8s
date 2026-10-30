@@ -349,8 +349,8 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
   .top-inner { gap: 6px 10px; flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 6px; }
   .gh { display: none; }
   .brand { font-size: .95rem; flex: 1; }
-  .top nav { order: 3; flex-basis: 100%; justify-content: space-between; margin: 0 -8px; }
-  .top nav a { padding: 6px 8px; }
+  .top nav { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 0 -8px; }
+  .top nav a { padding: 6px 4px; text-align: center; }
   .hero { padding: 48px 0 24px; }
   .flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -535,3 +535,61 @@ kbd {
 
 .link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
 .link-btn:hover { text-decoration: underline; }
+
+/* Architecture: a diagram whose components explain themselves. */
+:root { --arch-cp: #eef4fd; }
+@media (prefers-color-scheme: dark) { :root { --arch-cp: rgba(41, 151, 255, .1); } }
+.arch-figure { position: relative; background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+.arch-svg { display: block; width: 100%; height: auto; font-family: inherit; }
+.arch-panel { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+.arch-panel.arch-cp { fill: var(--arch-cp); stroke: none; }
+.arch-panel.arch-addon { stroke-dasharray: 5 4; }
+.arch-panel-label { fill: var(--muted); font-size: 12px; font-weight: 600; }
+.arch-edge { fill: none; stroke: var(--line); stroke-width: 1.5; transition: stroke .15s, opacity .15s; }
+.arch-edge.is-on { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 5; animation: arch-flow .9s linear infinite; }
+@keyframes arch-flow { to { stroke-dashoffset: -11; } }
+.arch-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; opacity: 0; transition: opacity .2s; }
+.arch-dot.is-on { opacity: 1; }
+.arch-tour { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+.arch-caption { margin: 0; color: var(--muted); font-size: .95rem; flex: 1; min-width: 220px; }
+.arch-step { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: .78rem; font-weight: 600; }
+.arch-svg.is-entering .arch-panel, .arch-svg.is-entering .arch-panel-label { animation: arch-fade .5s var(--ease) both; }
+.arch-svg.is-entering .arch-box { animation: arch-rise .5s var(--ease) both; }
+.arch-svg.is-entering .arch-edge { animation: arch-fade .6s var(--ease) .7s both; }
+@keyframes arch-fade { from { opacity: 0; } }
+@keyframes arch-rise { from { opacity: 0; transform: translateY(6px); } }
+#arch-arrow path { fill: var(--line); }
+#arch-arrow-on path { fill: var(--accent); }
+.arch-box { cursor: pointer; outline: none; transition: opacity .15s; }
+.arch-box rect { fill: var(--surface); stroke: var(--line); stroke-width: 1; transition: fill .15s, stroke .15s; }
+.arch-box.arch-cp rect { stroke: var(--k8s); }
+.arch-box.arch-addon rect { stroke-dasharray: 4 3; }
+.arch-name { fill: var(--text); font-weight: 600; text-anchor: middle; }
+.arch-short { fill: var(--muted); text-anchor: middle; }
+.arch-box:hover rect, .arch-box.is-on rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 4px 10px rgba(0, 113, 227, .18)); }
+.arch-box.is-near rect { stroke: var(--accent); }
+.arch-box:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+.has-focus .arch-box:not(.is-on):not(.is-near) { opacity: .4; }
+.has-focus .arch-edge:not(.is-on) { opacity: .4; }
+.arch-tip { position: absolute; left: 0; top: 0; width: 300px; pointer-events: none; background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 14px 16px; z-index: 2;
+  opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity .16s var(--ease), transform .16s var(--ease), visibility .16s; }
+.arch-tip.is-shown { opacity: 1; visibility: visible; transform: none; }
+.arch-tip h3 { margin: 0 0 4px; font-size: 1rem; }
+.arch-tip p { margin: 0 0 8px; font-size: .86rem; line-height: 1.45; }
+.arch-tip p:last-child { margin: 0; }
+.arch-detail { margin-top: 16px; }
+.arch-detail h3 { margin: 0 0 6px; font-size: 1.15rem; }
+.arch-detail h4 { margin: 14px 0 4px; font-size: .85rem; color: var(--muted); font-weight: 600; }
+.arch-detail p, .arch-detail ul { margin: 0; font-size: .92rem; line-height: 1.5; }
+.arch-detail ul { padding-left: 18px; }
+.arch-detail pre { margin: 6px 0 0; font-size: .8rem; white-space: pre-wrap; word-break: break-word; }
+.arch-detail .doctor-practise { margin-top: 14px; }
+.arch-where { color: var(--accent); font-size: .78rem; font-weight: 600; }
+.arch-detail .arch-where { margin: 0 0 2px; }
+@media (max-width: 720px) {
+  .arch-figure { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arch-edge, .arch-box, .arch-box rect, .arch-tip, .arch-dot { transition: none; }
+  .arch-edge.is-on { animation: none; stroke-dasharray: none; }
+}

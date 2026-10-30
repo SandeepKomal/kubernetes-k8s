@@ -23,6 +23,7 @@
         <a href="#xray" data-tab="xray">YAML X-ray</a>
         <a href="#doctor" data-tab="doctor">Troubleshoot</a>
         <a href="#cheats" data-tab="cheats">Cheat sheet</a>
+        <a href="#arch" data-tab="arch">K8s arch</a>
       </nav>
       <button type="button" class="kbd-btn" id="palette-open" aria-label="Search the site (Ctrl+K)"><span>Search</span><kbd id="palette-key">Ctrl K</kbd></button>
       <a class="gh" id="gh-link" href="#">GitHub</a>
@@ -195,6 +196,12 @@ cd kubernetes-k8s
       </div>
       <div id="cheat-out"></div>
     </section>
+
+    <section id="tab-arch" class="tab" hidden>
+      <h2>Kubernetes architecture</h2>
+      <p class="lede">What runs where in a cluster, what each part does, and how you can tell when it breaks. Point at a component, or tab to it, to read about it.</p>
+      <div class="arch" id="arch"></div>
+    </section>
   </main>
 
   <footer class="wrap foot">
@@ -213,5 +220,6 @@ cd kubernetes-k8s
   <script src="app.js"></script>
   <script src="playground.js"></script>
   <script src="xray-explain.js"></script>
+  <script src="architecture.js"></script>
 </body>
 </html>
