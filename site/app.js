@@ -51,6 +51,7 @@
 
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   $("#gh-link").href = Q.repo;
+  document.querySelectorAll("[data-repo]").forEach((a) => { a.href = Q.repo + a.dataset.repo; });
   $("#cta-start").href = Q.repo + "#installation";
   $("#cta-codespaces").href = "https://codespaces.new/SandeepKomal/kubernetes-k8s?quickstart=1";
 
@@ -64,6 +65,12 @@
     if (tab === "doctor" && sub) {
       const i = Q.doctor.findIndex((d) => slug(d.status) === sub);
       if (i >= 0) renderDoctor(i, true);
+    }
+    if (tab !== current) {
+      const page = $("#tab-" + tab);
+      page.classList.remove("tab-in");
+      void page.offsetWidth; // restart the fade
+      page.classList.add("tab-in");
     }
     current = tab;
     if (tab !== "path" && flowTimer) stopFlow();
