@@ -531,3 +531,6 @@ kbd {
   *, *::before { transition: none !important; animation: none !important; }
 }
 
+
+.link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }

@@ -39,6 +39,13 @@
     }
   };
 
+  // Everything the site keeps lives under "kq:" in this browser; one click removes it.
+  function forgetEverything() {
+    if (!confirm("Clear your progress, quiz scores and saved names from this browser?")) return;
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith("kq:")) localStorage.removeItem(k); } catch { /* storage blocked */ }
+    location.reload();
+  }
+
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   $("#gh-link").href = Q.repo;
   $("#cta-start").href = Q.repo + "#installation";
@@ -526,7 +533,13 @@
             h("div", null,
               h("h3", null, "What it is for"), h("ul", null, g.uses.map((t) => h("li", null, ...rich(t)))),
               h("h3", null, "Tips"), h("ul", null, g.tips.map((t) => h("li", null, ...rich(t))))))));
-      box.addEventListener("toggle", () => store.set("guides", { ...store.get("guides", {}), [key]: box.open }));
+      // Browsers also fire "toggle" for a guide that starts open; save real changes only.
+      let shown = box.open;
+      box.addEventListener("toggle", () => {
+        if (box.open === shown) return;
+        shown = box.open;
+        store.set("guides", { ...store.get("guides", {}), [key]: shown });
+      });
       slot.replaceChildren(box);
     });
   }
@@ -550,6 +563,7 @@
     explainPasted();
   });
   buildDoctorList();
+  $("#forget").addEventListener("click", forgetEverything);
   $("#doctor-list").after(h("p.muted", { id: "doctor-none", hidden: true }, "No symptom matches. Try a status (Pending), an error word (forbidden, refused) or an object (hpa, pvc)."));
   $("#doctor-q").addEventListener("input", renderDoctorList);
   $("#cheat-q").addEventListener("input", renderCheats);
