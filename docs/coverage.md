@@ -24,7 +24,7 @@ nothing.
 | Pods, kubectl, imperative and declarative | Level 00 |
 | kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace |
 | Deployments, rolling updates, rollback | Level 03 · Playground: Bad rollout |
-| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded |
+| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key |
 | Requests, limits, QoS | Level 07 · Playground: Pending, OOMKilled |
 | Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe · [probes.md](probes.md) |
 | Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running · [reference/manifests/jobs](../reference/manifests/jobs/) |
@@ -44,7 +44,7 @@ nothing.
 | --- | --- |
 | Labels and selectors | Level 02 · Playground: No endpoints |
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down · [reference/manifests/services](../reference/manifests/services/) |
-| Ingress, IngressClass | Playground: Ingress 404, Ingress 503 · [reference/manifests/ingress](../reference/manifests/ingress/) |
+| Ingress, IngressClass, TLS | Playground: Ingress 404, Ingress 503, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
 | NetworkPolicy | Level 11 · Playground: NetworkPolicy · [network-policies.md](network-policies.md) |
 
@@ -80,6 +80,8 @@ nothing.
 | Incident under pressure | Level 14 |
 | Node problems (NotReady, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Drain blocked |
 | Control-plane components (static Pods, scheduler) | Playground: Scheduler down |
+| Certificate expiry and renewal with kubeadm | Playground: Certificates expired |
+| Finalizers and objects stuck Terminating | Playground: Stuck Terminating |
 | Private registries and imagePullSecrets | Playground: Private registry |
 | Backing up and restoring etcd | Playground: etcd backup, etcd restore |
 | Upgrading a cluster with kubeadm | Playground: kubeadm upgrade |
