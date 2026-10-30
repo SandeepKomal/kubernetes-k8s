@@ -22,11 +22,12 @@ nothing.
 | Topic | Practise it |
 | --- | --- |
 | Pods, kubectl, imperative and declarative | Level 00 |
+| kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace |
 | Deployments, rolling updates, rollback | Level 03 · Playground: Bad rollout |
 | ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap |
 | Requests, limits, QoS | Level 07 · Playground: Pending, OOMKilled |
 | Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe · [probes.md](probes.md) |
-| Jobs and CronJobs | Level 09 · Playground: Failed Job · [reference/manifests/jobs](../reference/manifests/jobs/) |
+| Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running · [reference/manifests/jobs](../reference/manifests/jobs/) |
 | StatefulSets and headless Services | Level 15 · [reference/manifests/statefulsets](../reference/manifests/statefulsets/) |
 | DaemonSets | Level 19 · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
 | Init containers and native sidecars | Level 16 · Playground: Init container |
@@ -35,6 +36,7 @@ nothing.
 | VerticalPodAutoscaler | Playground: VPA recommendation · reading in reference/manifests/autoscaling |
 | PodDisruptionBudgets, node drain | Level 13 · Playground: Drain blocked · [pod-disruption-budgets.md](pod-disruption-budgets.md) |
 | Kustomize | Level 18 · [examples/production-app](../examples/production-app/) |
+| Helm releases: history, values, rollback, drift | Playground: Helm failed upgrade |
 
 ## Services and networking (CKA, CKAD)
 
@@ -43,6 +45,7 @@ nothing.
 | Labels and selectors | Level 02 · Playground: No endpoints |
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces · [reference/manifests/services](../reference/manifests/services/) |
 | Ingress, IngressClass | Playground: Ingress 404, Ingress 503 · [reference/manifests/ingress](../reference/manifests/ingress/) |
+| Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
 | NetworkPolicy | Level 11 · Playground: NetworkPolicy · [network-policies.md](network-policies.md) |
 
 ## Storage (CKA)
@@ -57,6 +60,7 @@ nothing.
 | Topic | Practise it |
 | --- | --- |
 | RBAC, ServiceAccounts, `auth can-i` | Level 10 · Playground: RBAC forbidden · [reference/manifests/rbac](../reference/manifests/rbac/) |
+| Users, certificates and CertificateSigningRequests | Playground: New user access |
 | Pod Security Standards, securityContext | Level 17 · Playground: Pod Security |
 | ResourceQuota and LimitRange | Level 07 · Playground: Quota exceeded · [reference/manifests/resources](../reference/manifests/resources/) |
 | Admission policy (ValidatingAdmissionPolicy) | [security.md](security.md) |
@@ -70,7 +74,8 @@ nothing.
 | Pod states and events | Level 01 · 24 Playground scenarios · Troubleshoot page |
 | Application and Service failures | Levels 01, 02, 04, 06, 14 · Troubleshoot page |
 | Incident under pressure | Level 14 |
-| Node problems (NotReady, pressure, drain) | Troubleshoot page · Playground: Drain blocked |
+| Node problems (NotReady, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Drain blocked |
+| Backing up etcd | Playground: etcd backup |
 
 ## Extending Kubernetes and running it in the cloud
 
@@ -83,16 +88,14 @@ nothing.
 ## Not covered yet
 
 These are in the certification curricula but have no level or scenario
-here yet. Each has free official documentation.
+here yet. They need real control-plane machines or security tooling that a
+browser simulation would misrepresent, so read the free official
+documentation and practise them on a kubeadm cluster of your own.
 
 | Topic | Exam | Start with |
 | --- | --- | --- |
 | Installing and upgrading a cluster with kubeadm | CKA | <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/> |
-| Backing up and restoring etcd | CKA | <https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/> |
-| Helm charts | CKA, CKAD | <https://helm.sh/docs/> |
-| Gateway API | CKA | <https://gateway-api.sigs.k8s.io/> |
-| kubeconfig users, certificates and CertificateSigningRequests | CKA, CKS | <https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/> |
-| Container runtime and node debugging (crictl, kubelet logs) | CKA | <https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/> |
+| Restoring etcd (backups are in the playground) | CKA | <https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/> |
 | Audit logging, encryption of Secrets at rest | CKS | <https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/> |
 | Supply chain: image scanning and signing | CKS | <https://kubernetes.io/docs/concepts/security/supply-chain-security/> (reading) |
 | Runtime security (seccomp, AppArmor profiles, Falco) | CKS | <https://kubernetes.io/docs/tutorials/security/> |

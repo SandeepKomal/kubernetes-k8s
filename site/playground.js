@@ -122,6 +122,11 @@
     ingressclass: "ingressclasses", ingressclasses: "ingressclasses",
     quota: "quotas", resourcequota: "quotas", resourcequotas: "quotas",
     job: "jobs", jobs: "jobs",
+    cj: "cronjobs", cronjob: "cronjobs", cronjobs: "cronjobs",
+    csr: "csrs", certificatesigningrequest: "csrs", certificatesigningrequests: "csrs",
+    gtw: "gateways", gateway: "gateways", gateways: "gateways",
+    httproute: "httproutes", httproutes: "httproutes",
+    gatewayclass: "gatewayclasses", gatewayclasses: "gatewayclasses",
     pdb: "pdbs", poddisruptionbudget: "pdbs", poddisruptionbudgets: "pdbs"
   };
   // CPU quantities in millicores: 100m, 0.5, 1.
@@ -595,6 +600,148 @@
       ],
       lesson: "A drain evicts, and evictions respect PodDisruptionBudgets. With minAvailable equal to the replica count, nothing may ever move.",
       tries: ["kubectl get pods -o wide", "kubectl get pdb"]
+    },
+    {
+      id: "helm",
+      title: "Helm failed upgrade",
+      done: "The menu release is deployed, healthy, and matches what Helm recorded.",
+      level: { id: "18", text: "Level 18 · One app, many environments (packaging)" },
+      story: "Last night's helm upgrade of the menu release failed. Half the menu Pods are stuck.",
+      goal: "Get the menu release deployed and healthy through Helm.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 5 * HOUR }, api()],
+      helm: {
+        name: "menu", chart: "menu-0.3.0", appVersion: "1.27", defaults: { image: { tag: "1.27" } },
+        revisions: [{ rev: 1, values: {}, status: "deployed", desc: "Install complete" }]
+      },
+      setup: (c) => {
+        // The upgrade set image.tag=2.0, which does not exist; helm --wait timed out.
+        c.helmApply({ image: { tag: "2.0" } }, "Upgrade \"menu\" failed: context deadline exceeded");
+        c.helm.revisions[1].status = "failed";
+        c.helm.revisions[0].status = "superseded";
+        c.settle();
+      },
+      won: (c) => c.helm.revisions[c.helm.revisions.length - 1].status === "deployed" && c.deploymentReady("menu") && !c.helmDrift(),
+      hints: [
+        "helm list shows the release as failed. helm history menu shows what changed, and kubectl get pods shows the damage.",
+        "helm get values menu --revision 2 shows the bad value. Fixing the Deployment with kubectl leaves Helm's record wrong; fix it through Helm.",
+        "Roll back to the last good revision: helm rollback menu 1 (or: helm upgrade menu ./charts/menu --set image.tag=1.27)"
+      ],
+      lesson: "Helm records every revision and its values. Roll back or upgrade through Helm; kubectl edits drift from the release and are undone by the next upgrade.",
+      tries: ["helm list", "helm history menu"]
+    },
+    {
+      id: "gateway",
+      title: "Gateway API route",
+      done: "The menu HTTPRoute is attached and menu.kitchen.example answers.",
+      level: { id: "04", text: "Level 04 · Services (Gateway API in docs/coverage.md)" },
+      story: "The platform team moved from Ingress to the Gateway API. The new menu HTTPRoute is applied, but menu.kitchen.example returns 404.",
+      goal: "Make http://menu.kitchen.example/ return the menu through the Gateway.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      gateways: [{ name: "kitchen-gateway", class: "nginx" }],
+      routes: [{ name: "menu", parent: "web-gateway", hosts: ["menu.kitchen.example"], backend: "menu-svc", port: 80 }],
+      won: (c) => c.viaGateway("menu.kitchen.example").ok,
+      check: (c) => { const r = c.viaGateway("menu.kitchen.example"); return { label: "curl menu.kitchen.example", ok: r.ok, text: String(r.code) }; },
+      hints: [
+        "curl -i http://menu.kitchen.example/ gives 404. kubectl get gateway shows the Gateway; kubectl describe gateway kitchen-gateway shows how many routes it has.",
+        "kubectl describe httproute menu and read Status: Accepted False, NoMatchingParent. Which Gateway does it name?",
+        `It names web-gateway; the Gateway is kitchen-gateway. kubectl patch httproute menu -p '{"spec":{"parentRefs":[{"name":"kitchen-gateway"}]}}'`
+      ],
+      lesson: "In the Gateway API a route only serves traffic once a Gateway accepts it; the route's status says whether its parentRefs matched.",
+      tries: ["curl -i http://menu.kitchen.example/", "kubectl get gateway,httproute"]
+    },
+    {
+      id: "context",
+      title: "Wrong namespace",
+      done: "kubectl now shows the kitchen workloads by default.",
+      level: { id: "00", text: "Level 00 · Hello, cluster" },
+      story: "Your first day on the kitchen team. The app is up, but kubectl get pods says there is nothing.",
+      goal: "Make plain kubectl commands show the kitchen namespace.",
+      startNs: "default",
+      deployments: [web(), api()],
+      won: (c) => c.currentNs === NS,
+      hints: [
+        "kubectl get pods -A finds the Pods. Which namespace are they in?",
+        "kubectl config get-contexts shows your current context and its default namespace.",
+        "Change the default for this context: kubectl config set-context --current --namespace=kitchen"
+      ],
+      lesson: "Every kubectl command runs in one namespace, the context's default unless you pass -n. Set it once instead of typing -n each time.",
+      tries: ["kubectl get pods", "kubectl config get-contexts"]
+    },
+    {
+      id: "csr",
+      title: "New user access",
+      done: "Jane has an approved certificate and read-only access to Pods.",
+      level: { id: "10", text: "Level 10 · Too much access" },
+      story: "Jane joined the kitchen team. Her certificate request is waiting, and kubectl --as=jane get pods is forbidden.",
+      goal: "Approve Jane's certificate and let her read Pods in kitchen, nothing more.",
+      deployments: [web(), api()],
+      users: ["jane"],
+      csrs: [{ name: "jane", user: "jane", status: "Pending" }],
+      roles: { "pod-reader": [{ resources: ["pods"], verbs: ["get", "list", "watch"] }] },
+      won: (c) => c.csrs[0].status.startsWith("Approved") && c.canI("jane", "list", "pods") && !c.canI("jane", "delete", "pods"),
+      hints: [
+        "kubectl get csr: Jane's request is Pending. kubectl describe csr jane shows who it is for.",
+        "Approve it: kubectl certificate approve jane. A certificate proves who she is; RBAC decides what she may do. Try kubectl get pods --as=jane",
+        "Bind the existing Role: kubectl create rolebinding jane-read-pods --role=pod-reader --user=jane"
+      ],
+      lesson: "Certificates authenticate, RBAC authorises. An approved CSR with no binding gives a user a name and no rights.",
+      tries: ["kubectl get csr", "kubectl get pods --as=jane"]
+    },
+    {
+      id: "cronjob",
+      title: "CronJob not running",
+      done: "nightly-report is resumed and a manual run completed.",
+      level: { id: "09", text: "Level 09 · The cleanup that never ran" },
+      story: "The nightly report has not run for a week. Nobody remembers changing anything.",
+      goal: "Resume the nightly-report CronJob and prove it works with a manual run.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
+      services: [{ name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      cronjobs: [{ name: "nightly-report", schedule: "0 2 * * *", suspend: true, url: "http://menu-svc/menu.json" }],
+      won: (c) => !c.cronjobs[0].suspend && c.jobs.some((j) => j.from === "nightly-report" && j.status === "Complete"),
+      hints: [
+        "kubectl get cronjob: look at SUSPEND and LAST SCHEDULE.",
+        `Someone suspended it. Resume it: kubectl patch cronjob nightly-report -p '{"spec":{"suspend":false}}'`,
+        "Do not wait until 02:00 to find out if it works: kubectl create job report-now --from=cronjob/nightly-report"
+      ],
+      lesson: "A suspended CronJob creates no Jobs and logs no errors. create job --from runs its template now.",
+      tries: ["kubectl get cronjob", "kubectl describe cronjob nightly-report"]
+    },
+    {
+      id: "nodenotready",
+      title: "Node NotReady",
+      done: "worker-3 is Ready, and its kubelet starts on boot.",
+      level: { id: "14", text: "Level 14 · The Friday night incident" },
+      story: "worker-3 was rebooted for a kernel update and never came back. It shows NotReady.",
+      goal: "Bring worker-3 back, and make sure it survives the next reboot.",
+      deployments: [web(), api()],
+      kubelet: { node: "worker-3", running: false, enabled: false },
+      won: (c) => c.kubelet.running && c.kubelet.enabled,
+      check: (c) => ({ label: "worker-3", ok: c.kubelet.running, text: c.kubelet.running ? "Ready" : "NotReady" }),
+      hints: [
+        "kubectl describe node worker-3: Kubelet stopped posting node status. The node is up, its agent is not.",
+        "Look on the node: ssh worker-3 sudo systemctl status kubelet, then ssh worker-3 sudo journalctl -u kubelet",
+        "The kubelet is stopped and disabled, so it did not start after the reboot. ssh worker-3 sudo systemctl enable --now kubelet"
+      ],
+      lesson: "NotReady usually means the kubelet, not the machine. systemctl and journalctl on the node tell you why; enable makes the fix survive a reboot.",
+      tries: ["kubectl get nodes", "kubectl describe node worker-3"]
+    },
+    {
+      id: "etcd",
+      title: "etcd backup",
+      done: "A verified etcd snapshot is saved in /opt/backup.",
+      level: { id: "14", text: "Level 14 · Incident response (etcd in docs/coverage.md)" },
+      story: "Tonight's control-plane upgrade needs a fresh etcd backup first. You are on the control-plane node.",
+      goal: "Save an etcd snapshot under /opt/backup and verify it.",
+      deployments: [web(), api()],
+      won: (c) => !!c.etcd.saved && c.etcd.checked,
+      hints: [
+        "etcd only accepts clients with certificates. Find its endpoint and certificate paths: kubectl -n kube-system describe pod etcd-control-plane (or cat /etc/kubernetes/manifests/etcd.yaml)",
+        "ls /etc/kubernetes/pki/etcd. etcdctl needs --endpoints, --cacert, --cert and --key.",
+        "ETCDCTL_API=3 etcdctl snapshot save /opt/backup/etcd.db --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key, then etcdutl snapshot status /opt/backup/etcd.db"
+      ],
+      lesson: "An etcd snapshot needs the client endpoint and the etcd CA and certificates from the etcd manifest. Check every backup; restore with etcdutl snapshot restore into a new data directory.",
+      tries: ["kubectl -n kube-system get pods", "ls /etc/kubernetes/pki/etcd"]
     }
   ];
 
@@ -602,8 +749,10 @@
   const GROUPS = [
     ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init"]],
     ["Scheduling and storage", ["pending", "nodeselector", "taint", "pvc"]],
-    ["Networking", ["probe", "service", "dns", "ingress404", "ingress503", "netpol"]],
-    ["Security and operations", ["rbac", "podsecurity", "quota", "job", "rollout", "drain"]],
+    ["Networking", ["probe", "service", "dns", "ingress404", "ingress503", "gateway", "netpol"]],
+    ["Security", ["rbac", "csr", "podsecurity", "quota"]],
+    ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain"]],
+    ["Cluster administration", ["context", "nodenotready", "etcd"]],
     ["Autoscaling", ["hpa", "vpa"]]
   ];
   const ORDER = GROUPS.flatMap(([, ids]) => ids);
@@ -647,6 +796,16 @@
       this.cordoned = {};
       this.drainBypassedPdb = false;
       this.jobs = [];
+      this.currentNs = scenario.startNs || NS;
+      this.users = [...(scenario.users || [])];
+      this.csrs = JSON.parse(JSON.stringify(scenario.csrs || []));
+      this.cronjobs = JSON.parse(JSON.stringify(scenario.cronjobs || []));
+      this.gatewayClasses = ["nginx"];
+      this.gateways = JSON.parse(JSON.stringify(scenario.gateways || []));
+      this.routes = JSON.parse(JSON.stringify(scenario.routes || []));
+      this.etcd = { saved: null, checked: false };
+      this.kubelet = scenario.kubelet ? { ...scenario.kubelet } : null; // { node, running, enabled }
+      this.helm = scenario.helm ? JSON.parse(JSON.stringify(scenario.helm)) : null;
       this.bindPvcs();
       for (const d of scenario.deployments || []) {
         const dep = {
@@ -772,10 +931,12 @@
 
     pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
 
+    nodeReady(n) { return !this.kubelet || this.kubelet.node !== n || this.kubelet.running; }
+
     place(pod) {
       const claim = this.pvcOf(pod);
       if (pod.spec.pvc && (!claim || !claim.bound)) return null;
-      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n]).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
+      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n)).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
       if (!fits.length) return null;
       fits.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return fits[0][0];
@@ -803,7 +964,8 @@
         }
         for (const node of NODES) {
           let r = `Insufficient memory`;
-          if (this.cordoned[node]) r = "node(s) were unschedulable";
+          if (!this.nodeReady(node)) r = "node(s) had untolerated taint {node.kubernetes.io/unreachable: }";
+          else if (this.cordoned[node]) r = "node(s) were unschedulable";
           else if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
           else if (!this.tolerates(pod, node)) r = `node(s) had untolerated taint {${this.taints[node].map((t) => `${t.key}: ${t.value}`).join(", ")}}`;
           reasons[r] = (reasons[r] || 0) + 1;
@@ -902,8 +1064,22 @@
       return { ok: true, code: 200, text: app.body };
     }
 
+    // Gateway API: an HTTPRoute serves traffic only once it is attached to a
+    // Gateway named in its parentRefs.
+    routeAttached(r) { return this.gateways.some((g) => g.name === r.parent && this.gatewayClasses.includes(g.class)); }
+    viaGateway(host) {
+      const page = (code, text) => ({ ok: false, code, text: `<html><head><title>${code} ${text}</title></head><body><center><h1>${code} ${text}</h1></center><hr><center>nginx</center></body></html>` });
+      const r = this.routes.find((x) => x.hosts.includes(host) && this.routeAttached(x));
+      if (!r) return page(404, "Not Found");
+      const svc = this.resolve(r.backend);
+      if (!svc || svc.port !== r.port || !this.endpointsOf(svc.name).length) return page(500, "Internal Server Error");
+      return { ok: true, code: 200, text: APPS[appOf(this.endpointsOf(svc.name)[0].spec.image)].body };
+    }
+    edgeHost(host) { return this.ingresses.some((x) => x.host === host) || this.routes.some((x) => x.hosts.includes(host)); }
+    viaEdge(host, path) { return this.ingresses.some((x) => x.host === host) ? this.viaIngress(host, path) : this.viaGateway(host); }
+
     reach(src, host, port) {
-      if (this.ingresses.some((x) => x.host === host)) return this.viaIngress(host, "/");
+      if (this.edgeHost(host)) return this.viaEdge(host, "/");
       const svc = this.resolve(host);
       if (!svc) return { ok: false, text: `wget: bad address '${host}:${port}'` };
       if (svc.static) return port === svc.port ? { ok: true, text: svc.body } : { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
@@ -923,9 +1099,12 @@
 
     // RBAC: does this user or ServiceAccount have this verb on this resource?
     canI(user, verb, resource) {
-      if (!user || !user.startsWith("system:serviceaccount:")) return true; // you are cluster admin
-      const [, , ns, name] = user.split(":");
-      const isSubject = (b) => b.subjects.some((s) => s.kind === "ServiceAccount" && s.name === name && (s.namespace || NS) === ns);
+      const sa = user && user.startsWith("system:serviceaccount:");
+      if (!user || (!sa && !this.users.includes(user))) return true; // you are cluster admin
+      const [, , ns, name] = sa ? user.split(":") : [];
+      const isSubject = (b) => b.subjects.some((s) => (sa
+        ? s.kind === "ServiceAccount" && s.name === name && (s.namespace || NS) === ns
+        : s.kind === "User" && s.name === user));
       const allows = (rules) => (rules || []).some((r) =>
         (r.verbs.includes("*") || r.verbs.includes(verb)) && (r.resources.includes("*") || r.resources.includes(resource)));
       const rulesOf = (b) => (b.kind === "ClusterRole" ? this.clusterRoles[b.role] : this.roles[b.role]);
@@ -1065,6 +1244,24 @@
       return Math.max(0, ready - b.minAvailable);
     }
 
+    // Helm: apply a release revision's values to the Deployment it manages.
+    helmApply(values, desc) {
+      const h = this.helm;
+      const tag = (values.image && values.image.tag) || h.defaults.image.tag;
+      const d = this.deployments.find((x) => x.name === h.name);
+      const next = JSON.parse(JSON.stringify(d.spec));
+      next.image = `nginx:${tag}`;
+      if (next.image !== d.spec.image) this.rollout(d, next);
+      for (const r of h.revisions) if (r.status === "deployed" || r.status === "failed") r.status = r.status === "failed" ? "failed" : "superseded";
+      h.revisions.push({ rev: h.revisions.length + 1, values: JSON.parse(JSON.stringify(values)), status: "deployed", desc });
+    }
+    helmDrift() {
+      const h = this.helm;
+      const live = this.deployments.find((x) => x.name === h.name).spec.image;
+      const cur = h.revisions[h.revisions.length - 1];
+      return live !== `nginx:${(cur.values.image && cur.values.image.tag) || h.defaults.image.tag}`;
+    }
+
     rollout(d, newSpec) {
       d.history.push(d.spec);
       d.spec = newSpec;
@@ -1095,7 +1292,12 @@
     "kubectl get pvc | pv | sc | ingress | ingressclass | quota | jobs | pdb",
     "kubectl cordon | uncordon | drain <node> [--ignore-daemonsets]",
     "kubectl create job <name> --image=busybox:1.36 -- wget -qO- <url>",
-    "curl -i http://<ingress host>/     (from your machine, through the ingress)",
+    "curl -i http://<ingress or gateway host>/     (from your machine)",
+    "kubectl get gateway | httproute | cronjob | csr      kubectl certificate approve <csr>",
+    "kubectl config get-contexts | set-context --current --namespace=<ns>",
+    "helm list | status | history | get values | rollback | upgrade <release>",
+    "etcdctl snapshot save | status ...      ssh <node> sudo systemctl | journalctl | crictl ...",
+    "ls <dir>   cat <file>                   (control-plane files for the etcd scenario)",
     "kubectl exec <pod> -- wget -qO- -T 2 http://<service>:<port>   (also curl, env)",
     "kubectl rollout status | history | restart | undo deployment/<name>",
     "kubectl scale deployment/<name> --replicas=N",
@@ -1108,12 +1310,218 @@
     const url = words.slice(1).reverse().find((x) => !x.startsWith("-") && /[a-z]/.test(x));
     if (!url) return say("curl: no URL specified", "warn");
     const m = /^(?:https?:\/\/)?([^/:]+)(?::\d+)?(\/[^\s]*)?/.exec(url);
-    if (!c.ingresses.some((x) => x.host === m[1])) {
+    if (!c.edgeHost(m[1])) {
       return say(`curl: (6) Could not resolve host: ${m[1]}${c.resolve(m[1]) ? "  (cluster Service names only resolve inside the cluster; use kubectl exec)" : ""}`, "warn");
     }
-    const res = c.viaIngress(m[1], m[2] || "/");
-    if (words.includes("-i") || words.includes("-I")) say(`HTTP/1.1 ${res.code} ${res.code === 200 ? "OK" : res.code === 404 ? "Not Found" : "Service Temporarily Unavailable"}`, res.ok ? "" : "warn");
+    const res = c.viaEdge(m[1], m[2] || "/");
+    if (words.includes("-i") || words.includes("-I")) say(`HTTP/1.1 ${res.code} ${res.code === 200 ? "OK" : res.code === 404 ? "Not Found" : res.code === 500 ? "Internal Server Error" : "Service Temporarily Unavailable"}`, res.ok ? "" : "warn");
     say(res.text, res.ok ? "" : "warn");
+  }
+
+  // Commands other than kubectl: curl, helm, etcdctl, ssh, ls, cat.
+  const FILES = {
+    "/etc/kubernetes/manifests/etcd.yaml": [
+      "apiVersion: v1", "kind: Pod", "metadata:", "  name: etcd", "  namespace: kube-system", "spec:", "  containers:", "  - command:", "    - etcd",
+      "    - --advertise-client-urls=https://172.18.0.2:2379", "    - --cert-file=/etc/kubernetes/pki/etcd/server.crt",
+      "    - --client-cert-auth=true", "    - --data-dir=/var/lib/etcd", "    - --key-file=/etc/kubernetes/pki/etcd/server.key",
+      "    - --listen-client-urls=https://127.0.0.1:2379,https://172.18.0.2:2379", "    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt",
+      "    image: registry.k8s.io/etcd:3.6.4-0"]
+  };
+  const DIRS = {
+    "/etc/kubernetes/pki/etcd": ["ca.crt", "ca.key", "healthcheck-client.crt", "healthcheck-client.key", "peer.crt", "peer.key", "server.crt", "server.key"],
+    "/etc/kubernetes/manifests": ["etcd.yaml", "kube-apiserver.yaml", "kube-controller-manager.yaml", "kube-scheduler.yaml"],
+    "/opt/backup": []
+  };
+  function tools(c, words, say) {
+    words = words.filter((w, i) => !(i === 0 && w === "sudo"));
+    while (/^[A-Z_]+=/.test(words[0] || "")) words = words.slice(1); // ETCDCTL_API=3 etcdctl ...
+    if (words[0] === "sudo") words = words.slice(1);
+    const cmd = words[0];
+    const opt = (k) => { const w = words.find((x) => x.startsWith(`--${k}=`)); if (w) return w.slice(k.length + 3); const i = words.indexOf(`--${k}`); return i > 0 ? words[i + 1] : undefined; };
+    if (cmd === "curl") return curl(c, words, say);
+    if (cmd === "ls") {
+      const dir = (words[1] || "").replace(/\/$/, "");
+      if (!DIRS[dir]) return say(`ls: cannot access '${dir}': No such file or directory (try /etc/kubernetes/pki/etcd)`, "warn");
+      const files = dir === "/opt/backup" && c.etcd.saved ? [c.etcd.saved.split("/").pop()] : DIRS[dir];
+      return say(files.join("  ") || "(empty)");
+    }
+    if (cmd === "cat") {
+      const f = FILES[words[1]];
+      if (!f) return say(`cat: ${words[1] || ""}: not available in this playground (try /etc/kubernetes/manifests/etcd.yaml)`, "warn");
+      return f.forEach((l) => say(l));
+    }
+    if (cmd === "etcdctl" || cmd === "etcdutl") {
+      if (words[1] !== "snapshot") return say(`${cmd}: this playground simulates "snapshot save" and "snapshot status"`, "dim");
+      if (words[2] === "status") {
+        const file = words.slice(3).find((x) => !x.startsWith("-"));
+        if (!c.etcd.saved || file !== c.etcd.saved) return say(`Error: stat ${file || ""}: no such file or directory`, "warn");
+        c.etcd.checked = true;
+        if (cmd === "etcdctl") say("Deprecated: Use `etcdutl snapshot status` instead.", "dim");
+        say("+----------+----------+------------+------------+", "row");
+        say("|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |", "row");
+        say("+----------+----------+------------+------------+", "row");
+        say("| 9a3e6d1f |    48213 |       1192 |     5.8 MB |", "row");
+        say("+----------+----------+------------+------------+", "row");
+        return;
+      }
+      if (words[2] !== "save") return say("Try: etcdctl snapshot save <file> --endpoints=... --cacert=... --cert=... --key=...", "dim");
+      const file = words.slice(3).find((x) => !x.startsWith("-") && words[words.indexOf(x) - 1] !== "--endpoints" && words[words.indexOf(x) - 1] !== "--cacert" && words[words.indexOf(x) - 1] !== "--cert" && words[words.indexOf(x) - 1] !== "--key");
+      if (!file) return say("Error: snapshot save expects one argument", "warn");
+      const pki = "/etc/kubernetes/pki/etcd/";
+      const ep = opt("endpoints") || "127.0.0.1:2379";
+      if (!/^https:\/\/(127\.0\.0\.1|localhost|172\.18\.0\.2):2379$/.test(ep)) {
+        return say(`{"level":"warn","msg":"retrying of unary invoker failed","target":"${ep}","error":"connection error: ${/^http:/.test(ep) ? "connection reset (the server expects TLS)" : "connection refused"}"}\nError: context deadline exceeded`, "warn");
+      }
+      if (!opt("cacert") || !opt("cert") || !opt("key")) return say(`{"level":"warn","msg":"retrying of unary invoker failed","error":"authentication handshake failed: remote error: tls: certificate required"}\nError: context deadline exceeded`, "warn");
+      if (opt("cacert") !== pki + "ca.crt") return say("Error: tls: failed to verify certificate: x509: certificate signed by unknown authority", "warn");
+      if (!/^(server|healthcheck-client|peer)$/.test((opt("cert") || "").replace(pki, "").replace(/\.crt$/, "")) || opt("key") !== opt("cert").replace(/\.crt$/, ".key")) {
+        return say("Error: tls: private key does not match public key, or the certificate is not an etcd client certificate", "warn");
+      }
+      if (!/^\/opt\/backup\//.test(file)) return say(`Error: could not open ${file}.part (open ${file}.part: no such file or directory)`, "warn");
+      c.etcd.saved = file;
+      say(`{"level":"info","msg":"created temporary db file","path":"${file}.part"}`, "dim");
+      say(`{"level":"info","msg":"fetched snapshot","endpoint":"${ep}","size":"5.8 MB"}`, "dim");
+      say(`Snapshot saved at ${file}`);
+      return;
+    }
+    if (cmd === "ssh") {
+      const node = words[1];
+      if (!NODES.includes(node)) return say(`ssh: Could not resolve hostname ${node || ""}`, "warn");
+      let rest = words.slice(2).filter((x) => x !== "--");
+      if (rest[0] === "sudo") rest = rest.slice(1);
+      if (!rest.length) return say(`This playground runs one command at a time, for example: ssh ${node} sudo systemctl status kubelet`, "dim");
+      const k = c.kubelet && c.kubelet.node === node ? c.kubelet : { running: true, enabled: true };
+      if (rest[0] === "systemctl" && rest.includes("kubelet")) {
+        const action = rest[1];
+        if (action === "status") {
+          say(`● kubelet.service - kubelet: The Kubernetes Node Agent`);
+          say(`     Loaded: loaded (/usr/lib/systemd/system/kubelet.service; ${k.enabled ? "enabled" : "disabled"}; preset: enabled)`, k.enabled ? "" : "warn");
+          say(k.running ? "     Active: active (running) since Thu 2026-10-30 08:12:04 UTC" : "     Active: inactive (dead)", k.running ? "" : "warn");
+          return;
+        }
+        if (action === "start" || action === "restart") { k.running = true; c.retry = true; return; }
+        if (action === "stop") { k.running = false; return; }
+        if (action === "enable") { k.enabled = true; if (rest.includes("--now")) { k.running = true; c.retry = true; } return say("Created symlink /etc/systemd/system/multi-user.target.wants/kubelet.service → /usr/lib/systemd/system/kubelet.service."); }
+        if (action === "disable") { k.enabled = false; return; }
+      }
+      if (rest[0] === "journalctl" && rest.includes("kubelet")) {
+        say("Oct 30 07:58:41 " + node + " systemd[1]: Stopping kubelet.service - kubelet: The Kubernetes Node Agent...");
+        say("Oct 30 07:58:41 " + node + " systemd[1]: kubelet.service: Deactivated successfully.");
+        say("Oct 30 07:58:41 " + node + " systemd[1]: Stopped kubelet.service - kubelet: The Kubernetes Node Agent.");
+        say("Oct 30 08:01:12 " + node + " systemd[1]: Reached target multi-user.target (after reboot; kubelet was not started)", "warn");
+        return;
+      }
+      if (rest[0] === "crictl" && rest[1] === "ps") {
+        table3(say, [["CONTAINER", "IMAGE", "STATE", "NAME", "POD"],
+          ...(k.running ? [["a1f09c2e", "kindest/kindnetd", "Running", "kindnet-cni", "kindnet-x7k2p"], ["5be81d40", "registry.k8s.io/kube-proxy:v1.34.0", "Running", "kube-proxy", "kube-proxy-m4q8d"]] : [])]);
+        if (!k.running) say("(no containers: the kubelet that starts them is not running)", "dim");
+        return;
+      }
+      return say(`This playground runs systemctl, journalctl and crictl on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
+    }
+    if (cmd === "helm") return helm(c, words, say, opt);
+    return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, etcdctl and ssh; type 'help'.`, "warn");
+  }
+
+  function table3(say, rows) {
+    const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
+    rows.forEach((r, i) => say(r.map((x, j) => String(x).padEnd(widths[j] + 3)).join("").trimEnd(), i === 0 ? "head" : "row"));
+  }
+
+  function helm(c, words, say, opt) {
+    const h = c.helm;
+    const sub = words[1];
+    if (!h) return say("Error: no Helm releases in this scenario", "dim");
+    const name = words[2];
+    const valuesYaml = (v) => (v.image && v.image.tag ? ["image:", `  tag: "${v.image.tag}"`] : ["{}"]);
+    const latest = () => h.revisions[h.revisions.length - 1];
+    if (sub === "list" || sub === "ls") {
+      const r = latest();
+      return table3(say, [["NAME", "NAMESPACE", "REVISION", "UPDATED", "STATUS", "CHART", "APP VERSION"],
+        [h.name, NS, r.rev, "2026-10-30 10:52:11 UTC", r.status, h.chart, h.appVersion]]);
+    }
+    if (name !== h.name && ["status", "history", "get", "rollback", "upgrade"].includes(sub)) {
+      if (sub === "get" && words[3] === h.name) { /* helm get values <name> */ } else return say(`Error: release: not found`, "warn");
+    }
+    if (sub === "status") {
+      const r = latest();
+      say(`NAME: ${h.name}`); say("LAST DEPLOYED: Thu Oct 30 10:52:11 2026"); say(`NAMESPACE: ${NS}`);
+      say(`STATUS: ${r.status}`, r.status === "failed" ? "warn" : ""); say(`REVISION: ${r.rev}`);
+      if (r.status === "failed") say(`DESCRIPTION: ${r.desc}`, "warn");
+      return;
+    }
+    if (sub === "history") {
+      return table3(say, [["REVISION", "UPDATED", "STATUS", "CHART", "APP VERSION", "DESCRIPTION"],
+        ...h.revisions.map((r) => [r.rev, "Thu Oct 30 2026", r.status, h.chart, h.appVersion, r.desc])]);
+    }
+    if (sub === "get" && words[2] === "values") {
+      const revArg = opt("revision");
+      const r = revArg ? h.revisions.find((x) => String(x.rev) === revArg) : latest();
+      if (!r) return say("Error: release: not found", "warn");
+      say("USER-SUPPLIED VALUES:");
+      valuesYaml(r.values).forEach((l) => say(l));
+      return;
+    }
+    if (sub === "rollback") {
+      const to = words[3] ? h.revisions.find((x) => String(x.rev) === words[3]) : [...h.revisions].reverse().find((x) => x.status === "superseded");
+      if (!to) return say("Error: release has no deployed revision to roll back to", "warn");
+      c.helmApply(to.values, `Rollback to ${to.rev}`);
+      return say("Rollback was a success! Happy Helming!");
+    }
+    if (sub === "upgrade") {
+      const set = words.filter((x, i) => words[i - 1] === "--set").concat(words.filter((x) => x.startsWith("--set=")).map((x) => x.slice(6)));
+      const values = words.includes("--reuse-values") ? JSON.parse(JSON.stringify(latest().values)) : {};
+      for (const kv of set) for (const part of kv.split(",")) {
+        const [k, v] = part.split("=");
+        if (k === "image.tag") values.image = { ...(values.image || {}), tag: v };
+      }
+      if (!words.some((x) => x.includes("charts/menu") || x === "kitchen/menu")) return say(`Error: give the chart, for example: helm upgrade ${h.name} ./charts/menu --set image.tag=1.27`, "warn");
+      c.helmApply(values, "Upgrade complete");
+      say(`Release "${h.name}" has been upgraded. Happy Helming!`);
+      say(`NAME: ${h.name}`); say(`STATUS: deployed`); say(`REVISION: ${latest().rev}`);
+      return;
+    }
+    return say("This playground simulates helm list, status, history, get values, rollback and upgrade.", "dim");
+  }
+
+  function config(c, args, flags, say) {
+    const sub = args[1];
+    if (sub === "get-contexts") {
+      return table3(say, [["CURRENT", "NAME", "CLUSTER", "AUTHINFO", "NAMESPACE"], ["*", "kind-k8s-quest", "kind-k8s-quest", "kind-k8s-quest", c.currentNs]]);
+    }
+    if (sub === "current-context") return say("kind-k8s-quest");
+    if (sub === "view") {
+      ["apiVersion: v1", "kind: Config", "current-context: kind-k8s-quest", "contexts:", "- name: kind-k8s-quest", "  context:", "    cluster: kind-k8s-quest",
+        "    user: kind-k8s-quest", `    namespace: ${c.currentNs}`].forEach((l) => say(l));
+      return;
+    }
+    if (sub === "set-context") {
+      if (!flags.current) return say("error: this playground sets the current context only: kubectl config set-context --current --namespace=<ns>", "warn");
+      if (!flags.namespace && !flags.n) return say("error: give --namespace=<ns>", "warn");
+      c.currentNs = flags.namespace || flags.n;
+      return say('Context "kind-k8s-quest" modified.');
+    }
+    if (sub === "use-context") return say(`error: no context exists with the name: "${args[2] || ""}" (kubectl config get-contexts lists them)`, "warn");
+    return say("Try: kubectl config get-contexts, current-context, view --minify, set-context --current --namespace=<ns>", "dim");
+  }
+
+  // A fixed kube-system, for reading control-plane Pods.
+  function kubeSystem(c, args, verb, say) {
+    const pods = ["coredns-668d6bf9bc-4xk2p", "coredns-668d6bf9bc-q8w7m", "etcd-control-plane", "kube-apiserver-control-plane",
+      "kube-controller-manager-control-plane", "kube-scheduler-control-plane", ...NODES.map((n, i) => `kube-proxy-${["m4q8d", "z2v7r", "k9c3x"][i]}`)];
+    if (verb === "get") {
+      if (!/^(pods?|po)$/.test(args[1] || "")) return say("No resources found in kube-system namespace.");
+      return table3(say, [["NAME", "READY", "STATUS", "RESTARTS", "AGE"], ...pods.map((p) => [p, "1/1", "Running", 0, "12d"])]);
+    }
+    const name = args[1] === "pod" || args[1] === "pods" ? args[2] : (args[1] || "").replace(/^pods?\//, "");
+    if (name !== "etcd-control-plane") return say(`(this playground describes etcd-control-plane in kube-system; other control-plane Pods are Running)`, "dim");
+    say("Name:         etcd-control-plane");
+    say("Namespace:    kube-system");
+    say("Containers:");
+    say("  etcd:");
+    say("    Image:   registry.k8s.io/etcd:3.6.4-0");
+    say("    Command:");
+    FILES["/etc/kubernetes/manifests/etcd.yaml"].filter((l) => l.startsWith("    - ")).forEach((l) => say("      " + l.trim().slice(2)));
   }
 
   // securityContext fields from a patch, container or Pod level.
@@ -1155,7 +1563,7 @@
     const alias = { namespace: "n", output: "o", selector: "l", container: "c", A: "all-namespaces", patch: "p" };
     if (flags.p === true) flags.previous = true;
     for (const [long, short] of Object.entries(alias)) if (flags[long] !== undefined) flags[short] = flags[long];
-    const ns = flags.n || NS;
+    const ns = flags.n || c.currentNs;
     const verb = args[0];
     const nowMs = c.now();
 
@@ -1177,8 +1585,19 @@
     const podByName = (name) => c.pods.find((p) => p.name === name);
     const depByName = (name) => c.deployments.find((d) => d.name === name);
     const svcByName = (name) => c.services.find((s) => s.name === name && (s.ns || NS) === NS);
-    if (all[0] === "curl") return curl(c, all, say), out;
-    if (ns !== NS && verb !== "get") return notFound("pods", args[args.length - 1] || ""), out;
+    if (all[0] !== "kubectl") return tools(c, all, say), out;
+    if (verb === "config") return config(c, args, flags, say), out;
+    if (ns === "kube-system" && (verb === "get" || verb === "describe")) return kubeSystem(c, args, verb, say), out;
+    // Impersonation: --as=<user> runs the request with that user's rights.
+    if (flags.as && (verb === "get" || verb === "describe" || verb === "delete" || verb === "logs")) {
+      const k = (target(verb === "logs" ? "pods" : null).kind) || "pods";
+      const v = verb === "get" && !target(null).name ? "list" : verb === "logs" ? "get" : verb === "describe" ? "get" : verb;
+      if (!c.canI(flags.as, v, k)) {
+        say(`Error from server (Forbidden): ${k} is forbidden: User "${flags.as}" cannot ${v} resource "${k}" in API group "" in the namespace "${ns}"`, "warn");
+        return out;
+      }
+    }
+    if (ns !== NS && !["get", "auth", "certificate"].includes(verb)) return notFound("pods", args[args.length - 1] || ""), out;
 
     const ipOf = (p) => `10.244.${NODES.indexOf(p.node) + 1}.${10 + c.pods.indexOf(p)}`;
     const labelsOf = (p) => Object.entries(p.labels).map(([k, v]) => `${k}=${v}`).join(",") + (p.hash ? `,pod-template-hash=${p.hash}` : "");
@@ -1226,7 +1645,9 @@
     if (verb === "get") {
       const { kind, name } = target(null);
       if (!kind) return say('error: say what to get, for example "kubectl get pods"', "warn"), out;
-      if (ns !== NS && !flags["all-namespaces"] && kind !== "services") return say(`No resources found in ${ns} namespace.`), out;
+      if (ns !== NS && !flags["all-namespaces"] && !["services", "nodes", "namespaces", "csrs", "storageclasses", "ingressclasses", "gatewayclasses", "pvs", "clusterroles", "clusterrolebindings"].includes(kind)) {
+        return say(`No resources found in ${ns} namespace.`), out;
+      }
       if (kind === "pods") {
         if (name && flags.o === "yaml") {
           const p = podByName(name);
@@ -1303,7 +1724,7 @@
         const head = ["NAME", "STATUS", "ROLES", "AGE", "VERSION", ...extra.map((x) => x.toUpperCase())];
         if (flags["show-labels"]) head.push("LABELS");
         table([head, ...NODES.filter((n) => !name || n === name).map((n) => {
-          const row = [n, c.cordoned[n] ? "Ready,SchedulingDisabled" : "Ready", "<none>", "12d", "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
+          const row = [n, (c.nodeReady(n) ? "Ready" : "NotReady") + (c.cordoned[n] ? ",SchedulingDisabled" : ""), "<none>", "12d", "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
           if (flags["show-labels"]) row.push(sel(c.nodeLabels[n]));
           return row;
         })]);
@@ -1345,6 +1766,32 @@
         const list = kind === "rolebindings" ? c.bindings : c.clusterBindings;
         if (!list.length) return say(kind === "rolebindings" ? `No resources found in ${NS} namespace.` : "No resources found"), out;
         table([["NAME", "ROLE", "AGE"], ...list.map((b) => [b.name, `${b.kind}/${b.role}`, age(b.age || 0)])]);
+        return out;
+      }
+      if (kind === "cronjobs") {
+        if (!c.cronjobs.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "SCHEDULE", "TIMEZONE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE"],
+          ...c.cronjobs.map((x) => [x.name, x.schedule, "<none>", String(x.suspend), 0, x.suspend ? "8d" : "8d", "30d"])]);
+        return out;
+      }
+      if (kind === "csrs") {
+        if (!c.csrs.length) return say("No resources found"), out;
+        table([["NAME", "AGE", "SIGNERNAME", "REQUESTOR", "REQUESTEDDURATION", "CONDITION"],
+          ...c.csrs.map((x) => [x.name, "12m", "kubernetes.io/kube-apiserver-client", "kubernetes-admin", "<none>", x.status])]);
+        return out;
+      }
+      if (kind === "gatewayclasses") {
+        table([["NAME", "CONTROLLER", "ACCEPTED", "AGE"], ...c.gatewayClasses.map((x) => [x, "gateway.nginx.org/nginx-gateway-controller", "True", "12d"])]);
+        return out;
+      }
+      if (kind === "gateways") {
+        if (!c.gateways.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "CLASS", "ADDRESS", "PROGRAMMED", "AGE"], ...c.gateways.map((g) => [g.name, g.class, "172.18.0.240", "True", "5d"])]);
+        return out;
+      }
+      if (kind === "httproutes") {
+        if (!c.routes.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "HOSTNAMES", "AGE"], ...c.routes.map((r) => [r.name, `["${r.hosts.join('","')}"]`, "1h"])]);
         return out;
       }
       if (kind === "pvcs") {
@@ -1546,8 +1993,11 @@
         say(`Name:               ${name}`);
         say("Roles:              <none>");
         say(`Labels:             ${sel(c.nodeLabels[name]).split(",").join("\n                    ")}`);
-        say(`Taints:             ${c.taints[name].map((t) => `${t.key}${t.value ? "=" + t.value : ""}:${t.effect}`).join(", ") || "<none>"}`, c.taints[name].length ? "warn" : "");
-        say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
+        const taints = [...c.taints[name].map((t) => `${t.key}${t.value ? "=" + t.value : ""}:${t.effect}`),
+          ...(c.nodeReady(name) ? [] : ["node.kubernetes.io/unreachable:NoExecute", "node.kubernetes.io/unreachable:NoSchedule"])];
+        say(`Taints:             ${taints.join(", ") || "<none>"}`, taints.length ? "warn" : "");
+        if (c.nodeReady(name)) say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
+        else say("Conditions:         Ready=Unknown  NodeStatusUnknown  Kubelet stopped posting node status.", "warn");
         say("Allocatable:");
         say("  cpu:              4");
         say(`  memory:           ${fmtMem(NODE_MEMORY)}`);
@@ -1569,6 +2019,58 @@
         const evs = c.rsEvents.filter((e) => e.rs === name);
         say("Events:" + (evs.length ? "" : "         <none>"));
         for (const e of evs) say(`  ${e.type}  ${e.reason}  replicaset-controller  ${e.msg}`, "warn");
+        return out;
+      }
+      if (kind === "cronjobs") {
+        const x = c.cronjobs.find((y) => y.name === name);
+        if (!x) return notFound("cronjobs.batch", name), out;
+        say(`Name:                          ${x.name}`);
+        say(`Schedule:                      ${x.schedule}`);
+        say("Concurrency Policy:            Forbid");
+        say(`Suspend:                       ${x.suspend ? "True" : "False"}`, x.suspend ? "warn" : "");
+        say("Successful Job History Limit:  3");
+        say(`Job Template:\n  Command: wget -qO- ${x.url}`);
+        say(`Last Schedule Time:            ${x.suspend ? "8 days ago" : "8 days ago"}`);
+        say("Events:                        <none>");
+        return out;
+      }
+      if (kind === "csrs") {
+        const x = c.csrs.find((y) => y.name === name);
+        if (!x) return notFound("certificatesigningrequests.certificates.k8s.io", name), out;
+        say(`Name:         ${x.name}`);
+        say("Requesting User: kubernetes-admin");
+        say("Signer:       kubernetes.io/kube-apiserver-client");
+        say(`Status:       ${x.status}`, x.status === "Pending" ? "warn" : "");
+        say("Subject:");
+        say(`  Common Name:    ${x.user}`);
+        say(`  Organization:   kitchen-team`);
+        return out;
+      }
+      if (kind === "gateways") {
+        const g = c.gateways.find((y) => y.name === name);
+        if (!g) return notFound("gateways.gateway.networking.k8s.io", name), out;
+        const attached = c.routes.filter((r) => r.parent === g.name).length;
+        say(`Name:         ${g.name}`);
+        say(`Namespace:    ${NS}`);
+        say(`Spec:\n  Gateway Class Name:  ${g.class}\n  Listeners:\n    Name:      http\n    Port:      80\n    Protocol:  HTTP`);
+        say(`Status:\n  Addresses:  172.18.0.240\n  Listeners:\n    Name:              http\n    Attached Routes:   ${attached}`, attached ? "" : "warn");
+        return out;
+      }
+      if (kind === "httproutes") {
+        const r = c.routes.find((y) => y.name === name);
+        if (!r) return notFound("httproutes.gateway.networking.k8s.io", name), out;
+        const ok = c.routeAttached(r);
+        say(`Name:         ${r.name}`);
+        say(`Namespace:    ${NS}`);
+        say("Spec:");
+        say(`  Hostnames:   ${r.hosts.join(", ")}`);
+        say(`  Parent Refs:\n    Name:  ${r.parent}`);
+        say(`  Rules:\n    Backend Refs:\n      Name:  ${r.backend}\n      Port:  ${r.port}`);
+        say("Status:");
+        say("  Parents:");
+        say(`    Parent Ref:  Name: ${r.parent}`);
+        say("    Conditions:");
+        say(ok ? "      Type: Accepted  Status: True  Reason: Accepted" : `      Type: Accepted  Status: False  Reason: NoMatchingParent  Message: Gateway "${r.parent}" not found`, ok ? "" : "warn");
         return out;
       }
       if (kind === "pvcs") {
@@ -1824,8 +2326,9 @@
         if (kind !== "rolebindings" && kind !== "clusterrolebindings") return say("error: kubectl set subject works on rolebindings and clusterrolebindings", "warn"), out;
         const b = (kind === "rolebindings" ? c.bindings : c.clusterBindings).find((x) => x.name === name);
         if (!b) return notFound(`${kind}.rbac.authorization.k8s.io`, name), out;
-        const add = (many.serviceaccount || []).map((x) => { const [sns, sname] = x.split(":"); return { kind: "ServiceAccount", name: sname, namespace: sns }; });
-        if (!add.length) return say("error: give --serviceaccount=<namespace>:<name>", "warn"), out;
+        const add = [...(many.serviceaccount || []).map((x) => { const [sns, sname] = x.split(":"); return { kind: "ServiceAccount", name: sname, namespace: sns }; }),
+          ...(many.user || []).map((u) => ({ kind: "User", name: u }))];
+        if (!add.length) return say("error: give --user=<name> or --serviceaccount=<namespace>:<name>", "warn"), out;
         for (const a of add) if (!b.subjects.some((x) => x.name === a.name && x.namespace === a.namespace)) b.subjects.push(a);
         say(`${kind.replace(/s$/, "")}.rbac.authorization.k8s.io/${name} subjects updated`);
         return out;
@@ -1898,6 +2401,7 @@
       }
       c.rollout(d, spec);
       say(`deployment.apps/${d.name} ${what === "resources" ? "resource requirements" : what} updated`);
+      if (c.helm && c.helm.name === d.name) say(`(deployment/${d.name} belongs to Helm release ${c.helm.name}; the release still records its old values, and the next helm upgrade will put them back)`, "warn");
       return out;
     }
 
@@ -2162,8 +2666,9 @@
         if (list.some((b) => b.name === name)) return say(`error: failed to create ${args[1]}: ${what}.rbac.authorization.k8s.io "${name}" already exists`, "warn"), out;
         const role = flags.role ? { kind: "Role", role: flags.role } : flags.clusterrole ? { kind: "ClusterRole", role: flags.clusterrole } : null;
         if (!role || (what === "clusterrolebindings" && role.kind === "Role")) return say(`error: give --${what === "rolebindings" ? "role or --clusterrole" : "clusterrole"}=<name>`, "warn"), out;
-        const subjects = (many.serviceaccount || []).map((x) => { const [sns, sname] = x.split(":"); return { kind: "ServiceAccount", name: sname, namespace: sns }; });
-        if (!subjects.length) return say("error: give --serviceaccount=<namespace>:<name>", "warn"), out;
+        const subjects = [...(many.serviceaccount || []).map((x) => { const [sns, sname] = x.split(":"); return { kind: "ServiceAccount", name: sname, namespace: sns }; }),
+          ...(many.user || []).map((u) => ({ kind: "User", name: u }))];
+        if (!subjects.length) return say("error: give --user=<name> or --serviceaccount=<namespace>:<name>", "warn"), out;
         list.push({ name, ...role, subjects, age: 0 });
         say(`${what.replace(/s$/, "")}.rbac.authorization.k8s.io/${name} created`);
         if (role.role === "cluster-admin" || role.role === "admin" || role.role === "edit") {
@@ -2174,6 +2679,13 @@
       if (what === "jobs") {
         if (!name) return say("error: name the Job: kubectl create job <name> --image=busybox:1.36 -- wget -qO- <url>", "warn"), out;
         if (c.jobs.some((x) => x.name === name)) return say(`error: failed to create job: jobs.batch "${name}" already exists`, "warn"), out;
+        if (flags.from) {
+          const cj = c.cronjobs.find((x) => `cronjob/${x.name}` === flags.from || `cronjobs/${x.name}` === flags.from);
+          if (!cj) return notFound("cronjobs.batch", String(flags.from).split("/")[1] || ""), out;
+          c.runJob({ name, url: cj.url, backoffLimit: 6, created: c.now(), from: cj.name });
+          say(`job.batch/${name} created`);
+          return out;
+        }
         const url = inner.find((x) => /[a-z]/.test(x) && !x.startsWith("-") && x !== "wget" && x !== "curl");
         if (!flags.image || !url) return say("error: give --image and a command, for example: kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc/menu.json", "warn"), out;
         c.runJob({ name, url, backoffLimit: 6, created: c.now() });
@@ -2181,6 +2693,16 @@
         return out;
       }
       return say("This playground creates configmaps, jobs, rolebindings and clusterrolebindings. There are no files to create from.", "dim"), out;
+    }
+
+    if (verb === "certificate") {
+      const sub = args[1];
+      const x = c.csrs.find((y) => y.name === args[2]);
+      if (!["approve", "deny"].includes(sub)) return say("Try: kubectl certificate approve <csr>", "dim"), out;
+      if (!x) return notFound("certificatesigningrequests.certificates.k8s.io", args[2] || ""), out;
+      x.status = sub === "approve" ? "Approved,Issued" : "Denied";
+      say(`certificatesigningrequest.certificates.k8s.io/${x.name} ${sub === "approve" ? "approved" : "denied"}`);
+      return out;
     }
 
     if (verb === "auth") {
@@ -2252,6 +2774,24 @@
         if (d.spec.liveness && !next.liveness) say("(without a liveness probe nobody restarts the app if it hangs; point the probe at the right port instead)", "warn");
         c.rollout(d, next);
         say(`deployment.apps/${name} patched`);
+        return out;
+      }
+      if (kind === "cronjobs") {
+        const x = c.cronjobs.find((y) => y.name === name);
+        if (!x) return notFound("cronjobs.batch", name), out;
+        if (spec.suspend === undefined) return say("(this playground patches spec.suspend)", "dim"), out;
+        x.suspend = spec.suspend === true || spec.suspend === "true";
+        say(`cronjob.batch/${name} patched`);
+        return out;
+      }
+      if (kind === "httproutes") {
+        const r = c.routes.find((y) => y.name === name);
+        if (!r) return notFound("httproutes.gateway.networking.k8s.io", name), out;
+        if (Array.isArray(spec.parentRefs) && spec.parentRefs[0] && spec.parentRefs[0].name) r.parent = spec.parentRefs[0].name;
+        if (Array.isArray(spec.hostnames)) r.hosts = spec.hostnames;
+        const ref = (((spec.rules || [])[0] || {}).backendRefs || [])[0];
+        if (ref) { if (ref.name) r.backend = ref.name; if (ref.port) r.port = Number(ref.port); }
+        say(`httproute.gateway.networking.k8s.io/${name} patched`);
         return out;
       }
       if (kind === "storageclasses") {
@@ -2553,7 +3093,10 @@
       return load(next.id);
     }
     if (cmd === "hint") return print(scenario.hints[Math.min(hintLevel++, scenario.hints.length - 1)], "dim");
-    if (words[0] !== "kubectl" && words[0] !== "curl") return print(`${words[0]}: command not found. This playground understands kubectl (and curl); type 'help'.`, "warn");
+    const first = words.find((w) => w !== "sudo" && !/^[A-Z_]+=/.test(w)) || "";
+    if (!["kubectl", "curl", "helm", "etcdctl", "etcdutl", "ssh", "ls", "cat"].includes(first)) {
+      return print(`${words[0]}: command not found. This playground understands kubectl, helm, curl, etcdctl and ssh; type 'help'.`, "warn");
+    }
     for (const [text, cls] of kubectl(cluster, cmd)) print(text, cls);
     renderMap();
     if (cluster.dirty) settleSoon(4);
@@ -2590,12 +3133,15 @@
       hpas: cluster.hpas.map((x) => x.name), vpas: cluster.vpas.map((x) => x.name), namespaces: [NS],
       pvcs: cluster.pvcs.map((x) => x.name), storageclasses: cluster.storageClasses.map((x) => x.name),
       ingresses: cluster.ingresses.map((x) => x.name), quotas: cluster.quota ? [cluster.quota.name] : [],
-      jobs: cluster.jobs.map((x) => x.name), pdbs: cluster.pdbs.map((x) => x.name)
+      jobs: cluster.jobs.map((x) => x.name), pdbs: cluster.pdbs.map((x) => x.name),
+      cronjobs: cluster.cronjobs.map((x) => x.name), csrs: cluster.csrs.map((x) => x.name),
+      gateways: cluster.gateways.map((x) => x.name), httproutes: cluster.routes.map((x) => x.name)
     };
     const names = byKind[kind] || [...Object.values(byKind).flat(),
       "get", "describe", "logs", "exec", "patch", "label", "create", "auth", "can-i", "pods", "deployment", "service",
       "endpoints", "nodes", "events", "configmap", "networkpolicy", "rolebinding", "rollout", "kubectl", "taint", "expose",
-      "hpa", "vpa", "namespace", "pvc", "storageclass", "ingress", "ingressclass", "quota", "job", "pdb", "cordon", "uncordon", "drain", "curl"];
+      "hpa", "vpa", "namespace", "pvc", "storageclass", "ingress", "ingressclass", "quota", "job", "pdb", "cordon", "uncordon", "drain", "curl",
+      "helm", "rollback", "history", "httproute", "gateway", "cronjob", "csr", "certificate", "approve", "config", "set-context", "etcdctl", "ssh"];
     const hits = [...new Set(names)].filter((n) => n.startsWith(stem) && n !== stem);
     if (hits.length === 1) input.value = v.slice(0, start) + prefix + hits[0] + " ";
     else if (hits.length > 1) {

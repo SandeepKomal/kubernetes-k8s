@@ -49,7 +49,15 @@ window.QUEST_QUIZ_BANK = {
         "It creates the object for a few seconds, then deletes it",
         "It checks that every container image exists in its registry"
       ], answer: 1,
-      why: "A server-side dry run takes the same path as a real request but is never persisted, so it catches quota, Pod Security or webhook rejections. A client-side dry run never leaves your machine, and neither mode checks images." }
+      why: "A server-side dry run takes the same path as a real request but is never persisted, so it catches quota, Pod Security or webhook rejections. A client-side dry run never leaves your machine, and neither mode checks images." },
+    { q: "`kubectl get pods` says `No resources found in default namespace.`, but the team's app is running. What is the lasting fix?",
+      options: [
+        "Add -n kitchen to every command forever",
+        "Set the context's default namespace: `kubectl config set-context --current --namespace=kitchen`",
+        "Move the app to the default namespace",
+        "Restart kubectl"
+      ], answer: 1,
+      why: "Each kubeconfig context has a default namespace. `kubectl config get-contexts` shows it; -n overrides it for one command." }
   ],
 
   "01": [
@@ -309,7 +317,23 @@ window.QUEST_QUIZ_BANK = {
         "curl does not support Kubernetes",
         "You need to restart CoreDNS"
       ], answer: 1,
-      why: "ClusterIP Services and their names are internal. To test from inside, run the request in a Pod with `kubectl exec`; to reach them from outside, expose them." }
+      why: "ClusterIP Services and their names are internal. To test from inside, run the request in a Pod with `kubectl exec`; to reach them from outside, expose them." },
+    { q: "In the Gateway API, an HTTPRoute is applied but its hostname returns 404. `kubectl describe httproute` shows `Accepted: False, reason NoMatchingParent`. What is wrong?",
+      options: [
+        "The backend Service has no endpoints",
+        "Its parentRefs name a Gateway that does not exist (or does not allow it), so no Gateway serves the route",
+        "The GatewayClass is missing a TLS certificate",
+        "HTTPRoutes need an Ingress as well"
+      ], answer: 1,
+      why: "A route attaches to Gateways through parentRefs, and the Gateway must also allow routes from its namespace. The route's status.parents shows whether each parent accepted it." },
+    { q: "What does the Gateway API split into separate objects that a single Ingress combined?",
+      options: [
+        "Pods and Services",
+        "The infrastructure (GatewayClass and Gateway, owned by the platform team) and the routing (HTTPRoute and others, owned by app teams)",
+        "TLS and DNS",
+        "Nothing; it is a rename of Ingress"
+      ], answer: 1,
+      why: "Separating roles lets platform teams own listeners, addresses and certificates while app teams attach routes. It also adds features Ingress handled through annotations: header matching, traffic splitting, other protocols." }
   ],
 
   "05": [
@@ -692,7 +716,11 @@ window.QUEST_QUIZ_BANK = {
         "It must succeed 3 times",
         "It waits 3 seconds between retries"
       ], answer: 1,
-      why: "parallelism sets concurrency and completions sets the required successes. backoffLimit counts retries before giving up (6 by default)." }
+      why: "parallelism sets concurrency and completions sets the required successes. backoffLimit counts retries before giving up (6 by default)." },
+    { q: "A CronJob has not created a Job for a week, and there are no error events. What is the first field to check?",
+      options: ["`spec.schedule`", "`spec.suspend`", "`spec.jobTemplate.spec.backoffLimit`", "`metadata.labels`"],
+      answer: 1,
+      why: "`suspend: true` silently stops new runs; `kubectl get cronjob` shows it in the SUSPEND column. After resuming, `kubectl create job <name> --from=cronjob/<cronjob>` proves the template works without waiting for the schedule." }
   ],
 
   "10": [
@@ -775,7 +803,23 @@ window.QUEST_QUIZ_BANK = {
         "No. RBAC is purely additive; if any binding allows an action it is allowed, so you restrict access by not granting it",
         "Only ClusterRoles can deny"
       ], answer: 2,
-      why: "There are no deny rules in RBAC. To block something everyone could otherwise do, use admission control (for example a ValidatingAdmissionPolicy) instead." }
+      why: "There are no deny rules in RBAC. To block something everyone could otherwise do, use admission control (for example a ValidatingAdmissionPolicy) instead." },
+    { q: "Jane's CertificateSigningRequest has been approved, yet `kubectl get pods --as=jane` is still forbidden. Why?",
+      options: [
+        "The certificate takes an hour to become valid",
+        "A certificate only proves who she is (authentication); she still needs a RoleBinding or ClusterRoleBinding granting the verbs (authorisation)",
+        "Users cannot list Pods, only ServiceAccounts can",
+        "The CSR must be approved twice"
+      ], answer: 1,
+      why: "Create a binding for the user name in the certificate's Common Name, for example `kubectl create rolebinding jane-read --role=pod-reader --user=jane`. Groups come from the certificate's Organization field." },
+    { q: "Where does Kubernetes get a client certificate user's name and groups from?",
+      options: [
+        "From a User object stored in etcd",
+        "From the certificate itself: the Common Name (CN) is the user name, and each Organization (O) is a group",
+        "From the kubeconfig file name",
+        "From the ServiceAccount the user runs as"
+      ], answer: 1,
+      why: "Kubernetes has no User objects. Any certificate signed by the cluster's CA authenticates the name in it, which is why approving CSRs is a privileged action." }
   ],
 
   "11": [
@@ -1082,7 +1126,31 @@ window.QUEST_QUIZ_BANK = {
         "It exited on SIGTERM (128 + 15), sent by the kubelet after the liveness probe failed, so investigate the probe rather than a crash",
         "The image is corrupt"
       ], answer: 2,
-      why: "Exit codes above 128 mean a signal: 143 is SIGTERM, 137 is SIGKILL (OOM kills, or the end of the grace period) and 139 is a segmentation fault. Here the kubelet stopped a container it considered unhealthy." }
+      why: "Exit codes above 128 mean a signal: 143 is SIGTERM, 137 is SIGKILL (OOM kills, or the end of the grace period) and 139 is a segmentation fault. Here the kubelet stopped a container it considered unhealthy." },
+    { q: "A node shows NotReady after a reboot, and `describe node` says `Kubelet stopped posting node status`. The machine itself is up. What do you check?",
+      options: [
+        "The Deployments on that node",
+        "The kubelet on the node: `systemctl status kubelet` and `journalctl -u kubelet`; after a reboot it is often simply not enabled",
+        "The etcd cluster",
+        "The scheduler's logs"
+      ], answer: 1,
+      why: "The node's Ready condition is reported by its kubelet. `systemctl enable --now kubelet` starts it and makes it start on every boot." },
+    { q: "Which flags does `etcdctl snapshot save` need on a kubeadm cluster?",
+      options: [
+        "None; it reads them from kubeconfig",
+        "The client endpoint (`--endpoints=https://127.0.0.1:2379`) and TLS files: `--cacert` (the etcd CA), `--cert` and `--key`, all listed in the etcd static Pod manifest",
+        "Only `--data-dir`",
+        "A ServiceAccount token"
+      ], answer: 1,
+      why: "etcd requires client certificates. The paths are in /etc/kubernetes/manifests/etcd.yaml (or `kubectl -n kube-system describe pod etcd-<node>`). Verify the backup with `etcdutl snapshot status`." },
+    { q: "How do you restore an etcd snapshot on a kubeadm control-plane node?",
+      options: [
+        "`kubectl apply -f snapshot.db`",
+        "`etcdutl snapshot restore <file> --data-dir <new-dir>`, then point the etcd static Pod's data volume at the new directory",
+        "Copy the snapshot over /var/lib/etcd while etcd runs",
+        "Restart the API server with --etcd-snapshot"
+      ], answer: 1,
+      why: "Restore writes a fresh data directory; editing the hostPath in /etc/kubernetes/manifests/etcd.yaml makes the kubelet restart etcd on it. Never overwrite a running member's data." }
   ],
 
   "15": [
@@ -1350,7 +1418,27 @@ window.QUEST_QUIZ_BANK = {
         "Put the toleration in `commonAnnotations`",
         "Use a `configMapGenerator`"
       ], answer: 1,
-      why: "A patch `target` can select by group, version, kind, name, namespace, label selector or annotation selector, and the patch is applied to each match. Annotations are metadata only and never change the Pod spec." }
+      why: "A patch `target` can select by group, version, kind, name, namespace, label selector or annotation selector, and the patch is applied to each match. Annotations are metadata only and never change the Pod spec." },
+    { q: "A `helm upgrade` failed, and someone fixed the Deployment with `kubectl set image`. The Pods are fine. What is still wrong?",
+      options: [
+        "Nothing",
+        "The release still records the failed revision and its bad values; the next `helm upgrade` reapplies them, undoing the kubectl fix",
+        "kubectl cannot change Helm objects at all",
+        "The chart is now deleted"
+      ], answer: 1,
+      why: "Fix releases through Helm: `helm rollback <release> <revision>` or an upgrade with corrected values, so Helm's record and the cluster agree." },
+    { q: "Which command shows the values a specific Helm revision was installed with?",
+      options: ["`helm show values <chart>`", "`helm get values <release> --revision <n>`", "`helm status <release> --values`", "`kubectl get release <name> -o yaml`"],
+      answer: 1,
+      why: "`helm show values` prints the chart's defaults; `helm get values` prints what was supplied for a release (add --all for the merged result). `helm history` lists the revisions." },
+    { q: "What does `helm upgrade --set image.tag=1.27` do to values you set in earlier upgrades, if you do not pass `--reuse-values`?",
+      options: [
+        "Keeps them all",
+        "Starts again from the chart's defaults plus the new --set, so earlier --set values are dropped",
+        "Deletes the release",
+        "Fails until you pass every value again"
+      ], answer: 1,
+      why: "Keep values in a file you pass with -f on every upgrade, so each release is reproducible; --reuse-values carries the previous user-supplied values forward." }
   ],
 
   "19": [
