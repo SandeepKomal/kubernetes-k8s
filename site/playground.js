@@ -49,6 +49,7 @@
   const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1"]);
 
   function appOf(image) {
+    image = String(image || "").replace(/^(registry\.kitchen\.example|docker\.io\/library)\//, "");
     if (LOCAL_IMAGES.has(image)) return image.split("/")[1].split(":")[0];
     if (/^nginx(:1\.\d+(\.\d+)?(-alpine)?)?$/.test(image)) return "nginx";
     if (/^busybox(:1\.3[0-9](\.\d+)?)?$/.test(image)) return "busybox";
@@ -112,6 +113,9 @@
     clusterrole: "clusterroles", clusterroles: "clusterroles",
     sa: "serviceaccounts", serviceaccount: "serviceaccounts", serviceaccounts: "serviceaccounts",
     rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets",
+    secret: "secrets", secrets: "secrets",
+    validatingadmissionpolicy: "vaps", validatingadmissionpolicies: "vaps",
+    validatingadmissionpolicybinding: "vapbindings", validatingadmissionpolicybindings: "vapbindings",
     hpa: "hpas", horizontalpodautoscaler: "hpas", horizontalpodautoscalers: "hpas",
     vpa: "vpas", verticalpodautoscaler: "vpas", verticalpodautoscalers: "vpas",
     ns: "namespaces", namespace: "namespaces", namespaces: "namespaces",
@@ -742,6 +746,172 @@
       ],
       lesson: "An etcd snapshot needs the client endpoint and the etcd CA and certificates from the etcd manifest. Check every backup; restore with etcdutl snapshot restore into a new data directory.",
       tries: ["kubectl -n kube-system get pods", "ls /etc/kubernetes/pki/etcd"]
+    },
+    {
+      id: "etcdrestore",
+      title: "etcd restore",
+      done: "etcd runs from the 03:00 snapshot and the menu app is back.",
+      level: { id: "14", text: "Level 14 · Incident response (etcd in docs/coverage.md)" },
+      story: "At 03:10 a cleanup script ran kubectl delete against the wrong cluster. The menu Deployment and its Service are gone. The nightly etcd snapshot from 03:00 is in /opt/backup.",
+      goal: "Restore etcd from /opt/backup/etcd-0300.db so that menu comes back.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 5 * HOUR }],
+      services: [{ name: "web-svc", selector: { app: "web" }, ip: "10.96.12.40", age: 4 * HOUR }, { name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 5 * HOUR }],
+      dirs: { "/opt/backup": ["etcd-0300.db"] },
+      setup: (c) => {
+        c.lost = { deployments: c.deployments.filter((d) => d.name === "menu"), services: c.services.filter((x) => x.name === "menu-svc") };
+        c.deployments = c.deployments.filter((d) => d.name !== "menu");
+        c.services = c.services.filter((x) => x.name !== "menu-svc");
+        c.pods = c.pods.filter((x) => x.owner !== "menu");
+      },
+      won: (c) => c.restore.applied && c.deployments.some((d) => d.name === "menu") && c.deploymentReady("menu"),
+      check: (c) => ({ label: "menu", ok: c.deployments.some((d) => d.name === "menu"), text: c.deployments.some((d) => d.name === "menu") ? "restored" : "deleted" }),
+      hints: [
+        "Never restore over the data etcd is using. cat /etc/kubernetes/manifests/etcd.yaml shows where it lives (/var/lib/etcd). ls /opt/backup, and etcdutl snapshot status /opt/backup/etcd-0300.db checks the snapshot.",
+        "Restore into a new directory: etcdutl snapshot restore /opt/backup/etcd-0300.db --data-dir /var/lib/etcd-restore",
+        "Point etcd at it. etcd is a static Pod, so the kubelet restarts it when its manifest changes: sed -i 's#path: /var/lib/etcd#path: /var/lib/etcd-restore#' /etc/kubernetes/manifests/etcd.yaml. The API server drops for a moment; then kubectl get deploy."
+      ],
+      lesson: "Restore with etcdutl into a new data directory, then switch the etcd static Pod's hostPath to it. Everything written after the snapshot is gone, so snapshot often and practise restores before you need one.",
+      tries: ["kubectl get deploy", "ls /opt/backup"]
+    },
+    {
+      id: "kubeadm",
+      title: "kubeadm upgrade",
+      done: "The control plane and its kubelet run v1.34.1, the node is back in service and the packages are held.",
+      level: { id: "14", text: "Level 14 · Incident response (kubeadm in docs/coverage.md)" },
+      story: "The kitchen cluster runs Kubernetes v1.33.5. Tonight the control-plane node goes to v1.34.1; the workers follow next week. You are logged in on the control-plane node.",
+      goal: "Upgrade the control-plane node to v1.34.1 the kubeadm way, with the node drained while its kubelet restarts.",
+      deployments: [web(), api()],
+      kubeadm: true,
+      files: { "/etc/apt/sources.list.d/kubernetes.list": ["deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /"] },
+      dirs: { "/etc/apt/sources.list.d": ["kubernetes.list"] },
+      won: (c) => {
+        const k = c.kadm;
+        return k.cp === "1.34.1" && k.running === "1.34.1" && !!k.drainedAtRestart && !k.cordoned && ["kubeadm", "kubelet", "kubectl"].every((n) => k.pkgs[n] === "1.34.1" && k.held[n]);
+      },
+      check: (c) => ({ label: "control-plane", ok: c.kadm.cp === "1.34.1" && c.kadm.running === "1.34.1", text: `API v${c.kadm.cp} · kubelet ${c.kadm.running ? "v" + c.kadm.running : "down"}` }),
+      hints: [
+        "Plan first: kubeadm upgrade plan. It says kubeadm itself must be upgraded before the cluster. apt-cache madison kubeadm lists what the package repository offers.",
+        "pkgs.k8s.io has one repository per minor version: sed -i 's#v1.33#v1.34#' /etc/apt/sources.list.d/kubernetes.list && apt-get update. The packages are held: apt-mark unhold kubeadm && apt-get install -y kubeadm=1.34.1-1.1 && apt-mark hold kubeadm",
+        "kubeadm upgrade apply v1.34.1. Then kubectl drain control-plane --ignore-daemonsets, upgrade kubelet and kubectl the same way, systemctl daemon-reload && systemctl restart kubelet, and kubectl uncordon control-plane."
+      ],
+      lesson: "kubeadm upgrades in a fixed order: the kubeadm package, kubeadm upgrade apply, drain, the kubelet and kubectl packages, daemon-reload and a kubelet restart, uncordon. One minor version at a time; hold the packages so a routine apt upgrade never does this by surprise.",
+      tries: ["kubectl get nodes", "kubeadm upgrade plan"]
+    },
+    {
+      id: "audit",
+      title: "Audit log",
+      done: "You found who deleted the Secret, and that user can no longer delete Secrets.",
+      level: { id: "21", text: "Level 21 · Production hardening (audit logs in docs/coverage.md)" },
+      story: "Last night the payments-api Secret disappeared and checkout failed until ops-lead recreated it in the morning. Nobody remembers deleting it. The API server keeps an audit log.",
+      goal: "Find who deleted the Secret, then take away that user's right to delete Secrets without locking them, or ops-lead, out.",
+      deployments: [web(), api()],
+      users: ["dev-intern", "ops-lead", "jane"],
+      bindings: [
+        { name: "kitchen-team", kind: "ClusterRole", role: "edit", subjects: [{ kind: "User", name: "dev-intern" }, { kind: "User", name: "ops-lead" }], age: 60 * HOUR },
+        { name: "jane-view", kind: "ClusterRole", role: "view", subjects: [{ kind: "User", name: "jane" }], age: 60 * HOUR }
+      ],
+      secrets: [{ name: "payments-api", data: { "api-key": "sk_test_kitchen_4f9a" } }],
+      files: {
+        "/var/log/kubernetes/audit/audit.log": ["{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"3c6da5d7-4da4-41a6-b8a1-7a97656412a9\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets/payments-api\",\"verb\":\"get\",\"user\":{\"username\":\"ops-lead\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.9\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"name\":\"payments-api\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-29T22:14:03.418Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"27ac435a-1710-4110-8512-8ca566ceab36\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/pods\",\"verb\":\"list\",\"user\":{\"username\":\"jane\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.21\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"pods\",\"namespace\":\"kitchen\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-29T23:02:51.007Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"eaff1a09-4a14-4cce-fd72-0f10c3e1b258\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets\",\"verb\":\"list\",\"user\":{\"username\":\"dev-intern\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.17\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-30T01:47:10.552Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"38d048ec-8534-4896-dc39-c79d46d4ac7a\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets/payments-api\",\"verb\":\"get\",\"user\":{\"username\":\"dev-intern\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.17\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"name\":\"payments-api\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-30T01:47:32.230Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"2c33be0a-d3ad-41b2-c300-f16536e2f24b\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets/payments-api\",\"verb\":\"delete\",\"user\":{\"username\":\"dev-intern\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.17\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"name\":\"payments-api\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-30T01:48:05.112Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"ed6f0b09-0690-4d43-a404-42a0ce80c4b0\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets/payments-api\",\"verb\":\"get\",\"user\":{\"username\":\"jane\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.21\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"name\":\"payments-api\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":403},\"requestReceivedTimestamp\":\"2026-10-30T02:10:44.871Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"ccea2645-4591-4318-aa31-4a254f5253a0\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/secrets\",\"verb\":\"create\",\"user\":{\"username\":\"ops-lead\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.9\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"secrets\",\"namespace\":\"kitchen\",\"apiVersion\":\"v1\",\"name\":\"payments-api\"},\"responseStatus\":{\"code\":201},\"requestReceivedTimestamp\":\"2026-10-30T07:31:15.640Z\"}", "{\"kind\":\"Event\",\"apiVersion\":\"audit.k8s.io/v1\",\"level\":\"Metadata\",\"auditID\":\"a0817910-de08-4bb5-f5ff-d939daca3c06\",\"stage\":\"ResponseComplete\",\"requestURI\":\"/api/v1/namespaces/kitchen/pods\",\"verb\":\"list\",\"user\":{\"username\":\"ops-lead\",\"groups\":[\"system:authenticated\"]},\"sourceIPs\":[\"10.0.4.9\"],\"userAgent\":\"kubectl/v1.34.0 (linux/amd64) kubernetes/2b5a0e6\",\"objectRef\":{\"resource\":\"pods\",\"namespace\":\"kitchen\",\"apiVersion\":\"v1\"},\"responseStatus\":{\"code\":200},\"requestReceivedTimestamp\":\"2026-10-30T07:31:40.093Z\"}"],
+        "/etc/kubernetes/audit-policy.yaml": ["apiVersion: audit.k8s.io/v1", "kind: Policy", "rules:", "  # Who touched Secrets, and when; never their contents.",
+          "  - level: Metadata", "    resources:", "      - group: \"\"", "        resources: [\"secrets\", \"pods\"]", "  - level: None"]
+      },
+      dirs: { "/var/log/kubernetes": ["audit/"], "/var/log/kubernetes/audit": ["audit.log"] },
+      setup: (c) => {
+        const f = "/etc/kubernetes/manifests/kube-apiserver.yaml";
+        const i = c.files[f].findIndex((l) => l.includes("--authorization-mode"));
+        c.files[f].splice(i, 0, "    - --audit-log-maxage=30", "    - --audit-log-path=/var/log/kubernetes/audit/audit.log", "    - --audit-policy-file=/etc/kubernetes/audit-policy.yaml");
+      },
+      won: (c) => !c.canI("dev-intern", "delete", "secrets") && c.canI("dev-intern", "list", "pods") && c.canI("ops-lead", "delete", "secrets"),
+      check: (c) => ({ label: "dev-intern → delete secrets", ok: !c.canI("dev-intern", "delete", "secrets"), text: c.canI("dev-intern", "delete", "secrets") ? "yes" : "no" }),
+      hints: [
+        "The API server's flags say where the log is: grep audit /etc/kubernetes/manifests/kube-apiserver.yaml. Then grep payments-api /var/log/kubernetes/audit/audit.log",
+        "Each line is one request. Read verb, user.username and responseStatus.code: grep '\"verb\":\"delete\"' /var/log/kubernetes/audit/audit.log. Then kubectl describe rolebinding kitchen-team.",
+        "One binding gives edit to both users. Split it: kubectl delete rolebinding kitchen-team, kubectl create rolebinding ops-edit --clusterrole=edit --user=ops-lead, kubectl create rolebinding intern-view --clusterrole=view --user=dev-intern. Check with kubectl auth can-i delete secrets --as=dev-intern"
+      ],
+      lesson: "The audit log records who did what and when, at the level the audit policy sets (Metadata: never the Secret's contents). Shared bindings hand everyone the widest rights; give each person their own.",
+      tries: ["kubectl get rolebindings", "ls /var/log/kubernetes/audit"]
+    },
+    {
+      id: "encryption",
+      title: "Encryption at rest",
+      done: "The API server encrypts Secrets with aescbc, and every existing Secret is stored encrypted.",
+      level: { id: "21", text: "Level 21 · Production hardening (encryption in docs/coverage.md)" },
+      story: "An auditor read a database password straight out of an etcd backup. Secrets are only base64 at the API and plain text in etcd. The security team left an encryption config in /etc/kubernetes/pki.",
+      goal: "Turn on encryption at rest for Secrets, and make sure the Secrets that already exist are encrypted too.",
+      deployments: [web(), api()],
+      secrets: [{ name: "payments-api", data: { "api-key": "sk_test_kitchen_4f9a" } }, { name: "db-password", data: { password: "practice-only-password" } }],
+      files: {
+        "/etc/kubernetes/pki/encryption-config.yaml": ["apiVersion: apiserver.config.k8s.io/v1", "kind: EncryptionConfiguration", "resources:", "  - resources:", "      - secrets",
+          "    providers:", "      - aescbc:", "          keys:", "            - name: key1", "              # practice key; make a real one with: head -c 32 /dev/urandom | base64",
+          "              secret: cHJhY3RpY2Utb25seS1rZXktbm90LWZvci1wcm9kISE=", "      - identity: {}"]
+      },
+      setup: (c) => c.dirs["/etc/kubernetes/pki"].push("encryption-config.yaml"),
+      won: (c) => c.encryptionOn() && c.secrets.every((x) => x.encrypted),
+      check: (c) => ({ label: "Secrets in etcd", ok: c.secrets.every((x) => x.encrypted), text: `${c.secrets.filter((x) => x.encrypted).length}/${c.secrets.length} encrypted` }),
+      hints: [
+        "See it first: etcdctl get /registry/secrets/kitchen/payments-api --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key. Then cat /etc/kubernetes/pki/encryption-config.yaml",
+        "The API server reads that file from a flag, and its manifest already mounts /etc/kubernetes/pki: sed -i '/--etcd-servers/a\\    - --encryption-provider-config=/etc/kubernetes/pki/encryption-config.yaml' /etc/kubernetes/manifests/kube-apiserver.yaml",
+        "Only new writes are encrypted. Rewrite every Secret: kubectl get secrets -A -o json | kubectl replace -f -, then run the etcdctl get again."
+      ],
+      lesson: "--encryption-provider-config makes the API server encrypt new writes with the first provider; identity at the end still reads old data. kubectl replace rewrites the old Secrets. Keep the key away from etcd backups, or the backup still unlocks it.",
+      tries: ["kubectl get secrets", "cat /etc/kubernetes/pki/encryption-config.yaml"]
+    },
+    {
+      id: "registry",
+      title: "Untrusted registry",
+      done: "menu runs from the company registry, and the admission policy still guards every team.",
+      level: { id: "21", text: "Level 21 · Production hardening" },
+      story: "This morning the platform team switched on a ValidatingAdmissionPolicy: images must come from registry.kitchen.example. Since then the menu Deployment has no Pods at all.",
+      goal: "Get menu running without weakening the policy.",
+      deployments: [web({ image: "registry.kitchen.example/nginx:1.27" }), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 20 * MIN }],
+      vaps: [{ name: "trusted-registry", binding: "trusted-registry-binding", prefix: "registry.kitchen.example/", bound: true }],
+      won: (c) => c.vaps.some((v) => v.name === "trusted-registry" && v.bound) && c.deploymentReady("menu"),
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((p) => p.ready).length}/2 Pods` }),
+      hints: [
+        "kubectl get deploy menu says 0/2 and there are no menu Pods to describe. Look one level up: kubectl get events, or kubectl describe rs.",
+        "FailedCreate names the policy. kubectl get validatingadmissionpolicy trusted-registry -o yaml shows the rule. The same image is mirrored in the company registry.",
+        "kubectl set image deployment/menu menu=registry.kitchen.example/nginx:1.27"
+      ],
+      lesson: "Admission rejects a Pod before it exists, so the error is on the ReplicaSet (FailedCreate), not on a Pod. Fix the workload; deleting the binding switches the rule off for everyone.",
+      tries: ["kubectl get deploy", "kubectl get events"]
+    },
+    {
+      id: "trivy",
+      title: "Vulnerable image",
+      done: "Every Deployment runs an image with no CRITICAL vulnerability.",
+      level: { id: "21", text: "Level 21 · Production hardening" },
+      story: "The weekly scan report says one image in kitchen has a CRITICAL vulnerability. The rule: nothing CRITICAL in production by Friday.",
+      goal: "Find the image with the CRITICAL vulnerability and move its Deployment to a version without one.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.25", req: 64, lim: 128, age: 40 * HOUR }, api()],
+      won: (c) => c.deployments.every((d) => !imageHasCritical(d.spec.image)) && c.deploymentReady("menu"),
+      check: (c) => { const d = c.deployments.find((x) => x.name === "menu"); return { label: "menu image", ok: !imageHasCritical(d.spec.image), text: d.spec.image }; },
+      hints: [
+        "List the images: kubectl get deploy -o wide. Scan each one: trivy image nginx:1.25",
+        "Scan the version you plan to move to before you deploy it: trivy image nginx:1.26, trivy image nginx:1.27. Add --severity HIGH,CRITICAL to cut the noise.",
+        "kubectl set image deployment/menu menu=nginx:1.27, then kubectl rollout status deployment/menu"
+      ],
+      lesson: "A newer tag is not automatically a fixed one: scan the version you are moving to. In CI, trivy image --exit-code 1 --severity CRITICAL stops a vulnerable image before it ships.",
+      tries: ["kubectl get deploy -o wide", "trivy image nginx:1.25"]
+    },
+    {
+      id: "apparmor",
+      title: "AppArmor profile",
+      done: "Every menu Pod runs, confined by the k8s-deny-write profile.",
+      level: { id: "17", text: "Level 17 · Pod Security" },
+      story: "Security asked for menu to run under the AppArmor profile k8s-deny-write, which blocks file writes. Someone loaded the profile on worker-1 by hand and called it done.",
+      goal: "Get every menu Pod running, still confined by k8s-deny-write.",
+      deployments: [{ name: "menu", replicas: 3, image: "nginx:1.27", req: 64, lim: 128, age: 15 * MIN, apparmor: "k8s-deny-write" }],
+      apparmor: { "worker-1": ["k8s-deny-write"] },
+      won: (c) => c.deployments[0].spec.apparmor === "k8s-deny-write" && c.deploymentReady("menu"),
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((p) => p.ready).length}/3 Running` }),
+      hints: [
+        "kubectl get pods -o wide: the Pod on worker-1 runs, the others do not. kubectl describe pod on a failing one.",
+        "A profile lives in each node's kernel, not in the cluster: compare ssh worker-1 sudo aa-status with ssh worker-2 sudo aa-status.",
+        "Load it on every node that runs menu: ssh worker-2 sudo apparmor_parser -q /etc/apparmor.d/k8s-deny-write, and the same on worker-3. The kubelet retries on its own."
+      ],
+      lesson: "A Localhost AppArmor profile must be loaded on every node the Pod can land on. Load profiles with the node's provisioning (or a DaemonSet), never by hand on one machine.",
+      tries: ["kubectl get pods -o wide", "ssh worker-1 sudo aa-status"]
     }
   ];
 
@@ -752,7 +922,8 @@
     ["Networking", ["probe", "service", "dns", "ingress404", "ingress503", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
     ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain"]],
-    ["Cluster administration", ["context", "nodenotready", "etcd"]],
+    ["Cluster administration", ["context", "nodenotready", "etcd", "etcdrestore", "kubeadm"]],
+    ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
     ["Autoscaling", ["hpa", "vpa"]]
   ];
   const ORDER = GROUPS.flatMap(([, ids]) => ids);
@@ -776,7 +947,8 @@
       this.roles = JSON.parse(JSON.stringify(scenario.roles || {}));
       this.clusterRoles = {
         "cluster-admin": [{ resources: ["*"], verbs: ["*"] }],
-        view: [{ resources: ["pods", "services", "deployments", "configmaps", "endpoints"], verbs: ["get", "list", "watch"] }]
+        view: [{ resources: ["pods", "services", "deployments", "configmaps", "endpoints"], verbs: ["get", "list", "watch"] }],
+        edit: [{ resources: ["pods", "services", "deployments", "configmaps", "endpoints", "secrets", "jobs"], verbs: ["*"] }]
       };
       this.bindings = JSON.parse(JSON.stringify(scenario.bindings || []));
       this.clusterBindings = [];
@@ -804,6 +976,20 @@
       this.gateways = JSON.parse(JSON.stringify(scenario.gateways || []));
       this.routes = JSON.parse(JSON.stringify(scenario.routes || []));
       this.etcd = { saved: null, checked: false };
+      this.files = JSON.parse(JSON.stringify(BASE_FILES));
+      for (const [k, v] of Object.entries(scenario.files || {})) this.files[k] = typeof v === "function" ? v() : [...v];
+      this.dirs = JSON.parse(JSON.stringify(BASE_DIRS));
+      for (const [k, v] of Object.entries(scenario.dirs || {})) this.dirs[k] = [...v];
+      this.apiRestarts = 0;
+      this.kadm = scenario.kubeadm ? {
+        pkgs: { kubeadm: "1.33.5", kubelet: "1.33.5", kubectl: "1.33.5" }, held: { kubeadm: true, kubelet: true, kubectl: true },
+        cp: "1.33.5", running: "1.33.5", cordoned: false, indexed: "v1.33", restartedUndrained: false, drained: false
+      } : null;
+      this.restore = { dir: null, applied: false };
+      this.lost = { deployments: [], services: [] };
+      this.secrets = JSON.parse(JSON.stringify(scenario.secrets || []));
+      this.vaps = JSON.parse(JSON.stringify(scenario.vaps || []));
+      this.apparmor = Object.fromEntries(NODES.map((n) => [n, [...((scenario.apparmor || {})[n] || [])]]));
       this.kubelet = scenario.kubelet ? { ...scenario.kubelet } : null; // { node, running, enabled }
       this.helm = scenario.helm ? JSON.parse(JSON.stringify(scenario.helm)) : null;
       this.bindPvcs();
@@ -814,7 +1000,7 @@
             image: d.image, env: { ...(d.env || {}) }, req: d.req, lim: d.lim, envFrom: d.envFrom || null, probe: d.probe || null,
             nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default", cpuReq: d.cpu || 0,
             tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
-            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null
+            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null
           },
           hash: this.rand(10)
         };
@@ -826,7 +1012,7 @@
           name: p.name, age: p.age, settled: true, node: p.node,
           spec: {
             image: p.image, env: {}, req: p.req, lim: p.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default",
-            cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null
+            cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null, apparmor: null
           }
         });
       }
@@ -854,6 +1040,14 @@
     addPod(dep, opts) {
       const spec = dep ? JSON.parse(JSON.stringify(dep.spec)) : opts.spec;
       const denied = this.admissionErrors(spec);
+      const vap = this.vaps.find((v) => v.bound && !String(spec.image).startsWith(v.prefix));
+      if (dep && vap) {
+        const name = `${dep.name}-${dep.hash}-${this.rand(5)}`;
+        this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
+        this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate",
+          msg: `Error creating: pods "${name}" is forbidden: ValidatingAdmissionPolicy '${vap.name}' with binding '${vap.binding}' denied request: images must come from ${vap.prefix}` });
+        return null;
+      }
       const overQuota = dep && !denied.length && this.quotaError(spec);
       if (dep && (denied.length || overQuota)) {
         const name = `${dep.name}-${dep.hash}-${this.rand(5)}`;
@@ -897,7 +1091,9 @@
       if (used + (spec.req || 0) <= this.quota.memory) return null;
       return `requested: requests.memory=${fmtMem(spec.req)}, used: requests.memory=${fmtMem(used)}, limited: requests.memory=${fmtMem(this.quota.memory)}`;
     }
-    blocked(spec) { return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec); }
+    blocked(spec) {
+      return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec) || this.vaps.some((v) => v.bound && !String(spec.image).startsWith(v.prefix));
+    }
 
     // PersistentVolumeClaims bind when their StorageClass exists. A claim with
     // no class gets the default class, even after it was created.
@@ -930,6 +1126,66 @@
     nodesFor(pod) { return NODES.filter((n) => selects(pod.spec.nodeSelector, this.nodeLabels[n])); }
 
     pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
+
+    encryptionOn() {
+      const api = this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].join("\n");
+      const m = /--encryption-provider-config=(\S+)/.exec(api);
+      return !!(m && this.files[m[1]]);
+    }
+    rewriteSecrets(cmd) {
+      if (this.apiDown()) return [["The connection to the server 172.18.0.2:6443 was refused - did you specify the right host or port?", "warn"]];
+      if (!this.secrets.length) return [["No resources found", ""]];
+      const on = this.encryptionOn();
+      return this.secrets.map((x) => { if (on) x.encrypted = true; return [`secret/${x.name} replaced`, ""]; });
+    }
+    // etcd restore: once etcd runs on the restored data directory, the cluster
+    // is back at the moment of the snapshot.
+    checkRestore() {
+      const e = this.etcdLayout();
+      if (this.restore.applied || !this.restore.dir || this.controlPlaneError() || e.hostPath !== this.restore.dir) return;
+      this.restore.applied = true;
+      for (const d of this.lost.deployments) {
+        this.deployments.push(d);
+        for (let i = 0; i < d.replicas; i++) this.addPod(d, { age: 3 * HOUR, settled: true });
+      }
+      this.services.push(...this.lost.services);
+    }
+
+    dirList(dir) {
+      if (dir === "/opt/backup" && this.etcd.saved) return [...new Set([...this.dirs[dir], this.etcd.saved.split("/").pop()])];
+      if (this.dirs[dir]) return this.dirs[dir];
+      const files = Object.keys(this.files).filter((f) => f.startsWith(dir + "/") && !f.slice(dir.length + 1).includes("/"));
+      return files.length ? files.map((f) => f.slice(dir.length + 1)) : null;
+    }
+    // The API server is unreachable while a static Pod restarts, or while its
+    // manifest (or etcd's) is broken.
+    apiDown() {
+      if (this.apiRestarts > 0) { this.apiRestarts--; return true; }
+      return !!this.controlPlaneError();
+    }
+    controlPlaneError() {
+      const api = this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].join("\n");
+      const enc = /--encryption-provider-config=(\S+)/.exec(api);
+      if (enc && !this.files[enc[1]]) return `kube-apiserver: open ${enc[1]}: no such file or directory`;
+      const e = this.etcdLayout();
+      if (e.dataDir !== e.mountPath || !this.dirs["/var/lib"].includes(e.hostPath.replace("/var/lib/", ""))) return "etcd: data directory does not match its volume";
+      return null;
+    }
+    etcdLayout() {
+      const lines = this.files["/etc/kubernetes/manifests/etcd.yaml"];
+      const dataDir = ((lines.find((l) => l.includes("--data-dir=")) || "").split("=")[1] || "").trim();
+      const mi = lines.findIndex((l) => l.trim() === "name: etcd-data" && /mountPath/.test(lines[lines.indexOf(l) - 1] || ""));
+      const mountPath = mi > 0 ? lines[mi - 1].split("mountPath:")[1].trim() : "";
+      const vi = lines.lastIndexOf("    name: etcd-data");
+      const hostPath = ((lines.slice(0, vi).reverse().find((l) => l.trim().startsWith("path:")) || "").split("path:")[1] || "").trim();
+      return { dataDir, mountPath, hostPath };
+    }
+    fileChanged(file) {
+      if (/\/manifests\//.test(file)) this.apiRestarts = 1; // the kubelet restarts the static Pod
+      if (/etcd\.yaml$/.test(file)) this.checkRestore();
+      if (this.scenario.onFile) this.scenario.onFile(this, file);
+      this.retry = true;
+    }
 
     nodeReady(n) { return !this.kubelet || this.kubelet.node !== n || this.kubelet.running; }
 
@@ -993,6 +1249,13 @@
           ["Normal", "Pulled", "kubelet", 'Container image "busybox:1.36" already present on machine'],
           ["Normal", "Created", "kubelet", `Created container: ${pod.spec.init.name}`],
           ["Normal", "Started", "kubelet", `Started container ${pod.spec.init.name}`]];
+        return;
+      }
+      if (pod.spec.apparmor && pod.spec.apparmor !== "runtime/default" && !this.apparmor[pod.node].includes(pod.spec.apparmor)) {
+        pod.state = "CreateContainerError";
+        pod.events = [scheduled,
+          ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`],
+          ["Warning", "Failed", "kubelet", `Error: failed to create containerd container: apparmor profile not found ${pod.spec.apparmor}`]];
         return;
       }
       if (pod.spec.sec && pod.spec.sec.runAsNonRoot && !pod.spec.sec.runAsUser && app.root) {
@@ -1126,7 +1389,7 @@
       this.bindPvcs();
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
-      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CrashLoopBackOff|Init:)/.test(x.state || "");
+      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|Init:)/.test(x.state || "");
       for (const p of this.pods.filter((x) => !x.creating && !x.terminating && retrying(x))) {
         if (!p.node) p.node = this.place(p);
         if (p.node) this.evaluate(p, true);
@@ -1297,7 +1560,11 @@
     "kubectl config get-contexts | set-context --current --namespace=<ns>",
     "helm list | status | history | get values | rollback | upgrade <release>",
     "etcdctl snapshot save | status ...      ssh <node> sudo systemctl | journalctl | crictl ...",
-    "ls <dir>   cat <file>                   (control-plane files for the etcd scenario)",
+    "ls <dir>   cat | grep | tail <file>     sed -i 's#old#new#' <file>   (files on the control-plane node)",
+    "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
+    "kubeadm upgrade plan | apply <version>     apt-get update | install <pkg>=<version>     apt-mark hold | unhold",
+    "systemctl daemon-reload | restart kubelet     trivy image <image>     ssh <node> sudo aa-status | apparmor_parser <file>",
+    "kubectl get secrets | validatingadmissionpolicy | validatingadmissionpolicybinding",
     "kubectl exec <pod> -- wget -qO- -T 2 http://<service>:<port>   (also curl, env)",
     "kubectl rollout status | history | restart | undo deployment/<name>",
     "kubectl scale deployment/<name> --replicas=N",
@@ -1318,20 +1585,60 @@
     say(res.text, res.ok ? "" : "warn");
   }
 
-  // Commands other than kubectl: curl, helm, etcdctl, ssh, ls, cat.
-  const FILES = {
+  // The control-plane node's files. Each cluster gets its own copy, so sed
+  // edits stay inside one scenario.
+  const BASE_FILES = {
     "/etc/kubernetes/manifests/etcd.yaml": [
       "apiVersion: v1", "kind: Pod", "metadata:", "  name: etcd", "  namespace: kube-system", "spec:", "  containers:", "  - command:", "    - etcd",
       "    - --advertise-client-urls=https://172.18.0.2:2379", "    - --cert-file=/etc/kubernetes/pki/etcd/server.crt",
       "    - --client-cert-auth=true", "    - --data-dir=/var/lib/etcd", "    - --key-file=/etc/kubernetes/pki/etcd/server.key",
       "    - --listen-client-urls=https://127.0.0.1:2379,https://172.18.0.2:2379", "    - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt",
-      "    image: registry.k8s.io/etcd:3.6.4-0"]
+      "    image: registry.k8s.io/etcd:3.6.4-0", "    name: etcd", "    volumeMounts:", "    - mountPath: /var/lib/etcd", "      name: etcd-data",
+      "    - mountPath: /etc/kubernetes/pki/etcd", "      name: etcd-certs", "  hostNetwork: true", "  volumes:", "  - hostPath:",
+      "      path: /etc/kubernetes/pki/etcd", "      type: DirectoryOrCreate", "    name: etcd-certs", "  - hostPath:", "      path: /var/lib/etcd",
+      "      type: DirectoryOrCreate", "    name: etcd-data"],
+    "/etc/kubernetes/manifests/kube-apiserver.yaml": [
+      "apiVersion: v1", "kind: Pod", "metadata:", "  name: kube-apiserver", "  namespace: kube-system", "spec:", "  containers:", "  - command:",
+      "    - kube-apiserver", "    - --advertise-address=172.18.0.2", "    - --authorization-mode=Node,RBAC",
+      "    - --client-ca-file=/etc/kubernetes/pki/ca.crt", "    - --enable-admission-plugins=NodeRestriction",
+      "    - --etcd-servers=https://127.0.0.1:2379", "    - --secure-port=6443", "    - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt",
+      "    - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key", "    image: registry.k8s.io/kube-apiserver:v1.34.0", "    name: kube-apiserver",
+      "    volumeMounts:", "    - mountPath: /etc/kubernetes/pki", "      name: k8s-certs", "      readOnly: true", "  volumes:", "  - hostPath:",
+      "      path: /etc/kubernetes/pki", "      type: DirectoryOrCreate", "    name: k8s-certs"]
   };
-  const DIRS = {
+  const BASE_DIRS = {
     "/etc/kubernetes/pki/etcd": ["ca.crt", "ca.key", "healthcheck-client.crt", "healthcheck-client.key", "peer.crt", "peer.key", "server.crt", "server.key"],
+    "/etc/kubernetes/pki": ["apiserver.crt", "apiserver.key", "ca.crt", "ca.key", "etcd/", "front-proxy-ca.crt", "sa.key", "sa.pub"],
     "/etc/kubernetes/manifests": ["etcd.yaml", "kube-apiserver.yaml", "kube-controller-manager.yaml", "kube-scheduler.yaml"],
+    "/var/lib": ["containerd", "etcd", "kubelet"],
     "/opt/backup": []
   };
+
+  // Apply one sed expression to a file's lines: s/a/b/[g], /re/a text, /re/i text, /re/d.
+  function sedLines(lines, expr) {
+    const sub = /^s(.)(.*?)\1(.*?)\1(g?)$/.exec(expr);
+    if (sub) {
+      const re = new RegExp(sub[2].replace(/\\\//g, "/"), sub[4] ? "g" : "");
+      return lines.map((l) => l.replace(re, sub[3]));
+    }
+    const ai = /^\/(.+?)\/([aid])(\\?)(.*)$/.exec(expr);
+    if (ai) {
+      const re = new RegExp(ai[1]);
+      ai[3] = ai[3] ? ai[4] : ai[4].replace(/^\s+/, "");
+      const out = [];
+      for (const l of lines) {
+        if (ai[2] === "d" && re.test(l)) continue;
+        if (ai[2] === "i" && re.test(l)) out.push(ai[3]);
+        out.push(l);
+        if (ai[2] === "a" && re.test(l)) out.push(ai[3]);
+      }
+      return out;
+    }
+    return null;
+  }
+
+  // Commands other than kubectl: curl, helm, etcdctl, ssh, ls, cat and the
+  // control-plane tools.
   function tools(c, words, say) {
     words = words.filter((w, i) => !(i === 0 && w === "sudo"));
     while (/^[A-Z_]+=/.test(words[0] || "")) words = words.slice(1); // ETCDCTL_API=3 etcdctl ...
@@ -1340,55 +1647,47 @@
     const opt = (k) => { const w = words.find((x) => x.startsWith(`--${k}=`)); if (w) return w.slice(k.length + 3); const i = words.indexOf(`--${k}`); return i > 0 ? words[i + 1] : undefined; };
     if (cmd === "curl") return curl(c, words, say);
     if (cmd === "ls") {
-      const dir = (words[1] || "").replace(/\/$/, "");
-      if (!DIRS[dir]) return say(`ls: cannot access '${dir}': No such file or directory (try /etc/kubernetes/pki/etcd)`, "warn");
-      const files = dir === "/opt/backup" && c.etcd.saved ? [c.etcd.saved.split("/").pop()] : DIRS[dir];
+      const dir = (words.filter((x) => !x.startsWith("-"))[1] || "").replace(/\/$/, "");
+      const files = c.dirList(dir);
+      if (!files) return say(`ls: cannot access '${dir}': No such file or directory`, "warn");
       return say(files.join("  ") || "(empty)");
     }
-    if (cmd === "cat") {
-      const f = FILES[words[1]];
-      if (!f) return say(`cat: ${words[1] || ""}: not available in this playground (try /etc/kubernetes/manifests/etcd.yaml)`, "warn");
-      return f.forEach((l) => say(l));
+    if (cmd === "cat" || cmd === "tail" || cmd === "head" || cmd === "grep") {
+      const args = words.slice(1).filter((x, i, a) => !x.startsWith("-") && !(/^-n$/.test(a[i - 1] || "")));
+      const file = cmd === "grep" ? args[1] : args[0];
+      const f = c.files[file];
+      if (!f) return say(`${cmd}: ${file || ""}: No such file or directory`, "warn");
+      const n = Number((words.find((x) => /^-\d+$/.test(x)) || "").slice(1)) || Number(words[words.indexOf("-n") + 1]) || 10;
+      let lines = f;
+      if (cmd === "grep") lines = grepLines(f, args[0], words.includes("-i"), words.includes("-v"));
+      if (cmd === "tail") lines = f.slice(-n);
+      if (cmd === "head") lines = f.slice(0, n);
+      return lines.forEach((l) => say(l));
     }
-    if (cmd === "etcdctl" || cmd === "etcdutl") {
-      if (words[1] !== "snapshot") return say(`${cmd}: this playground simulates "snapshot save" and "snapshot status"`, "dim");
-      if (words[2] === "status") {
-        const file = words.slice(3).find((x) => !x.startsWith("-"));
-        if (!c.etcd.saved || file !== c.etcd.saved) return say(`Error: stat ${file || ""}: no such file or directory`, "warn");
-        c.etcd.checked = true;
-        if (cmd === "etcdctl") say("Deprecated: Use `etcdutl snapshot status` instead.", "dim");
-        say("+----------+----------+------------+------------+", "row");
-        say("|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |", "row");
-        say("+----------+----------+------------+------------+", "row");
-        say("| 9a3e6d1f |    48213 |       1192 |     5.8 MB |", "row");
-        say("+----------+----------+------------+------------+", "row");
-        return;
-      }
-      if (words[2] !== "save") return say("Try: etcdctl snapshot save <file> --endpoints=... --cacert=... --cert=... --key=...", "dim");
-      const file = words.slice(3).find((x) => !x.startsWith("-") && words[words.indexOf(x) - 1] !== "--endpoints" && words[words.indexOf(x) - 1] !== "--cacert" && words[words.indexOf(x) - 1] !== "--cert" && words[words.indexOf(x) - 1] !== "--key");
-      if (!file) return say("Error: snapshot save expects one argument", "warn");
-      const pki = "/etc/kubernetes/pki/etcd/";
-      const ep = opt("endpoints") || "127.0.0.1:2379";
-      if (!/^https:\/\/(127\.0\.0\.1|localhost|172\.18\.0\.2):2379$/.test(ep)) {
-        return say(`{"level":"warn","msg":"retrying of unary invoker failed","target":"${ep}","error":"connection error: ${/^http:/.test(ep) ? "connection reset (the server expects TLS)" : "connection refused"}"}\nError: context deadline exceeded`, "warn");
-      }
-      if (!opt("cacert") || !opt("cert") || !opt("key")) return say(`{"level":"warn","msg":"retrying of unary invoker failed","error":"authentication handshake failed: remote error: tls: certificate required"}\nError: context deadline exceeded`, "warn");
-      if (opt("cacert") !== pki + "ca.crt") return say("Error: tls: failed to verify certificate: x509: certificate signed by unknown authority", "warn");
-      if (!/^(server|healthcheck-client|peer)$/.test((opt("cert") || "").replace(pki, "").replace(/\.crt$/, "")) || opt("key") !== opt("cert").replace(/\.crt$/, ".key")) {
-        return say("Error: tls: private key does not match public key, or the certificate is not an etcd client certificate", "warn");
-      }
-      if (!/^\/opt\/backup\//.test(file)) return say(`Error: could not open ${file}.part (open ${file}.part: no such file or directory)`, "warn");
-      c.etcd.saved = file;
-      say(`{"level":"info","msg":"created temporary db file","path":"${file}.part"}`, "dim");
-      say(`{"level":"info","msg":"fetched snapshot","endpoint":"${ep}","size":"5.8 MB"}`, "dim");
-      say(`Snapshot saved at ${file}`);
+    if (cmd === "sed") {
+      if (!words.includes("-i")) return say("sed: this playground edits files in place: sed -i '<expression>' <file>", "dim");
+      const rest = words.slice(1).filter((x) => x !== "-i");
+      const [expr, file] = rest;
+      if (!c.files[file]) return say(`sed: can't read ${file || ""}: No such file or directory`, "warn");
+      const next = sedLines(c.files[file], expr || "");
+      if (!next) return say(`sed: -e expression #1: this playground understands s#old#new#[g], /pattern/a text, /pattern/i text and /pattern/d`, "warn");
+      c.files[file] = next;
+      c.fileChanged(file);
       return;
     }
+    if (cmd === "etcdctl" || cmd === "etcdutl") return etcd(c, words, say, opt);
+    if (["kubeadm", "apt-get", "apt", "apt-mark", "apt-cache", "systemctl", "journalctl"].includes(cmd)) {
+      if (c.kadm) return kubeadmTools(c, words, say);
+      if (cmd === "systemctl" || cmd === "journalctl") return say(`You are on the control-plane node. For a worker's kubelet: ssh <node> sudo ${cmd} ...`, "dim");
+      return say(`${cmd}: the kubeadm upgrade scenario simulates this; here nothing needs it.`, "dim");
+    }
+    if (cmd === "trivy") return trivy(words, say);
     if (cmd === "ssh") {
       const node = words[1];
-      if (!NODES.includes(node)) return say(`ssh: Could not resolve hostname ${node || ""}`, "warn");
       let rest = words.slice(2).filter((x) => x !== "--");
       if (rest[0] === "sudo") rest = rest.slice(1);
+      if (node === "control-plane") return rest.length ? tools(c, rest, say) : say("You are already on the control-plane node; run the command directly.", "dim");
+      if (!NODES.includes(node)) return say(`ssh: Could not resolve hostname ${node || ""}`, "warn");
       if (!rest.length) return say(`This playground runs one command at a time, for example: ssh ${node} sudo systemctl status kubelet`, "dim");
       const k = c.kubelet && c.kubelet.node === node ? c.kubelet : { running: true, enabled: true };
       if (rest[0] === "systemctl" && rest.includes("kubelet")) {
@@ -1417,11 +1716,305 @@
         if (!k.running) say("(no containers: the kubelet that starts them is not running)", "dim");
         return;
       }
-      return say(`This playground runs systemctl, journalctl and crictl on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
+      if (rest[0] === "aa-status" || rest[0] === "apparmor_status") {
+        const loaded = ["cri-containerd.apparmor.d", ...c.apparmor[node]];
+        say("apparmor module is loaded.");
+        say(`${loaded.length} profiles are loaded.`);
+        say(`${loaded.length} profiles are in enforce mode.`);
+        loaded.forEach((x) => say(`   ${x}`));
+        say("0 profiles are in complain mode.");
+        return;
+      }
+      if (rest[0] === "apparmor_parser") {
+        const file = rest.slice(1).find((x) => !x.startsWith("-"));
+        if (!file) return say("apparmor_parser: give the profile file, for example: apparmor_parser -q /etc/apparmor.d/k8s-deny-write", "warn");
+        if (file !== APPARMOR_FILE) return say(`File ${file} not found, skipping...`, "warn");
+        if (rest.includes("-R")) { c.apparmor[node] = c.apparmor[node].filter((x) => x !== "k8s-deny-write"); return; }
+        if (!c.apparmor[node].includes("k8s-deny-write")) c.apparmor[node].push("k8s-deny-write");
+        c.retry = true;
+        return;
+      }
+      if ((rest[0] === "cat" || rest[0] === "ls") && /^\/etc\/apparmor\.d\/?/.test(rest[rest.length - 1] || "")) {
+        if (rest[0] === "ls") return say("abstractions  k8s-deny-write  local  tunables  usr.sbin.chronyd");
+        if (rest[1] !== APPARMOR_FILE) return say(`cat: ${rest[1]}: No such file or directory`, "warn");
+        return APPARMOR_PROFILE.forEach((l) => say(l));
+      }
+      return say(`This playground runs systemctl, journalctl, crictl, aa-status and apparmor_parser on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
     }
     if (cmd === "helm") return helm(c, words, say, opt);
-    return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, etcdctl and ssh; type 'help'.`, "warn");
+    return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, etcdctl, etcdutl, kubeadm, apt-get, trivy, ssh, ls, cat, grep and sed; type 'help'.`, "warn");
   }
+
+  const APPARMOR_FILE = "/etc/apparmor.d/k8s-deny-write";
+  const APPARMOR_PROFILE = ["#include <tunables/global>", "", "profile k8s-deny-write flags=(attach_disconnected) {", "  #include <abstractions/base>", "",
+    "  file,", "", "  # Deny all file writes.", "  deny /** w,", "}"];
+
+  // etcd accepts only TLS clients that present its CA and a client certificate.
+  // Returns the endpoint, or null after explaining what went wrong.
+  function etcdAuth(opt, say) {
+    const pki = "/etc/kubernetes/pki/etcd/";
+    const ep = opt("endpoints") || "127.0.0.1:2379";
+    if (!/^https:\/\/(127\.0\.0\.1|localhost|172\.18\.0\.2):2379$/.test(ep)) {
+      say(`{"level":"warn","msg":"retrying of unary invoker failed","target":"${ep}","error":"connection error: ${/^http:/.test(ep) ? "connection reset (the server expects TLS)" : "connection refused"}"}\nError: context deadline exceeded`, "warn");
+      return null;
+    }
+    if (!opt("cacert") || !opt("cert") || !opt("key")) {
+      say(`{"level":"warn","msg":"retrying of unary invoker failed","error":"authentication handshake failed: remote error: tls: certificate required"}\nError: context deadline exceeded`, "warn");
+      return null;
+    }
+    if (opt("cacert") !== pki + "ca.crt") { say("Error: tls: failed to verify certificate: x509: certificate signed by unknown authority", "warn"); return null; }
+    if (!/^(server|healthcheck-client|peer)$/.test((opt("cert") || "").replace(pki, "").replace(/\.crt$/, "")) || opt("key") !== opt("cert").replace(/\.crt$/, ".key")) {
+      say("Error: tls: private key does not match public key, or the certificate is not an etcd client certificate", "warn");
+      return null;
+    }
+    return ep;
+  }
+
+  function etcd(c, words, say, opt) {
+    const cmd = words[0];
+    const valued = ["--endpoints", "--cacert", "--cert", "--key", "--data-dir", "--name", "--initial-cluster", "--initial-advertise-peer-urls"];
+    const pos = words.slice(3).filter((x, i, a) => !x.startsWith("-") && !valued.includes(i ? a[i - 1] : words[2]));
+    const backup = (f) => !!f && (f === c.etcd.saved || (/^\/opt\/backup\//.test(f) && (c.dirs["/opt/backup"] || []).includes(f.slice(12))));
+    if (words[1] === "get") {
+      const key = words.slice(2).find((x, i, a) => !x.startsWith("-") && !valued.includes(i ? a[i - 1] : ""));
+      if (!key) return say("Error: get command needs one argument as key and an optional argument as range_end", "warn");
+      if (!etcdAuth(opt, say)) return;
+      const prefix = words.includes("--prefix");
+      const found = c.secrets.filter((x) => { const k = `/registry/secrets/${NS}/${x.name}`; return prefix ? k.startsWith(key) : k === key; });
+      for (const x of found) {
+        say(`/registry/secrets/${NS}/${x.name}`);
+        if (words.includes("--keys-only")) continue;
+        if (x.encrypted) {
+          say(`k8s:enc:aescbc:v1:key1:${c.rand(12)}${c.rand(12)}${c.rand(12)}`);
+          say("(encrypted with key1: without the key this is noise)", "dim");
+        } else {
+          say(`k8s  v1  Secret  ${x.name}  ${NS}  Opaque`);
+          for (const [k, v] of Object.entries(x.data)) say(`${k}  ${v}`, "warn");
+          say("(plain text: anyone who can read etcd or its backups can read this Secret)", "dim");
+        }
+      }
+      return;
+    }
+    if (words[1] !== "snapshot") return say(`${cmd}: this playground simulates snapshot save, status and restore, and get`, "dim");
+    if (words[2] === "status") {
+      const file = pos[0];
+      if (!backup(file)) return say(`Error: stat ${file || ""}: no such file or directory`, "warn");
+      if (file === c.etcd.saved) c.etcd.checked = true;
+      if (cmd === "etcdctl") say("Deprecated: Use `etcdutl snapshot status` instead.", "dim");
+      say("+----------+----------+------------+------------+", "row");
+      say("|   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |", "row");
+      say("+----------+----------+------------+------------+", "row");
+      say("| 9a3e6d1f |    48213 |       1192 |     5.8 MB |", "row");
+      say("+----------+----------+------------+------------+", "row");
+      return;
+    }
+    if (words[2] === "restore") {
+      if (cmd === "etcdctl") {
+        say('Error: unknown command "restore" for "etcdctl snapshot"', "warn");
+        return say("(etcd 3.6 moved restore to etcdutl: etcdutl snapshot restore <file> --data-dir <new directory>)", "dim");
+      }
+      const file = pos[0];
+      if (!backup(file)) return say(`Error: open ${file || ""}: no such file or directory`, "warn");
+      const given = opt("data-dir");
+      if (!given) {
+        say(`{"level":"info","msg":"restoring snapshot","path":"${file}","wal-dir":"default.etcd/member/wal","data-dir":"default.etcd"}`, "dim");
+        return say("(without --data-dir, etcdutl restores into ./default.etcd in the current directory. Give a new directory: --data-dir /var/lib/etcd-restore)", "dim");
+      }
+      const dir = given.replace(/\/$/, "");
+      if (!/^\/var\/lib\/[\w.-]+$/.test(dir)) return say("(this playground keeps etcd data directly under /var/lib, for example --data-dir /var/lib/etcd-restore)", "dim");
+      if (c.dirs["/var/lib"].includes(dir.slice(9))) return say(`Error: data-dir "${dir}" not empty or could not be read`, "warn");
+      c.dirs["/var/lib"].push(dir.slice(9));
+      c.dirs[dir] = ["member"];
+      c.restore.dir = dir;
+      say(`{"level":"info","msg":"restoring snapshot","path":"${file}","wal-dir":"${dir}/member/wal","data-dir":"${dir}","snap-dir":"${dir}/member/snap"}`, "dim");
+      say(`{"level":"info","msg":"restored snapshot","path":"${file}","wal-dir":"${dir}/member/wal","data-dir":"${dir}","snap-dir":"${dir}/member/snap"}`, "dim");
+      return;
+    }
+    if (words[2] !== "save") return say("Try: etcdctl snapshot save <file> --endpoints=... --cacert=... --cert=... --key=...", "dim");
+    const file = pos[0];
+    if (!file) return say("Error: snapshot save expects one argument", "warn");
+    const ep = etcdAuth(opt, say);
+    if (!ep) return;
+    if (!/^\/opt\/backup\//.test(file)) return say(`Error: could not open ${file}.part (open ${file}.part: no such file or directory)`, "warn");
+    c.etcd.saved = file;
+    say(`{"level":"info","msg":"created temporary db file","path":"${file}.part"}`, "dim");
+    say(`{"level":"info","msg":"fetched snapshot","endpoint":"${ep}","size":"5.8 MB"}`, "dim");
+    say(`Snapshot saved at ${file}`);
+  }
+
+  // kubeadm upgrade on the control-plane node: packages, the upgrade itself and the kubelet.
+  const APT_LIST = "/etc/apt/sources.list.d/kubernetes.list";
+  const REPO = { "v1.33": ["1.33.5-1.1", "1.33.4-1.1", "1.33.3-1.1"], "v1.34": ["1.34.1-1.1", "1.34.0-1.1"] };
+  const minor = (v) => Number(String(v).split(".")[1]);
+  const newer = (a, b) => { const x = a.split(".").map(Number); const y = b.split(".").map(Number); return x[1] !== y[1] ? x[1] > y[1] : x[2] > y[2]; };
+
+  function kubeadmTools(c, words, say) {
+    const k = c.kadm;
+    const cmd = words[0];
+    const pkgs = ["kubeadm", "kubelet", "kubectl"];
+    const repo = () => (/\/stable:\/(v1\.\d+)\//.exec((c.files[APT_LIST] || []).join("\n")) || [])[1] || "";
+    if (cmd === "kubeadm") {
+      if (words[1] === "version") return say(`kubeadm version: &version.Info{Major:"1", Minor:"${minor(k.pkgs.kubeadm)}", GitVersion:"v${k.pkgs.kubeadm}", GoVersion:"go1.24.6", Platform:"linux/amd64"}`);
+      if (words[1] !== "upgrade") return say("This playground runs kubeadm version, kubeadm upgrade plan and kubeadm upgrade apply <version>.", "dim");
+      if (words[2] === "node") return say("kubeadm upgrade node is for the other nodes, after the first control-plane node. Here you upgrade the first one: kubeadm upgrade apply.", "dim");
+      if (c.apiDown()) return say("[upgrade/config] FATAL: unable to fetch the kubeadm-config ConfigMap: Get \"https://172.18.0.2:6443/api/v1/namespaces/kube-system/configmaps/kubeadm-config\": dial tcp 172.18.0.2:6443: connect: connection refused", "warn");
+      if (words[2] === "plan") {
+        const target = minor(k.pkgs.kubeadm) >= 34 ? "1.34.1" : "1.33.5";
+        say("[preflight] Running pre-flight checks.", "dim");
+        say('[upgrade/config] Reading configuration from the "kubeadm-config" ConfigMap in namespace "kube-system"...', "dim");
+        say("[upgrade] Fetching available versions to upgrade to", "dim");
+        say(`[upgrade/versions] Cluster version: ${k.cp}`);
+        say(`[upgrade/versions] kubeadm version: v${k.pkgs.kubeadm}`);
+        if (k.cp === "1.34.1") return say("Awesome, you're up-to-date! Enjoy!");
+        say("[upgrade/versions] Latest stable version: v1.34.1");
+        say("");
+        say("Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':");
+        table3(say, [["COMPONENT", "NODE", "CURRENT", "TARGET"], ["kubelet", "control-plane", `v${k.running || k.pkgs.kubelet}`, "v1.34.1"]]);
+        say("");
+        say("Upgrade to the latest stable version:");
+        table3(say, [["COMPONENT", "NODE", "CURRENT", "TARGET"],
+          ...["kube-apiserver", "kube-controller-manager", "kube-scheduler"].map((x) => [x, "control-plane", `v${k.cp}`, "v1.34.1"]),
+          ["kube-proxy", "", k.cp, "v1.34.1"], ["CoreDNS", "", "v1.12.0", "v1.12.1"], ["etcd", "control-plane", "3.5.21-0", "3.6.4-0"]]);
+        say("");
+        if (target !== "1.34.1") return say("Note: Before you can perform this upgrade, you have to update kubeadm to v1.34.1.", "warn");
+        say("You can now apply the upgrade by executing the following command:");
+        return say("        kubeadm upgrade apply v1.34.1");
+      }
+      if (words[2] !== "apply") return say("Try kubeadm upgrade plan, then kubeadm upgrade apply <version>.", "dim");
+      const v = (words.slice(3).find((x) => /^v?\d+\.\d+\.\d+$/.test(x)) || "").replace(/^v/, "");
+      if (!v) return say("error: missing the version to upgrade to, for example: kubeadm upgrade apply v1.34.1", "warn");
+      if (!["1.33.5", "1.34.0", "1.34.1"].includes(v)) return say(`[upgrade/version] FATAL: the version "v${v}" is not available; kubeadm upgrade plan lists the versions you can upgrade to`, "warn");
+      if (newer(v, k.pkgs.kubeadm)) return say(`[upgrade/version] FATAL: the --version argument is invalid due to these errors:\n\n\t- Specified version to upgrade to "v${v}" is higher than the kubeadm version "v${k.pkgs.kubeadm}". Upgrade kubeadm first using the tool you used to install kubeadm`, "warn");
+      if (!newer(v, k.cp)) return say(`[upgrade] the cluster is already at v${k.cp}; nothing to do`, "dim");
+      if (!words.includes("-y") && !words.includes("--yes")) say("[upgrade] Are you sure you want to proceed? [y/N]: y   (answered for you; in a script add -y)", "dim");
+      say(`[upgrade] Upgrading your Static Pod-hosted control plane to version "v${v}"...`, "dim");
+      say("[upgrade/etcd] Upgrading to TLS for etcd", "dim");
+      say("[upgrade/staticpods] Component \"kube-apiserver\" upgraded successfully!", "dim");
+      say("[upgrade/staticpods] Component \"kube-controller-manager\" upgraded successfully!", "dim");
+      say("[upgrade/staticpods] Component \"kube-scheduler\" upgraded successfully!", "dim");
+      say("[upgrade/addons] Applied essential addon: CoreDNS", "dim");
+      say("[upgrade/addons] Applied essential addon: kube-proxy", "dim");
+      say("");
+      say(`[upgrade] SUCCESS! A control plane node of your cluster was upgraded to "v${v}".`);
+      say("[upgrade] Now please proceed with upgrading the rest of the nodes by following the right order.");
+      k.cp = v;
+      const api = "/etc/kubernetes/manifests/kube-apiserver.yaml";
+      c.files[api] = c.files[api].map((l) => l.replace(/kube-apiserver:v[\d.]+/, `kube-apiserver:v${v}`));
+      c.apiRestarts = 1;
+      return;
+    }
+    if (cmd === "apt-mark") {
+      const action = words[1];
+      const names = words.slice(2).filter((x) => !x.startsWith("-"));
+      if (action === "showhold") return pkgs.filter((x) => k.held[x]).forEach((x) => say(x));
+      if (action !== "hold" && action !== "unhold") return say("apt-mark: this playground runs hold, unhold and showhold", "dim");
+      for (const n of names) {
+        if (!pkgs.includes(n)) { say(`E: Unable to locate package ${n}`, "warn"); continue; }
+        if (action === "hold") { say(k.held[n] ? `${n} was already set on hold.` : `${n} set on hold.`); k.held[n] = true; }
+        else { say(k.held[n] ? `Canceled hold on ${n}.` : `${n} was already not on hold.`); k.held[n] = false; }
+      }
+      return;
+    }
+    if (cmd === "apt-cache") {
+      const n = words.find((x, i) => i > 1 && !x.startsWith("-"));
+      if (words[1] !== "madison" || !pkgs.includes(n)) return say("apt-cache: this playground runs: apt-cache madison kubeadm", "dim");
+      const list = REPO[k.indexed] || [];
+      if (!list.length) return say(`N: Unable to locate package ${n}`, "warn");
+      return list.forEach((v) => say(`   ${n} | ${v} | https://pkgs.k8s.io/core:/stable:/${k.indexed}/deb  Packages`));
+    }
+    if (cmd === "apt-get" || cmd === "apt") {
+      if (words[1] === "update") {
+        const r = repo();
+        k.indexed = REPO[r] ? r : "";
+        say(`Hit:1 http://deb.debian.org/debian bookworm InRelease`, "dim");
+        if (!k.indexed) say(`Err:2 https://pkgs.k8s.io/core:/stable:/${r || "?"}/deb  InRelease\n  404  Not Found`, "warn");
+        else say(`Get:2 https://pkgs.k8s.io/core:/stable:/${k.indexed}/deb  InRelease [1186 B]`, "dim");
+        return say("Reading package lists... Done");
+      }
+      if (words[1] !== "install") return say(`${cmd}: this playground runs update and install <package>=<version>`, "dim");
+      const specs = words.slice(2).filter((x) => !x.startsWith("-"));
+      say("Reading package lists... Done");
+      const plan = [];
+      for (const spec of specs) {
+        const [n, ver] = spec.split("=");
+        if (!pkgs.includes(n)) return say(`E: Unable to locate package ${n}`, "warn");
+        const avail = REPO[k.indexed] || [];
+        const want = ver || avail[0];
+        if (!want || !avail.includes(want)) return say(`E: Version '${ver || "?"}' for '${n}' was not found`, "warn");
+        plan.push([n, want.replace(/-.*$/, "")]);
+      }
+      const held = plan.filter(([n, v]) => k.held[n] && v !== k.pkgs[n]);
+      if (held.length && !words.includes("--allow-change-held-packages")) {
+        say(`The following held packages will be changed:\n  ${held.map(([n]) => n).join(" ")}`);
+        return say("E: Held packages were changed and -y was used without --allow-change-held-packages.", "warn");
+      }
+      for (const [n, v] of plan) {
+        if (v === k.pkgs[n]) { say(`${n} is already the newest version (${v}-1.1).`); continue; }
+        say(`Unpacking ${n} (${v}-1.1) over (${k.pkgs[n]}-1.1) ...`, "dim");
+        say(`Setting up ${n} (${v}-1.1) ...`);
+        k.pkgs[n] = v;
+        if (n === "kubelet") k.unitChanged = true;
+      }
+      return;
+    }
+    if (cmd === "journalctl") {
+      if (k.running) return say(`Oct 30 09:20:11 control-plane kubelet[${4100 + k.restarts}]: I1030 kubelet version v${k.running} started`);
+      say(`Oct 30 09:20:11 control-plane kubelet[4122]: E1030 kubelet v${k.pkgs.kubelet} is newer than the API server v${k.cp}: the version skew policy does not allow a kubelet newer than kube-apiserver`, "warn");
+      return say("Oct 30 09:20:11 control-plane systemd[1]: kubelet.service: Main process exited, code=exited, status=1/FAILURE", "warn");
+    }
+    // systemctl
+    if (words[1] === "daemon-reload") { k.unitChanged = false; return; }
+    if (!words.includes("kubelet")) return say("systemctl: this playground runs daemon-reload, and status or restart kubelet", "dim");
+    if (words[1] === "status") {
+      say("● kubelet.service - kubelet: The Kubernetes Node Agent");
+      say(k.running ? `     Active: active (running) since Thu 2026-10-30 09:20:11 UTC (v${k.running})` : "     Active: activating (auto-restart) (Result: exit-code)", k.running ? "" : "warn");
+      return;
+    }
+    if (words[1] !== "restart" && words[1] !== "start") return say("systemctl: this playground runs daemon-reload, and status or restart kubelet", "dim");
+    if (k.unitChanged) say("Warning: The unit file, source configuration file or drop-ins of kubelet.service changed on disk. Run 'systemctl daemon-reload' to reload units.", "warn");
+    k.restarts = (k.restarts || 0) + 1;
+    if (newer(k.pkgs.kubelet, k.cp)) { k.running = null; return; }
+    if (k.running !== k.pkgs.kubelet) k.drainedAtRestart = k.cordoned;
+    k.running = k.pkgs.kubelet;
+    if (!k.cordoned) say("(the node was not drained: on a real node every Pod on it restarted mid-request. Drain first, then restart the kubelet.)", "warn");
+  }
+
+  // A simulated image scanner. The CVE ids are made up for practice.
+  const TRIVY = {
+    "nginx:1.25": { os: "debian 12.5", vulns: [
+      ["libexpat1", "CVE-SIM-0001", "CRITICAL", "fixed", "2.5.0-1", "2.5.0-1+deb12u1", "heap overflow when parsing XML"],
+      ["openssl", "CVE-SIM-0002", "HIGH", "fixed", "3.0.11-1~deb12u2", "3.0.13-1~deb12u1", "denial of service in certificate checks"],
+      ["zlib1g", "CVE-SIM-0003", "HIGH", "fixed", "1:1.2.13.dfsg-1", "1:1.2.13.dfsg-1+deb12u1", "out-of-bounds write when inflating"],
+      ["libc6", "CVE-SIM-0004", "MEDIUM", "affected", "2.36-9+deb12u4", "", "stack read in locale handling"]] },
+    "nginx:1.26": { os: "debian 12.7", vulns: [
+      ["libexpat1", "CVE-SIM-0001", "CRITICAL", "fixed", "2.5.0-1", "2.5.0-1+deb12u1", "heap overflow when parsing XML"],
+      ["libc6", "CVE-SIM-0004", "MEDIUM", "affected", "2.36-9+deb12u7", "", "stack read in locale handling"]] },
+    "nginx:1.27": { os: "debian 12.11", vulns: [
+      ["libc6", "CVE-SIM-0004", "MEDIUM", "affected", "2.36-9+deb12u10", "", "stack read in locale handling"]] },
+    "busybox:1.36": { os: "busybox 1.36.1", vulns: [] }
+  };
+  const trivyKey = (image) => String(image || "").replace(/^(registry\.kitchen\.example|docker\.io\/library)\//, "");
+
+  function trivy(words, say) {
+    if (words[1] !== "image" || !words[2]) return say("Usage here: trivy image <image> [--severity HIGH,CRITICAL]", "dim");
+    const image = words.slice(2).find((x, i, a) => !x.startsWith("-") && (i === 0 || !["--severity", "-s", "--format", "-f"].includes(a[i - 1])));
+    const db = TRIVY[trivyKey(image)];
+    if (!db) return say(`(simulated) this playground's scan data covers ${Object.keys(TRIVY).join(", ")}. Scan your own images with the real trivy.`, "warn");
+    const si = words.findIndex((x) => x === "--severity" || x === "-s");
+    const sevArg = (si > 0 ? words[si + 1] || "" : (words.find((x) => x.startsWith("--severity=")) || "").slice(11)).toUpperCase();
+    const sev = sevArg ? sevArg.split(",") : ["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
+    const shown = db.vulns.filter((v) => sev.includes(v[2]));
+    say("(simulated scan: the CVE ids are made up for practice)", "dim");
+    say(`2026-10-30T09:12:44Z	INFO	[vuln] Vulnerability scanning is enabled`, "dim");
+    say("");
+    say(`${image} (${db.os})`);
+    const count = (s) => shown.filter((v) => v[2] === s).length;
+    say(`Total: ${shown.length} (${sev.map((s) => `${s}: ${count(s)}`).join(", ")})`, count("CRITICAL") ? "warn" : "");
+    if (!shown.length) return;
+    say("");
+    table3(say, [["LIBRARY", "VULNERABILITY", "SEVERITY", "STATUS", "INSTALLED", "FIXED", "TITLE"], ...shown.map((v) => [v[0], v[1], v[2], v[3], v[4], v[5] || "", v[6]])]);
+  }
+  const imageHasCritical = (image) => { const db = TRIVY[trivyKey(image)]; return !db || db.vulns.some((v) => v[2] === "CRITICAL"); };
 
   function table3(say, rows) {
     const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
@@ -1506,6 +2099,12 @@
   }
 
   // A fixed kube-system, for reading control-plane Pods.
+  function grepLines(lines, pattern, insensitive, invert) {
+    const pat = String(pattern || "").replace(/^["']|["']$/g, "");
+    const re = new RegExp(pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), insensitive ? "i" : "");
+    return lines.filter((l) => re.test(l) !== invert);
+  }
+
   function kubeSystem(c, args, verb, say) {
     const pods = ["coredns-668d6bf9bc-4xk2p", "coredns-668d6bf9bc-q8w7m", "etcd-control-plane", "kube-apiserver-control-plane",
       "kube-controller-manager-control-plane", "kube-scheduler-control-plane", ...NODES.map((n, i) => `kube-proxy-${["m4q8d", "z2v7r", "k9c3x"][i]}`)];
@@ -1521,7 +2120,25 @@
     say("  etcd:");
     say("    Image:   registry.k8s.io/etcd:3.6.4-0");
     say("    Command:");
-    FILES["/etc/kubernetes/manifests/etcd.yaml"].filter((l) => l.startsWith("    - ")).forEach((l) => say("      " + l.trim().slice(2)));
+    c.files["/etc/kubernetes/manifests/etcd.yaml"].filter((l) => l.startsWith("    - --") || l === "    - etcd").forEach((l) => say("      " + l.trim().slice(2)));
+  }
+
+  function pipeline(c, parts) {
+    const [first, ...filters] = parts;
+    if (/^kubectl get secrets?\b/.test(first) && /-o\s*json/.test(first) && /^kubectl replace -f -/.test(filters[filters.length - 1] || "")) {
+      return c.rewriteSecrets(first);
+    }
+    let lines = kubectl(c, first);
+    for (const f of filters) {
+      const w = tokenize(f);
+      if (w[0] === "grep") lines = lines.filter(([t]) => grepLines([t], w.filter((x) => !x.startsWith("-"))[1], w.includes("-i"), w.includes("-v")).length);
+      else if (w[0] === "tail") lines = lines.slice(-(Number((w.find((x) => /^-\d+$/.test(x)) || "").slice(1)) || Number(w[w.indexOf("-n") + 1]) || 10));
+      else if (w[0] === "head") lines = lines.slice(0, Number((w.find((x) => /^-\d+$/.test(x)) || "").slice(1)) || Number(w[w.indexOf("-n") + 1]) || 10);
+      else if (w[0] === "wc" && w.includes("-l")) lines = [[String(lines.length), ""]];
+      else if (["hexdump", "xxd", "less", "more", "cat", "strings"].includes(w[0])) continue;
+      else return [[`${w[0]}: not available in this playground's pipes (grep, tail, head, wc -l, hexdump)`, "warn"]];
+    }
+    return lines;
   }
 
   // securityContext fields from a patch, container or Pod level.
@@ -1533,10 +2150,35 @@
     if (sc.seccompProfile && sc.seccompProfile.type) sec.seccomp = sc.seccompProfile.type;
   }
 
+  const vapYaml = (v) => ["apiVersion: admissionregistration.k8s.io/v1", "kind: ValidatingAdmissionPolicy", "metadata:", `  name: ${v.name}`, "spec:",
+    "  failurePolicy: Fail", "  matchConstraints:", "    resourceRules:", "    - apiGroups: [\"\"]", "      apiVersions: [\"v1\"]",
+    "      operations: [\"CREATE\", \"UPDATE\"]", "      resources: [\"pods\"]", "  validations:",
+    `  - expression: "object.spec.containers.all(c, c.image.startsWith('${v.prefix}'))"`, `    message: images must come from ${v.prefix}`];
+  const vapBindingYaml = (v) => ["apiVersion: admissionregistration.k8s.io/v1", "kind: ValidatingAdmissionPolicyBinding", "metadata:", `  name: ${v.binding}`,
+    "spec:", `  policyName: ${v.name}`, "  validationActions: [Deny]", "  matchResources:", "    namespaceSelector:", "      matchLabels:",
+    `        kubernetes.io/metadata.name: ${NS}`];
+  const b64 = (x) => (typeof btoa === "function" ? btoa(x) : Buffer.from(x).toString("base64"));
+
   // Runs one command line against a cluster. Returns [text, class] lines.
   function kubectl(c, line) {
+    // a && b: run in order, stop at the first error.
+    if (/\s&&\s/.test(line)) {
+      const res = [];
+      for (const part of line.split(/\s&&\s/)) {
+        const r = kubectl(c, part.trim());
+        res.push(...r);
+        if (r.some(([t, cls]) => cls === "warn" && /^(E:|Error|error|.*: No such file)/.test(t))) break;
+      }
+      return res;
+    }
+    // a | b: the first command's output filtered by grep, tail, head and friends.
+    if (/\s\|\s/.test(line)) return pipeline(c, line.split(/\s\|\s/).map((x) => x.trim()));
     const out = [];
     const say = (text, cls) => out.push([text, cls || ""]);
+    if (/^kubectl\b/.test(line.trim()) && c.apiDown()) {
+      say("The connection to the server 172.18.0.2:6443 was refused - did you specify the right host or port?", "warn");
+      return out;
+    }
     const table = (rows) => {
       const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
       rows.forEach((r, i) => say(r.map((x, j) => String(x).padEnd(widths[j] + 3)).join("").trimEnd(), i === 0 ? "head" : "row"));
@@ -1616,6 +2258,10 @@
         lines.push(`${pad}  env:`);
         for (const [k, v] of env) lines.push(`${pad}  - name: ${k}`, `${pad}    value: ${v}`);
       }
+      if (spec.apparmor) {
+        lines.push(`${pad}  securityContext:`, `${pad}    appArmorProfile:`,
+          ...(spec.apparmor === "runtime/default" ? [`${pad}      type: RuntimeDefault`] : [`${pad}      type: Localhost`, `${pad}      localhostProfile: ${spec.apparmor}`]));
+      }
       lines.push(`${pad}  resources:`);
       if (spec.lim) lines.push(`${pad}    limits:`, `${pad}      memory: ${fmtMem(spec.lim)}`);
       if (spec.req) lines.push(`${pad}    requests:`, `${pad}      memory: ${fmtMem(spec.req)}`);
@@ -1689,10 +2335,11 @@
             "      labels:", `        app: ${d.name}`, "    spec:", ...containerYaml(d.spec, d.name, 6)].forEach((l) => say(l));
           return out;
         }
-        table([["NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"], ...deps.map((d) => {
+        const wide = flags.o === "wide";
+        table([["NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE", ...(wide ? ["CONTAINERS", "IMAGES"] : [])], ...deps.map((d) => {
           const ready = c.podsOf(d.name).filter((p) => p.ready && !p.creating && !p.terminating).length;
           const fresh = c.podsOf(d.name).filter((p) => p.hash === d.hash).length;
-          return [d.name, `${ready}/${d.replicas}`, fresh, ready, age(nowMs - d.created)];
+          return [d.name, `${ready}/${d.replicas}`, fresh, ready, age(nowMs - d.created), ...(wide ? [d.name, d.spec.image] : [])];
         })]);
         return out;
       }
@@ -1723,8 +2370,13 @@
         const extra = flags.L ? String(flags.L).split(",") : [];
         const head = ["NAME", "STATUS", "ROLES", "AGE", "VERSION", ...extra.map((x) => x.toUpperCase())];
         if (flags["show-labels"]) head.push("LABELS");
-        table([head, ...NODES.filter((n) => !name || n === name).map((n) => {
-          const row = [n, (c.nodeReady(n) ? "Ready" : "NotReady") + (c.cordoned[n] ? ",SchedulingDisabled" : ""), "<none>", "12d", "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
+        const k = c.kadm;
+        const cp = k && (!name || name === "control-plane")
+          ? [["control-plane", (k.running ? "Ready" : "NotReady") + (k.cordoned ? ",SchedulingDisabled" : ""), "control-plane", "12d", `v${k.running || k.lastRunning || k.pkgs.kubelet}`, ...extra.map(() => "")]]
+          : [];
+        if (k && name === "control-plane") return table([head.slice(0, 5 + extra.length), ...cp]), out;
+        table([head, ...cp, ...NODES.filter((n) => !name || n === name).map((n) => {
+          const row = [n, (c.nodeReady(n) ? "Ready" : "NotReady") + (c.cordoned[n] ? ",SchedulingDisabled" : ""), "<none>", "12d", k ? "v1.33.5" : "v1.34.0", ...extra.map((x) => c.nodeLabels[n][x] || "")];
           if (flags["show-labels"]) row.push(sel(c.nodeLabels[n]));
           return row;
         })]);
@@ -1840,6 +2492,31 @@
           ...list.map((x) => [x.name, x.status, x.status === "Complete" ? "1/1" : "0/1", x.status === "Complete" ? "4s" : "71s", age(nowMs - x.created)])]);
         return out;
       }
+      if (kind === "secrets") {
+        const list = c.secrets.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("secrets", name), out;
+        if (flags.o === "json" || flags.o === "yaml") {
+          for (const x of list) {
+            ["apiVersion: v1", "kind: Secret", "metadata:", `  name: ${x.name}`, `  namespace: ${NS}`, "type: Opaque", "data:",
+              ...Object.entries(x.data).map(([k, v]) => `  ${k}: ${b64(v)}`)].forEach((l) => say(l));
+            if (list.length > 1) say("---");
+          }
+          if (list.length) say("(base64 is an encoding, not encryption: echo <value> | base64 -d reads it)", "dim");
+          return out;
+        }
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "TYPE", "DATA", "AGE"], ...list.map((x) => [x.name, "Opaque", Object.keys(x.data).length, "6d"])]);
+        return out;
+      }
+      if (kind === "vaps" || kind === "vapbindings") {
+        const list = c.vaps.filter((v) => kind === "vaps" || v.bound).filter((v) => !name || (kind === "vaps" ? v.name : v.binding) === name);
+        if (name && !list.length) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        if (!list.length) return say("No resources found"), out;
+        if (flags.o === "yaml") return list.forEach((v) => (kind === "vaps" ? vapYaml(v) : vapBindingYaml(v)).forEach((l) => say(l))), out;
+        if (kind === "vaps") table([["NAME", "VALIDATIONS", "PARAMKIND", "AGE"], ...list.map((v) => [v.name, 1, "<unset>", "3d"])]);
+        else table([["NAME", "POLICYNAME", "PARAMREF", "AGE"], ...list.map((v) => [v.binding, v.name, "<unset>", "3d"])]);
+        return out;
+      }
       if (kind === "pdbs") {
         if (!c.pdbs.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "MIN AVAILABLE", "MAX UNAVAILABLE", "ALLOWED DISRUPTIONS", "AGE"],
@@ -1906,6 +2583,7 @@
         if (p.owner) say(`Controlled By:    ReplicaSet/${p.owner}-${p.hash}`);
         say(`Service Account:  ${p.spec.sa}`);
         if (Object.keys(p.spec.nodeSelector).length) say(`Node-Selectors:   ${sel(p.spec.nodeSelector)}`);
+        if (p.spec.apparmor) say(`AppArmor:         ${p.spec.apparmor === "runtime/default" ? "RuntimeDefault" : `Localhost (${p.spec.apparmor})`}`);
         if (p.spec.init) {
           const waiting = c.status(p).startsWith("Init:");
           say("Init Containers:");
@@ -2145,6 +2823,23 @@
         say(`  Containers:\n   ${j.name}:\n    Image:      busybox:1.36\n    Command:    wget -qO- ${j.url}`);
         say("Events:");
         for (const e of j.events) say(`  ${e[0].padEnd(9)}${e[1].padEnd(22)}${e[3]}`, e[0] === "Warning" ? "warn row" : "row");
+        return out;
+      }
+      if (kind === "vaps" || kind === "vapbindings") {
+        const v = c.vaps.find((x) => (kind === "vaps" ? x.name : x.bound && x.binding) === name);
+        if (!v) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        (kind === "vaps" ? vapYaml(v) : vapBindingYaml(v)).slice(2).forEach((l) => say(l));
+        return out;
+      }
+      if (kind === "secrets") {
+        const x = c.secrets.find((y) => y.name === name);
+        if (!x) return notFound("secrets", name), out;
+        say(`Name:         ${x.name}`);
+        say(`Namespace:    ${NS}`);
+        say("Type:  Opaque");
+        say("Data");
+        say("====");
+        for (const [k, v] of Object.entries(x.data)) say(`${k}:  ${v.length} bytes`);
         return out;
       }
       if (kind === "pdbs") {
@@ -2454,6 +3149,16 @@
 
     if (verb === "delete") {
       const { kind, name } = target(null);
+      if (kind === "vaps" || kind === "vapbindings") {
+        const v = c.vaps.find((x) => (kind === "vaps" ? x.name : x.bound && x.binding) === name);
+        if (!v) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        if (kind === "vaps") c.vaps = c.vaps.filter((x) => x !== v);
+        else v.bound = false;
+        c.retry = true;
+        say(`validatingadmissionpolicy${kind === "vapbindings" ? "binding" : ""}.admissionregistration.k8s.io "${name}" deleted`);
+        say("(that switches the rule off for every team, not just yours; the policy exists for a reason)", "warn");
+        return out;
+      }
       if (kind === "pvcs") {
         const v = c.pvcs.find((x) => x.name === name);
         if (!v) return notFound("persistentvolumeclaims", name), out;
@@ -2563,6 +3268,22 @@
       return out;
     }
 
+    if (c.kadm && ["cordon", "uncordon", "drain"].includes(verb) && target("nodes").name === "control-plane") {
+      if (verb === "drain" && !flags["ignore-daemonsets"]) {
+        say("node/control-plane cordoned");
+        c.kadm.cordoned = true;
+        return say(`error: unable to drain node "control-plane" due to error: cannot delete DaemonSet-managed Pods (use --ignore-daemonsets to ignore): kube-system/kindnet-${c.rand(5)}, kube-system/kube-proxy-${c.rand(5)}`, "warn"), out;
+      }
+      c.kadm.cordoned = verb !== "uncordon";
+      say(`node/control-plane ${verb === "drain" ? "cordoned" : verb + "ed"}`);
+      if (verb === "drain") {
+        say(`Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-${c.rand(5)}, kube-system/kube-proxy-${c.rand(5)}`, "dim");
+        say("evicting pod kube-system/coredns-668d6bf9bc-4xk2p");
+        say("pod/coredns-668d6bf9bc-4xk2p evicted");
+        say("node/control-plane drained");
+      }
+      return out;
+    }
     if (verb === "cordon" || verb === "uncordon") {
       const { name } = target("nodes");
       if (!NODES.includes(name)) return say(`Error from server (NotFound): nodes "${name}" not found`, "warn"), out;
@@ -2671,7 +3392,7 @@
         if (!subjects.length) return say("error: give --user=<name> or --serviceaccount=<namespace>:<name>", "warn"), out;
         list.push({ name, ...role, subjects, age: 0 });
         say(`${what.replace(/s$/, "")}.rbac.authorization.k8s.io/${name} created`);
-        if (role.role === "cluster-admin" || role.role === "admin" || role.role === "edit") {
+        if ((role.role === "cluster-admin" || role.role === "admin" || role.role === "edit") && subjects.some((x) => x.kind === "ServiceAccount")) {
           say(`(that works, but ${role.role} lets this account change far more than it needs. Least privilege: bind a Role with only the verbs it uses.)`, "warn");
         }
         return out;
@@ -2764,6 +3485,11 @@
           if (ctr.securityContext) mergeSec(next.sec, ctr.securityContext);
         }
         if (tpl.securityContext) mergeSec(next.sec, tpl.securityContext);
+        for (const sc of [tpl.securityContext, ctr && ctr.securityContext]) {
+          if (!sc || !("appArmorProfile" in sc)) continue;
+          const a = sc.appArmorProfile;
+          next.apparmor = !a || a.type === "Unconfined" ? null : a.type === "RuntimeDefault" ? "runtime/default" : a.localhostProfile || null;
+        }
         if (tpl.tolerations === null) next.tolerations = [];
         else if (Array.isArray(tpl.tolerations)) next.tolerations = tpl.tolerations.map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
         if (tpl.nodeSelector === null) next.nodeSelector = {};
@@ -2772,6 +3498,7 @@
         if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched (no change)`, "dim"), out;
         if (d.spec.probe && !next.probe) say("(removing the probe makes Pods Ready, but nothing then checks they really are)", "warn");
         if (d.spec.liveness && !next.liveness) say("(without a liveness probe nobody restarts the app if it hangs; point the probe at the right port instead)", "warn");
+        if (d.spec.apparmor && d.spec.apparmor !== next.apparmor) say(`(that removes the ${d.spec.apparmor} profile the security team asked for; load it on the nodes instead)`, "warn");
         c.rollout(d, next);
         say(`deployment.apps/${name} patched`);
         return out;
@@ -2915,6 +3642,12 @@
     if (verb === "edit") return say("kubectl edit opens an editor, which this playground does not have. Use kubectl set ... instead.", "dim"), out;
     if (verb === "apply") return say("There are no files in this playground. Use kubectl set, create, label or patch to change live objects.", "dim"), out;
     if (verb === "run" || verb === "port-forward") return say(`kubectl ${verb} needs a real cluster. Try it in the course: ./quest start 0`, "dim"), out;
+    if (verb === "version" && c.kadm) {
+      say(`Client Version: v${c.kadm.pkgs.kubectl}`);
+      say("Kustomize Version: v5.7.1");
+      say(`Server Version: v${c.kadm.cp}`);
+      return out;
+    }
     if (verb === "config" || verb === "cluster-info" || verb === "version") return say(`Simulated cluster "kitchen" on Kubernetes v1.34.0.`, "dim"), out;
     say(`This playground does not simulate "kubectl ${args.join(" ")}". Type 'help'.`, "dim");
     return out;
@@ -3093,10 +3826,6 @@
       return load(next.id);
     }
     if (cmd === "hint") return print(scenario.hints[Math.min(hintLevel++, scenario.hints.length - 1)], "dim");
-    const first = words.find((w) => w !== "sudo" && !/^[A-Z_]+=/.test(w)) || "";
-    if (!["kubectl", "curl", "helm", "etcdctl", "etcdutl", "ssh", "ls", "cat"].includes(first)) {
-      return print(`${words[0]}: command not found. This playground understands kubectl, helm, curl, etcdctl and ssh; type 'help'.`, "warn");
-    }
     for (const [text, cls] of kubectl(cluster, cmd)) print(text, cls);
     renderMap();
     if (cluster.dirty) settleSoon(4);
@@ -3141,7 +3870,9 @@
       "get", "describe", "logs", "exec", "patch", "label", "create", "auth", "can-i", "pods", "deployment", "service",
       "endpoints", "nodes", "events", "configmap", "networkpolicy", "rolebinding", "rollout", "kubectl", "taint", "expose",
       "hpa", "vpa", "namespace", "pvc", "storageclass", "ingress", "ingressclass", "quota", "job", "pdb", "cordon", "uncordon", "drain", "curl",
-      "helm", "rollback", "history", "httproute", "gateway", "cronjob", "csr", "certificate", "approve", "config", "set-context", "etcdctl", "ssh"];
+      "helm", "rollback", "history", "httproute", "gateway", "cronjob", "csr", "certificate", "approve", "config", "set-context", "etcdctl", "ssh",
+      "etcdutl", "restore", "kubeadm", "upgrade", "plan", "apt-get", "apt-mark", "apt-cache", "madison", "systemctl", "daemon-reload", "trivy",
+      "secret", "validatingadmissionpolicy", "validatingadmissionpolicybinding", "aa-status", "apparmor_parser", "sed", "grep", "replace", "control-plane"];
     const hits = [...new Set(names)].filter((n) => n.startsWith(stem) && n !== stem);
     if (hits.length === 1) input.value = v.slice(0, start) + prefix + hits[0] + " ";
     else if (hits.length > 1) {
