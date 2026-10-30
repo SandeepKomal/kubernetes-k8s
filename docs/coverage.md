@@ -62,8 +62,12 @@ nothing.
 | RBAC, ServiceAccounts, `auth can-i` | Level 10 · Playground: RBAC forbidden · [reference/manifests/rbac](../reference/manifests/rbac/) |
 | Users, certificates and CertificateSigningRequests | Playground: New user access |
 | Pod Security Standards, securityContext | Level 17 · Playground: Pod Security |
+| AppArmor profiles | Playground: AppArmor profile |
 | ResourceQuota and LimitRange | Level 07 · Playground: Quota exceeded · [reference/manifests/resources](../reference/manifests/resources/) |
-| Admission policy (ValidatingAdmissionPolicy) | [security.md](security.md) |
+| Admission policy (ValidatingAdmissionPolicy) | Playground: Untrusted registry · [security.md](security.md) |
+| Audit logging | Playground: Audit log |
+| Encryption of Secrets at rest | Playground: Encryption at rest |
+| Image scanning | Playground: Vulnerable image (simulated scanner, made-up CVE ids) |
 | Secrets management (External Secrets, Vault) | [security.md](security.md), reading only |
 | Production hardening checklist | Level 21 · [production-checklist.md](production-checklist.md) |
 
@@ -71,11 +75,12 @@ nothing.
 
 | Topic | Practise it |
 | --- | --- |
-| Pod states and events | Level 01 · 24 Playground scenarios · Troubleshoot page |
+| Pod states and events | Level 01 · Playground scenarios · Troubleshoot page |
 | Application and Service failures | Levels 01, 02, 04, 06, 14 · Troubleshoot page |
 | Incident under pressure | Level 14 |
 | Node problems (NotReady, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Drain blocked |
-| Backing up etcd | Playground: etcd backup |
+| Backing up and restoring etcd | Playground: etcd backup, etcd restore |
+| Upgrading a cluster with kubeadm | Playground: kubeadm upgrade |
 
 ## Extending Kubernetes and running it in the cloud
 
@@ -87,15 +92,12 @@ nothing.
 
 ## Not covered yet
 
-These are in the certification curricula but have no level or scenario
-here yet. They need real control-plane machines or security tooling that a
-browser simulation would misrepresent, so read the free official
-documentation and practise them on a kubeadm cluster of your own.
+The playground simulates these steps; the real thing needs machines of
+your own. Read the free official documentation and repeat them on a
+kubeadm cluster before an exam.
 
 | Topic | Exam | Start with |
 | --- | --- | --- |
-| Installing and upgrading a cluster with kubeadm | CKA | <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/> |
-| Restoring etcd (backups are in the playground) | CKA | <https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/> |
-| Audit logging, encryption of Secrets at rest | CKS | <https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/> |
-| Supply chain: image scanning and signing | CKS | <https://kubernetes.io/docs/concepts/security/supply-chain-security/> (reading) |
-| Runtime security (seccomp, AppArmor profiles, Falco) | CKS | <https://kubernetes.io/docs/tutorials/security/> |
+| Installing a cluster with kubeadm (the playground covers upgrades) | CKA | <https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/> |
+| Image signing and verification | CKS | <https://kubernetes.io/docs/concepts/security/supply-chain-security/> (reading) |
+| Runtime threat detection (Falco), seccomp profiles of your own | CKS | <https://kubernetes.io/docs/tutorials/security/> |

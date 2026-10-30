@@ -1150,7 +1150,31 @@ window.QUEST_QUIZ_BANK = {
         "Copy the snapshot over /var/lib/etcd while etcd runs",
         "Restart the API server with --etcd-snapshot"
       ], answer: 1,
-      why: "Restore writes a fresh data directory; editing the hostPath in /etc/kubernetes/manifests/etcd.yaml makes the kubelet restart etcd on it. Never overwrite a running member's data." }
+      why: "Restore writes a fresh data directory; editing the hostPath in /etc/kubernetes/manifests/etcd.yaml makes the kubelet restart etcd on it. Never overwrite a running member's data." },
+    { q: "You are upgrading a kubeadm cluster from v1.33.5 to v1.34.1. `kubeadm upgrade apply v1.34.1` fails with \"Specified version to upgrade to is higher than the kubeadm version\". What comes first?",
+      options: [
+        "Upgrade the kubelet on the control-plane node",
+        "Point the pkgs.k8s.io apt list at v1.34, run `apt-get update`, and install `kubeadm=1.34.1-1.1` (unholding it first, holding it after)",
+        "Run `kubeadm upgrade apply` with `--force`",
+        "Upgrade the worker nodes first"
+      ], answer: 1,
+      why: "kubeadm only upgrades a cluster to its own version or lower, so the kubeadm package goes first. The pkgs.k8s.io repositories are per minor version, and the packages are normally held so a routine upgrade cannot change them by surprise." },
+    { q: "In which order do you upgrade the first control-plane node with kubeadm?",
+      options: [
+        "kubelet, kubeadm, `kubeadm upgrade apply`, drain",
+        "Drain, `kubeadm upgrade apply`, kubeadm package, uncordon",
+        "kubeadm package, `kubeadm upgrade apply`, drain, kubelet and kubectl packages, `systemctl daemon-reload` and restart the kubelet, uncordon",
+        "All three packages at once, then reboot the node"
+      ], answer: 2,
+      why: "The kubelet must never be newer than the API server, so it follows the control plane. Draining before the kubelet restart moves workloads off the node first, and uncordon puts it back in service." },
+    { q: "After restoring a snapshot with `etcdutl snapshot restore backup.db --data-dir /var/lib/etcd-restore`, nothing in the cluster changes. Why?",
+      options: [
+        "etcdutl needs the etcd certificates to restore",
+        "etcd still runs on /var/lib/etcd: the hostPath volume in /etc/kubernetes/manifests/etcd.yaml must point at the new directory, so the kubelet restarts etcd on it",
+        "The API server caches every object and must be deleted",
+        "Restores only take effect after a node reboot"
+      ], answer: 1,
+      why: "Restore only writes a fresh data directory. etcd is a static Pod, so changing its manifest is what switches it over. `etcdutl` works on files and needs no certificates." }
   ],
 
   "15": [
@@ -1367,7 +1391,15 @@ window.QUEST_QUIZ_BANK = {
         "Delete the namespace and recreate it",
         "Use a NetworkPolicy instead"
       ], answer: 1,
-      why: "warn shows the violations to whoever applies the workload, and audit records them in the audit log, without blocking anything. Lowering enforce to privileged removes the protection for every workload in the namespace." }
+      why: "warn shows the violations to whoever applies the workload, and audit records them in the audit log, without blocking anything. Lowering enforce to privileged removes the protection for every workload in the namespace." },
+    { q: "A Pod with `securityContext.appArmorProfile: {type: Localhost, localhostProfile: k8s-deny-write}` runs on worker-1 but is `CreateContainerError` on worker-2. What is wrong?",
+      options: [
+        "AppArmor only works on the first node of a cluster",
+        "The profile is loaded in worker-1's kernel but not in worker-2's; load it on every node (`apparmor_parser`), ideally from node provisioning or a DaemonSet",
+        "The Pod needs `privileged: true` for AppArmor",
+        "worker-2 needs the profile as a ConfigMap"
+      ], answer: 1,
+      why: "Localhost profiles are not Kubernetes objects; they live on each node. `aa-status` on the node shows what is loaded. Switching to Unconfined would hide the problem by removing the protection." }
   ],
 
   "18": [
@@ -1593,6 +1625,38 @@ window.QUEST_QUIZ_BANK = {
         "Required pod anti-affinity on `topology.kubernetes.io/zone`",
         "A `nodeSelector` for one zone"
       ], answer: 0,
-      why: "With `ScheduleAnyway` the scheduler still prefers nodes that reduce skew, but places the Pod even if skew grows. A larger `maxSkew` with `DoNotSchedule` only delays the problem, and required anti-affinity would allow one Pod per zone." }
+      why: "With `ScheduleAnyway` the scheduler still prefers nodes that reduce skew, but places the Pod even if skew grows. A larger `maxSkew` with `DoNotSchedule` only delays the problem, and required anti-affinity would allow one Pod per zone." },
+    { q: "A Secret was deleted overnight. Where do you find out who did it?",
+      options: [
+        "`kubectl get events`: deletions are kept for 30 days",
+        "The API server's audit log (`--audit-log-path`), whose entries record verb, user, object and response code, at the detail the audit policy sets",
+        "The kubelet logs on each node",
+        "etcd keeps the name of the user who wrote every key"
+      ], answer: 1,
+      why: "Only the audit log records who made each request. Events expire after about an hour and say nothing about users, and etcd stores objects, not who changed them." },
+    { q: "You add `--encryption-provider-config` to the API server, with aescbc as the first provider and identity last. `etcdctl get` still shows an old Secret in plain text. Why, and what fixes it?",
+      options: [
+        "The config file is wrong; identity must be first",
+        "Only writes made after the change are encrypted; rewrite every existing Secret with `kubectl get secrets -A -o json | kubectl replace -f -`",
+        "etcd must be restarted with `--encrypt`",
+        "Secrets are never encrypted in etcd; use a ConfigMap"
+      ], answer: 1,
+      why: "The API server encrypts on write with the first provider and can still read old data thanks to identity. Rewriting each Secret stores it again, encrypted. Putting identity first would turn encryption off for new writes." },
+    { q: "A Deployment shows 0/2 and there are no Pods to describe. `kubectl get events` shows FailedCreate: \"denied by ValidatingAdmissionPolicy 'trusted-registry'\". What is the right fix?",
+      options: [
+        "Delete the ValidatingAdmissionPolicyBinding",
+        "Change the workload so it passes the policy, here by using an image from the allowed registry",
+        "Restart the ReplicaSet controller",
+        "Run the Pods in kube-system"
+      ], answer: 1,
+      why: "Admission rejects the Pod before it exists, so the error sits on the ReplicaSet. Deleting the binding turns the rule off for every team, and moving to another namespace only dodges it." },
+    { q: "trivy reports a CRITICAL vulnerability in `nginx:1.25`. What should you do before changing the Deployment to a newer tag?",
+      options: [
+        "Nothing: newer tags never contain known vulnerabilities",
+        "Scan the new tag as well, since a newer tag can still ship the same vulnerable package",
+        "Pin the old tag by digest",
+        "Lower the scanner's severity threshold"
+      ], answer: 1,
+      why: "A tag is only a name; what matters is the packages inside the image. Scan the target too, and in CI let `trivy image --exit-code 1 --severity CRITICAL` stop the build." }
   ]
 };

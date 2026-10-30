@@ -441,6 +441,151 @@ assert.match(step(c, "etcdutl snapshot status /opt/backup/etcd.db --write-out=ta
 assert.ok(won(c), "etcd: saved and verified");
 assert.match(step(c, "ls /opt/backup"), /etcd.db/);
 
+// etcd restore: never over the live data; a new directory, then the manifest.
+c = fresh("etcdrestore");
+assert.doesNotMatch(step(c, "kubectl get deploy"), /menu/);
+assert.match(step(c, "ls /opt/backup"), /etcd-0300.db/);
+assert.match(step(c, "etcdutl snapshot status /opt/backup/etcd-0300.db"), /TOTAL KEYS/);
+assert.match(step(c, "etcdctl snapshot restore /opt/backup/etcd-0300.db --data-dir /var/lib/etcd-restore"), /unknown command "restore"/);
+assert.match(step(c, "etcdutl snapshot restore /opt/backup/etcd-0300.db --data-dir /var/lib/etcd"), /not empty/);
+step(c, "kubectl create deployment menu --image=nginx:1.27");
+assert.ok(!won(c), "recreating by hand is not a restore");
+c = fresh("etcdrestore");
+assert.match(step(c, "etcdutl snapshot restore /opt/backup/etcd-0300.db --data-dir /var/lib/etcd-restore"), /restored snapshot/);
+assert.match(step(c, "ls /var/lib"), /etcd-restore/);
+assert.ok(!won(c), "a restored directory etcd does not use changes nothing");
+step(c, "sed -i 's#--data-dir=/var/lib/etcd#--data-dir=/var/lib/etcd-restore#' /etc/kubernetes/manifests/etcd.yaml");
+assert.match(step(c, "kubectl get deploy"), /refused/);
+assert.match(step(c, "kubectl get deploy"), /refused/, "data dir and volume disagree: etcd stays down");
+step(c, "sed -i 's#--data-dir=/var/lib/etcd-restore#--data-dir=/var/lib/etcd#' /etc/kubernetes/manifests/etcd.yaml");
+step(c, "sed -i 's#path: /var/lib/etcd#path: /var/lib/etcd-restore#' /etc/kubernetes/manifests/etcd.yaml");
+assert.match(step(c, "kubectl get deploy"), /refused/, "etcd restarts once");
+assert.match(step(c, "kubectl get deploy"), /menu\s+2\/2/);
+assert.match(step(c, "kubectl get svc"), /menu-svc/);
+assert.ok(won(c), "etcdrestore: fixed by restoring into a new directory and pointing etcd at it");
+
+// kubeadm upgrade: repository, held packages, order, drain.
+c = fresh("kubeadm");
+assert.match(step(c, "kubectl get nodes"), /control-plane\s+Ready\s+control-plane\s+12d\s+v1.33.5/);
+assert.match(step(c, "kubeadm upgrade plan"), /update kubeadm to v1.34.1/);
+assert.match(step(c, "kubeadm upgrade apply v1.34.1"), /higher than the kubeadm version/);
+assert.match(step(c, "apt-get install -y kubeadm=1.34.1-1.1"), /was not found/);
+assert.match(step(c, "apt-cache madison kubeadm"), /1.33.5-1.1/);
+step(c, "sed -i 's#v1.33#v1.34#' /etc/apt/sources.list.d/kubernetes.list");
+assert.match(step(c, "apt-get install -y kubeadm=1.34.1-1.1"), /was not found/, "the index is stale until apt-get update");
+step(c, "apt-get update");
+assert.match(step(c, "apt-get install -y kubeadm=1.34.1-1.1"), /Held packages were changed/);
+step(c, "apt-mark unhold kubeadm && apt-get install -y kubeadm=1.34.1-1.1 && apt-mark hold kubeadm");
+assert.match(step(c, "kubeadm version"), /v1.34.1/);
+// the kubelet must not run ahead of the API server
+step(c, "apt-get install -y kubelet=1.34.1-1.1 --allow-change-held-packages");
+step(c, "systemctl daemon-reload");
+step(c, "systemctl restart kubelet");
+assert.match(step(c, "kubectl get nodes"), /control-plane\s+NotReady/);
+assert.match(step(c, "journalctl -u kubelet"), /newer than the API server/);
+assert.match(step(c, "kubeadm upgrade apply v1.34.1 -y"), /SUCCESS/);
+assert.match(step(c, "kubectl version"), /refused/, "the API server restarts");
+assert.match(step(c, "kubectl version"), /Server Version: v1.34.1/);
+assert.match(step(c, "systemctl restart kubelet"), /not drained/);
+step(c, "apt-get install -y kubectl=1.34.1-1.1 --allow-change-held-packages");
+assert.ok(!won(c), "the kubelet restarted on an undrained node");
+assert.match(step(c, "kubectl drain control-plane"), /--ignore-daemonsets/);
+assert.match(step(c, "kubectl drain control-plane --ignore-daemonsets"), /drained/);
+step(c, "apt-get install -y kubelet=1.33.5-1.1 --allow-change-held-packages");
+assert.match(step(c, "kubectl get nodes"), /control-plane\s+Ready,SchedulingDisabled/);
+c = fresh("kubeadm");
+for (const cmd of ["sed -i 's#v1.33#v1.34#' /etc/apt/sources.list.d/kubernetes.list", "apt-get update",
+  "apt-mark unhold kubeadm && apt-get install -y kubeadm=1.34.1-1.1 && apt-mark hold kubeadm", "kubeadm upgrade plan",
+  "kubeadm upgrade apply v1.34.1", "kubectl get nodes", "kubectl drain control-plane --ignore-daemonsets",
+  "apt-mark unhold kubelet kubectl", "apt-get install -y kubelet=1.34.1-1.1 kubectl=1.34.1-1.1",
+  "systemctl daemon-reload", "systemctl restart kubelet"]) step(c, cmd);
+assert.ok(!won(c), "still cordoned and unheld");
+step(c, "kubectl uncordon control-plane");
+assert.ok(!won(c), "packages must be held again");
+assert.match(step(c, "apt-mark hold kubelet kubectl"), /kubelet set on hold/);
+assert.match(step(c, "kubectl get nodes control-plane"), /Ready\s+control-plane\s+12d\s+v1.34.1/);
+assert.ok(won(c), "kubeadm: upgraded in order, drained, held");
+
+// Audit log: find the user; a shared binding is the hole.
+c = fresh("audit");
+assert.match(step(c, "grep audit /etc/kubernetes/manifests/kube-apiserver.yaml"), /audit-log-path/);
+const deletes = step(c, `grep '"verb":"delete"' /var/log/kubernetes/audit/audit.log`);
+assert.match(deletes, /"username":"dev-intern"/);
+assert.doesNotMatch(deletes, /"username":"jane"/);
+assert.match(step(c, "kubectl auth can-i delete secrets --as=dev-intern"), /yes/);
+step(c, "kubectl delete rolebinding kitchen-team");
+assert.ok(!won(c), "deleting the shared binding locks ops-lead out too");
+step(c, "kubectl create rolebinding ops-edit --clusterrole=edit --user=ops-lead");
+assert.ok(!won(c), "dev-intern still needs to read Pods");
+assert.doesNotMatch(step(c, "kubectl create rolebinding intern-view --clusterrole=view --user=dev-intern"), /Least privilege/);
+assert.match(step(c, "kubectl auth can-i delete secrets --as=dev-intern"), /no/);
+assert.ok(won(c), "audit: dev-intern can no longer delete Secrets");
+
+// Encryption at rest: the flag, then rewrite the old Secrets.
+c = fresh("encryption");
+const certs = "--endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key";
+const getSecret = `ETCDCTL_API=3 etcdctl get /registry/secrets/kitchen/payments-api ${certs} | hexdump -C`;
+assert.match(step(c, getSecret), /sk_test_kitchen_4f9a/);
+assert.match(step(c, "kubectl get secret payments-api -o yaml"), /api-key: c2tf/);
+step(c, "kubectl get secrets -A -o json | kubectl replace -f -");
+assert.ok(!won(c), "rewriting before encryption is on changes nothing");
+step(c, "sed -i '/--etcd-servers/a\\    - --encryption-provider-config=/etc/kubernetes/encryption-config.yaml' /etc/kubernetes/manifests/kube-apiserver.yaml");
+assert.match(step(c, "kubectl get secrets"), /refused/);
+assert.match(step(c, "kubectl get secrets"), /refused/, "a missing config file keeps the API server down");
+step(c, "sed -i '/encryption-provider-config/d' /etc/kubernetes/manifests/kube-apiserver.yaml");
+step(c, "sed -i '/--etcd-servers/a\\    - --encryption-provider-config=/etc/kubernetes/pki/encryption-config.yaml' /etc/kubernetes/manifests/kube-apiserver.yaml");
+assert.ok(c.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].includes("    - --encryption-provider-config=/etc/kubernetes/pki/encryption-config.yaml"), "sed a\\ keeps the indentation");
+step(c, "kubectl get pods");
+assert.match(step(c, getSecret), /sk_test_kitchen_4f9a/, "existing Secrets stay plain text");
+assert.ok(!won(c));
+assert.match(step(c, "kubectl get secrets -A -o json | kubectl replace -f -"), /secret\/db-password replaced/);
+assert.match(step(c, getSecret), /k8s:enc:aescbc:v1:key1/);
+assert.ok(won(c), "encryption: enabled and rewritten");
+
+// Untrusted registry: the policy stays, the image moves.
+c = fresh("registry");
+assert.match(step(c, "kubectl get deploy menu"), /menu\s+0\/2/);
+assert.match(step(c, "kubectl get events"), /ValidatingAdmissionPolicy 'trusted-registry'/);
+assert.match(step(c, "kubectl get validatingadmissionpolicy trusted-registry -o yaml"), /startsWith\('registry.kitchen.example\/'\)/);
+step(c, "kubectl delete validatingadmissionpolicybinding trusted-registry-binding");
+assert.ok(c.podsOf("menu").length > 0, "without the binding Pods are admitted");
+assert.ok(!won(c), "deleting the binding does not count");
+c = fresh("registry");
+step(c, "kubectl set image deployment/menu menu=registry.example.com/nginx:1.27");
+assert.ok(!won(c), "another registry is still rejected");
+step(c, "kubectl set image deployment/menu menu=registry.kitchen.example/nginx:1.27");
+assert.ok(won(c), "registry: fixed by using the company registry");
+
+// Vulnerable image: scan the target version too.
+c = fresh("trivy");
+assert.match(step(c, "kubectl get deploy -o wide"), /menu.*nginx:1.25/);
+assert.match(step(c, "trivy image nginx:1.25"), /CRITICAL: 1/);
+assert.match(step(c, "trivy image nginx:1.27 --severity HIGH,CRITICAL"), /Total: 0/);
+step(c, "kubectl set image deployment/menu menu=nginx:1.26");
+assert.ok(!won(c), "1.26 still has the CRITICAL one");
+step(c, "kubectl set image deployment/menu menu=nginx:1.27");
+assert.ok(won(c), "trivy: moved to a clean image");
+
+// AppArmor: the profile has to be on every node.
+c = fresh("apparmor");
+const wide = step(c, "kubectl get pods -o wide");
+assert.match(wide, /Running.*worker-1/);
+assert.match(wide, /CreateContainerError/);
+const broken = c.podsOf("menu").find((p) => p.state === "CreateContainerError");
+assert.match(step(c, `kubectl describe pod ${broken.name}`), /apparmor profile not found k8s-deny-write/);
+assert.match(step(c, `ssh ${broken.node} sudo aa-status`), /1 profiles are loaded/);
+assert.match(step(c, `ssh ${broken.node} sudo apparmor_parser -q /etc/apparmor.d/nope`), /not found/);
+assert.match(step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"securityContext":{"appArmorProfile":{"type":"RuntimeDefault"}}}}}}'`), /removes the k8s-deny-write profile/);
+assert.ok(!won(c), "a different profile does not count");
+c = fresh("apparmor");
+const nodes = [...new Set(c.podsOf("menu").map((p) => p.node))];
+assert.ok(nodes.length >= 2, "menu spreads over more than one node");
+step(c, "ssh worker-2 sudo apparmor_parser -q /etc/apparmor.d/k8s-deny-write");
+assert.ok(!won(c) || !nodes.includes("worker-3"), "one more node is not every node");
+step(c, "ssh worker-3 sudo apparmor_parser -q /etc/apparmor.d/k8s-deny-write");
+assert.match(step(c, "ssh worker-3 sudo aa-status"), /k8s-deny-write/);
+assert.ok(won(c), "apparmor: loaded on every node");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
