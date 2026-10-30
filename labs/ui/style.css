@@ -145,7 +145,11 @@ textarea#yaml:focus { outline: 2px solid var(--accent); outline-offset: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-/* Logo: a container with a check mark. */
-.brand svg .logo-bg { fill: var(--k8s); }
-.brand svg .logo-line { fill: none; stroke: #fff; stroke-width: 4; stroke-linejoin: round; }
-.brand svg .logo-check { stroke-width: 4.5; stroke-linecap: round; }
+/* Logo: a terminal prompt inside a container. */
+.brand svg .logo-bg { fill: #0b1220; }
+.brand svg .logo-hex { fill: none; stroke: #326ce5; stroke-width: 3; stroke-linejoin: round; }
+.brand svg .logo-chevron { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.brand svg .logo-cursor { fill: none; stroke: #5ec8ff; stroke-width: 4; stroke-linecap: round; }
+@media (prefers-color-scheme: dark) {
+  .brand svg .logo-bg { stroke: rgba(255, 255, 255, .22); stroke-width: 2; }
+}

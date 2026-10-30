@@ -1,39 +1,42 @@
+# DaemonSet with node selection: run only on some nodes.
+#
+# A nodeSelector limits a DaemonSet to matching nodes. Label a node and a Pod
+# appears on it; remove the label and the Pod is removed.
+#
+# Try it:
+#   kubectl apply -f deamonset.yaml
+#   kubectl get ds node-heartbeat                       # DESIRED 0 at first
+#   kubectl label node <node> monitoring=enabled         # DESIRED becomes 1
+#   kubectl label node <node> monitoring-                # and back to 0
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: prometheus-node-exporter
+  name: node-heartbeat
+  labels:
+    app: node-heartbeat
 spec:
   selector:
     matchLabels:
-      app: prometheus-node-exporter
+      app: node-heartbeat
   template:
     metadata:
       labels:
-        app: prometheus-node-exporter
+        app: node-heartbeat
     spec:
+      nodeSelector:
+        monitoring: enabled
       containers:
-      - name: prometheus-node-exporter-container
-        image: quay.io/prometheus/node-exporter:latest
-        ports:
-        - containerPort: 9100
-        resources:
-          limits:
-            cpu: 100m
-            memory: 200Mi
-          requests:
-            cpu: 50m
-            memory: 100Mi
-        volumeMounts:
-        - name: proc
-          mountPath: /host/proc
-          readOnly: true
-        - name: sys
-          mountPath: /host/sys
-          readOnly: true
-      volumes:
-      - name: proc
-        hostPath:
-          path: /proc
-      - name: sys
-        hostPath:
-          path: /sys
+        - name: heartbeat
+          image: busybox:1.36
+          command: ["sh", "-c", "while true; do echo \"$(date -Iseconds) $NODE_NAME alive\"; sleep 30; done"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

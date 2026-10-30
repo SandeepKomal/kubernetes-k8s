@@ -10,9 +10,9 @@ labels:
     includeTemplates: true
 images:
   # CI updates this line on release, for example:
-  #   kustomize edit set image nginxinc/nginx-unprivileged=registry.example.com/web-api:1.4.2
-  - name: nginxinc/nginx-unprivileged
-    newTag: 1.27-alpine
+  #   kustomize edit set image busybox=registry.example.com/web-api:1.4.2
+  - name: busybox
+    newTag: "1.36"
 patches:
   - target:
       kind: HorizontalPodAutoscaler

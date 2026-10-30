@@ -7,7 +7,7 @@ spec:
     spec:
       containers:
       - name: example-job-container
-        image: busybox:latest
+        image: busybox:1.36
         command: ["echo", "Hello, Kubernetes!"]
       restartPolicy: Never
   backoffLimit: 4

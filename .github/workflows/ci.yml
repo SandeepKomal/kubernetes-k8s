@@ -140,6 +140,17 @@ jobs:
             kubectl -n scheduling-demo rollout status "deployment/$d" --timeout=180s
           done
 
+      - name: The DaemonSet examples run on a fresh cluster
+        run: |
+          kubectl create namespace daemonset-demo
+          kubectl -n daemonset-demo apply -f "Kubernetes/k8's_objects/deamonsets/"
+          kubectl -n daemonset-demo rollout status daemonset/node-log-agent --timeout=180s
+          # node-heartbeat only runs on nodes labelled monitoring=enabled.
+          node=$(kubectl get nodes -o name | tail -n1)
+          kubectl label "$node" monitoring=enabled
+          kubectl -n daemonset-demo rollout status daemonset/node-heartbeat --timeout=120s
+          test "$(kubectl -n daemonset-demo get ds node-heartbeat -o jsonpath='{.status.numberReady}')" = 1
+
       - name: Cluster state on failure
         if: failure()
         run: |

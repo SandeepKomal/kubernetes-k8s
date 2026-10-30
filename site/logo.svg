@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kubernetes Quest">
   <title>Kubernetes Quest</title>
-  <rect width="64" height="64" rx="15" fill="#326ce5"/>
-  <path d="M32 13.5 48 22.75v18.5L32 50.5 16 41.25v-18.5z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M24.5 32.5 30 38l10-10.5" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="64" height="64" rx="15" fill="#0b1220"/>
+  <path d="M32 10l19 11v22L32 54 13 43V21z" fill="none" stroke="#326ce5" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M23 26l7 6-7 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M33 39h9" fill="none" stroke="#5ec8ff" stroke-width="4" stroke-linecap="round"/>
 </svg>
