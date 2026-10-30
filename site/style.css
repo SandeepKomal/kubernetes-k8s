@@ -348,10 +348,10 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 .foot-col h2 { margin: 4px 0 4px; font-size: .8rem; font-weight: 600; color: var(--text); letter-spacing: 0; }
 .foot-col a { color: var(--muted); width: fit-content; transition: color var(--dur-fast) var(--ease); }
 .foot-col a:hover { color: var(--text); text-decoration: none; }
-.foot-base { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px; border-top: 1px solid var(--hair); padding-top: 18px; padding-bottom: 40px; font-size: .8rem; }
+.foot-base { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--hair); padding-top: 18px; padding-bottom: 40px; font-size: .8rem; }
 .foot-base p { margin: 0; }
 .foot-base a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.foot-tm { flex-basis: 100%; }
+.foot-base .foot-tm { margin-top: 4px; font-size: .74rem; }
 
 @media (max-width: 1000px) {
   .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
