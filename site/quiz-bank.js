@@ -485,7 +485,15 @@ window.QUEST_QUIZ_BANK = {
         "The Ingress class is wrong",
         "DNS for the host is broken"
       ], answer: 1,
-      why: "A wrong class or missing endpoints would break /api too. Exact matches one path; Prefix matches whole path elements, so /api serves /api/menu but not /apis." }
+      why: "A wrong class or missing endpoints would break /api too. Exact matches one path; Prefix matches whole path elements, so /api serves /api/menu but not /apis." },
+    { q: "An app moved under /shop. With `rewrite-target: /`, every page, /shop/menu included, shows the home page. Which rewrite keeps the rest of the path?",
+      options: [
+        "Remove the annotation",
+        "A regex path `/shop(/|$)(.*)` with `rewrite-target: /$2`",
+        "pathType: Exact",
+        "rewrite-target: /shop"
+      ], answer: 1,
+      why: "rewrite-target replaces the path. Capture what follows the prefix and pass it on; without a rewrite, the app receives /shop/menu, which it does not serve." }
   ],
 
   "05": [
@@ -798,7 +806,15 @@ window.QUEST_QUIZ_BANK = {
         "The container image",
         "The HPA"
       ], answer: 1,
-      why: "LimitRange defaults apply at admission to containers that set nothing. Set requests and limits on the workload itself; the defaults are a safety net." }
+      why: "LimitRange defaults apply at admission to containers that set nothing. Set requests and limits on the workload itself; the defaults are a safety net." },
+    { q: "A Pod is Pending with `1 Too many pods, 2 Insufficient memory`, yet the first node has lots of free memory. What limits it?",
+      options: [
+        "Its CPU requests",
+        "The kubelet's maxPods on that node, shown as Allocatable pods in kubectl describe node",
+        "A ResourceQuota",
+        "The PodDisruptionBudget"
+      ], answer: 1,
+      why: "A node takes at most maxPods Pods (110 by default, fewer on some clouds). Raise it in the kubelet config and restart the kubelet, or add nodes." }
   ],
 
   "08": [
