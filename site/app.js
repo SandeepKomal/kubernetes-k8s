@@ -4,6 +4,8 @@
 (function () {
   const Q = window.QUEST;
   const $ = (sel) => document.querySelector(sel);
+  // Scroll an element into view, without animation for those who prefer reduced motion.
+  const scrollToEl = (el) => el.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 
   // h("tag.class", {attr: value}, ...children): build DOM without innerHTML.
   function h(spec, attrs, ...kids) {
@@ -36,6 +38,13 @@
       try { localStorage.setItem("kq:" + key, JSON.stringify(value)); } catch { /* private mode */ }
     }
   };
+
+  // Everything the site keeps lives under "kq:" in this browser; one click removes it.
+  function forgetEverything() {
+    if (!confirm("Clear your progress, quiz scores and saved names from this browser?")) return;
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith("kq:")) localStorage.removeItem(k); } catch { /* storage blocked */ }
+    location.reload();
+  }
 
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   $("#gh-link").href = Q.repo;
@@ -127,7 +136,7 @@
         role: "listitem", href: "#stage-" + st.name.toLowerCase().replace(/\s+/g, "-"),
         onclick: (e) => {
           e.preventDefault();
-          document.getElementById("stage-" + st.name.toLowerCase().replace(/\s+/g, "-")).scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          scrollToEl(document.getElementById("stage-" + st.name.toLowerCase().replace(/\s+/g, "-")));
         }
       }, ring, h("span.stage-num", null, `Stage ${i + 1}`), h("strong", null, st.name),
         h("span.muted", null, `${n} of ${st.levels.length} levels`));
@@ -354,7 +363,7 @@
     error.hidden = true;
     pasted = res;
     showPasted();
-    $("#xray-paste").scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    scrollToEl($("#xray-paste"));
   }
   function editPasted() {
     pasted = null;
@@ -372,21 +381,35 @@
   const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   // Filter the symptoms by any word in their text, causes or commands.
+  // One row per group; search hides the symptoms, and the groups, that do not match.
+  function buildDoctorList() {
+    const index = new Map(Q.doctor.map((d, i) => [d.status, i]));
+    $("#doctor-list").replaceChildren(...Q.doctorGroups.map(([name, statuses]) => h("div.doctor-group", null,
+      h("div.doctor-group-name", null, name, h("span.doctor-group-count", null, String(statuses.length))),
+      h("div.doctor-group-items", null, statuses.map((s) => h("button.chip", {
+        type: "button", "data-index": index.get(s), "aria-pressed": "false", onclick: () => renderDoctor(index.get(s))
+      }, s))))));
+  }
   function renderDoctorList() {
     const words = $("#doctor-q").value.toLowerCase().split(/\s+/).filter(Boolean);
     let shown = 0;
-    document.querySelectorAll("#doctor-list button").forEach((b, i) => {
-      const d = Q.doctor[i];
-      const text = [d.status, d.meaning, ...d.causes, ...d.commands].join(" ").toLowerCase();
-      b.hidden = !words.every((w) => text.includes(w));
-      if (!b.hidden) shown++;
-    });
+    for (const group of document.querySelectorAll(".doctor-group")) {
+      let inGroup = 0;
+      for (const b of group.querySelectorAll("button")) {
+        const d = Q.doctor[b.dataset.index];
+        b.hidden = !words.every((w) => [d.status, d.meaning, ...d.causes, ...d.commands].join(" ").toLowerCase().includes(w));
+        if (!b.hidden) inGroup++;
+      }
+      group.hidden = !inGroup;
+      group.querySelector(".doctor-group-count").textContent = String(inGroup);
+      shown += inGroup;
+    }
     $("#doctor-none").hidden = shown > 0;
   }
 
   function renderDoctor(index, fromHash) {
     const d = Q.doctor[index];
-    document.querySelectorAll("#doctor-list button").forEach((b, i) => b.setAttribute("aria-pressed", String(i === index)));
+    document.querySelectorAll("#doctor-list button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.index) === index)));
     const lv = Q.levels.find((l) => l.id === d.level);
     // Each symptom has its own link, so it can be shared or bookmarked.
     if (!fromHash) history.replaceState(null, "", "#doctor/" + slug(d.status));
@@ -405,6 +428,7 @@
         }, titles[id]))) : null,
       h("p.note", null, "Practise it on a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))
     ));
+    if (!fromHash) scrollToEl($("#doctor-out"));
   }
 
   // --- cheat sheet ---------------------------------------------------------
@@ -509,7 +533,13 @@
             h("div", null,
               h("h3", null, "What it is for"), h("ul", null, g.uses.map((t) => h("li", null, ...rich(t)))),
               h("h3", null, "Tips"), h("ul", null, g.tips.map((t) => h("li", null, ...rich(t))))))));
-      box.addEventListener("toggle", () => store.set("guides", { ...store.get("guides", {}), [key]: box.open }));
+      // Browsers also fire "toggle" for a guide that starts open; save real changes only.
+      let shown = box.open;
+      box.addEventListener("toggle", () => {
+        if (box.open === shown) return;
+        shown = box.open;
+        store.set("guides", { ...store.get("guides", {}), [key]: shown });
+      });
       slot.replaceChildren(box);
     });
   }
@@ -532,7 +562,8 @@
     $("#xray-input").value = Q.xrayExample;
     explainPasted();
   });
-  Q.doctor.forEach((d, i) => $("#doctor-list").append(h("button.chip", { type: "button", onclick: () => renderDoctor(i) }, d.status)));
+  buildDoctorList();
+  $("#forget").addEventListener("click", forgetEverything);
   $("#doctor-list").after(h("p.muted", { id: "doctor-none", hidden: true }, "No symptom matches. Try a status (Pending), an error word (forbidden, refused) or an object (hpa, pvc)."));
   $("#doctor-q").addEventListener("input", renderDoctorList);
   $("#cheat-q").addEventListener("input", renderCheats);

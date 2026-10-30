@@ -165,8 +165,9 @@
   const web = (extra) => ({ name: "web", replicas: 2, image: "nginx:1.27", req: 128, lim: 256, age: 4 * HOUR, ...extra });
   const api = () => ({ name: "api", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 2 * HOUR });
 
-  const PEM_CRT = ["-----BEGIN CERTIFICATE-----", "MIIDLzCCAhegAwIBAgIUQ2tpdGNoZW4tcHJhY3RpY2UtY2VydDANBgkqhkiG9w0BAQsF", "(a practice file; the playground does not read its contents)", "-----END CERTIFICATE-----"];
-  const PEM_KEY = ["-----BEGIN PRIVATE KEY-----", "MIIDLzCCAhegAwIBAgIUQ2tpdGNoZW4tcHJhY3RpY2UtY2VydDANBgkqhkiG9w0BAQsF", "(a practice file; the playground does not read its contents)", "-----END PRIVATE KEY-----"];
+  // Placeholders: the playground only checks that the files exist and which pair they form.
+  const PEM_CRT = ["-----BEGIN CERTIFICATE-----", "(practice certificate; the playground does not read its contents)", "-----END CERTIFICATE-----"];
+  const PEM_KEY = ["-----BEGIN PRACTICE KEY-----", "(practice key, not a real one; the playground does not read its contents)", "-----END PRACTICE KEY-----"];
   const SCENARIOS = [
     {
       id: "image",
@@ -1809,10 +1810,9 @@
     // An HTTP request through the ingress controller, by host name.
     viaIngress(host, path) {
       const rule = this.ingresses.find((x) => x.host === host && this.ingressClasses.includes(x.class) && (path || "/").startsWith(x.path));
-      const page = (code, text) => ({ ok: false, code, text: `<html><head><title>${code} ${text}</title></head><body><center><h1>${code} ${text}</h1></center><hr><center>nginx</center></body></html>` });
-      if (!rule) return page(404, "Not Found");
+      if (!rule) return errorPage(404, "Not Found");
       const svc = this.resolve(rule.svc);
-      if (!svc || svc.port !== rule.port || !this.endpointsOf(svc.name).length) return page(503, "Service Temporarily Unavailable");
+      if (!svc || svc.port !== rule.port || !this.endpointsOf(svc.name).length) return errorPage(503, "Service Temporarily Unavailable");
       const app = APPS[appOf(this.endpointsOf(svc.name)[0].spec.image)];
       return { ok: true, code: 200, text: app.body };
     }
@@ -1821,11 +1821,10 @@
     // Gateway named in its parentRefs.
     routeAttached(r) { return this.gateways.some((g) => g.name === r.parent && this.gatewayClasses.includes(g.class)); }
     viaGateway(host) {
-      const page = (code, text) => ({ ok: false, code, text: `<html><head><title>${code} ${text}</title></head><body><center><h1>${code} ${text}</h1></center><hr><center>nginx</center></body></html>` });
       const r = this.routes.find((x) => x.hosts.includes(host) && this.routeAttached(x));
-      if (!r) return page(404, "Not Found");
+      if (!r) return errorPage(404, "Not Found");
       const svc = this.resolve(r.backend);
-      if (!svc || svc.port !== r.port || !this.endpointsOf(svc.name).length) return page(500, "Internal Server Error");
+      if (!svc || svc.port !== r.port || !this.endpointsOf(svc.name).length) return errorPage(500, "Internal Server Error");
       return { ok: true, code: 200, text: APPS[appOf(this.endpointsOf(svc.name)[0].spec.image)].body };
     }
     edgeHost(host) { return this.ingresses.some((x) => x.host === host) || this.routes.some((x) => x.hosts.includes(host)); }
@@ -2153,8 +2152,16 @@
     "/opt/backup": []
   };
 
+  // The error page ingress-nginx returns.
+  const errorPage = (code, text) => ({ ok: false, code, text: `<html><head><title>${code} ${text}</title></head><body><center><h1>${code} ${text}</h1></center><hr><center>nginx</center></body></html>` });
+  // Tolerations from a patch, with the API server's defaults filled in.
+  const tolerationsFrom = (list) => list.map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
+
   // Apply one sed expression to a file's lines: s/a/b/[g], /re/a text, /re/i text, /re/d.
   function sedLines(lines, expr) {
+    try { return sedApply(lines, expr); } catch { return null; } // an invalid pattern
+  }
+  function sedApply(lines, expr) {
     const sub = /^s(.)(.*?)\1(.*?)\1(g?)$/.exec(expr);
     if (sub) {
       const re = new RegExp(sub[2].replace(/\\\//g, "/"), sub[4] ? "g" : "");
@@ -2846,6 +2853,7 @@
   const vapBindingYaml = (v) => ["apiVersion: admissionregistration.k8s.io/v1", "kind: ValidatingAdmissionPolicyBinding", "metadata:", `  name: ${v.binding}`,
     "spec:", `  policyName: ${v.name}`, "  validationActions: [Deny]", "  matchResources:", "    namespaceSelector:", "      matchLabels:",
     `        kubernetes.io/metadata.name: ${NS}`];
+  const vapResource = (kind) => `validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`;
   const b64 = (x) => (typeof btoa === "function" ? btoa(x) : Buffer.from(x).toString("base64"));
 
   // Runs one command line against a cluster. Returns [text, class] lines.
@@ -2870,10 +2878,7 @@
     }
     const authErr = /^kubectl\b/.test(line.trim()) && c.authError(/--kubeconfig[= ]\/etc\/kubernetes\/admin\.conf/.test(line));
     if (authErr) { say(authErr, "warn"); return out; }
-    const table = (rows) => {
-      const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
-      rows.forEach((r, i) => say(r.map((x, j) => String(x).padEnd(widths[j] + 3)).join("").trimEnd(), i === 0 ? "head" : "row"));
-    };
+    const table = (rows) => table3(say, rows);
     const all = tokenize(line);
     const dash = all.indexOf("--");
     const words = dash < 0 ? all : all.slice(0, dash);
@@ -3224,7 +3229,7 @@
       }
       if (kind === "vaps" || kind === "vapbindings") {
         const list = c.vaps.filter((v) => kind === "vaps" || v.bound).filter((v) => !name || (kind === "vaps" ? v.name : v.binding) === name);
-        if (name && !list.length) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        if (name && !list.length) return notFound(vapResource(kind), name), out;
         if (!list.length) return say("No resources found"), out;
         if (flags.o === "yaml") return list.forEach((v) => (kind === "vaps" ? vapYaml(v) : vapBindingYaml(v)).forEach((l) => say(l))), out;
         if (kind === "vaps") table([["NAME", "VALIDATIONS", "PARAMKIND", "AGE"], ...list.map((v) => [v.name, 1, "<unset>", "3d"])]);
@@ -3560,7 +3565,7 @@
       }
       if (kind === "vaps" || kind === "vapbindings") {
         const v = c.vaps.find((x) => (kind === "vaps" ? x.name : x.bound && x.binding) === name);
-        if (!v) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        if (!v) return notFound(vapResource(kind), name), out;
         (kind === "vaps" ? vapYaml(v) : vapBindingYaml(v)).slice(2).forEach((l) => say(l));
         return out;
       }
@@ -3913,7 +3918,7 @@
       }
       if (kind === "vaps" || kind === "vapbindings") {
         const v = c.vaps.find((x) => (kind === "vaps" ? x.name : x.bound && x.binding) === name);
-        if (!v) return notFound(`validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`, name), out;
+        if (!v) return notFound(vapResource(kind), name), out;
         if (kind === "vaps") c.vaps = c.vaps.filter((x) => x !== v);
         else v.bound = false;
         c.retry = true;
@@ -4252,7 +4257,8 @@
       try { patch = JSON.parse(flags.p || ""); } catch (e) {
         return say(`error: unable to parse "${flags.p || ""}": the patch must be JSON in single quotes, for example -p '{"spec":{...}}'`, "warn"), out;
       }
-      const spec = (patch && patch.spec) || {};
+      if (!patch || typeof patch !== "object" || Array.isArray(patch)) return say("error: the patch must be a JSON object, for example -p '{\"spec\":{...}}'", "warn"), out;
+      const spec = (patch.spec && typeof patch.spec === "object") ? patch.spec : {};
       if (kind === "networkpolicies") {
         const np = c.policies.find((x) => x.name === name);
         if (!np) return notFound("networkpolicies.networking.k8s.io", name), out;
@@ -4271,7 +4277,7 @@
         if (!x) return notFound("daemonsets.apps", name), out;
         const tpl = ((spec.template || {}).spec) || {};
         if (!("tolerations" in tpl)) return say(`This playground patches a DaemonSet's tolerations: -p '{"spec":{"template":{"spec":{"tolerations":[...]}}}}'`, "dim"), out;
-        x.tolerations = (tpl.tolerations || []).map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
+        x.tolerations = tolerationsFrom(tpl.tolerations || []);
         c.retry = true;
         return say(`daemonset.apps/${name} patched`), out;
       }
@@ -4309,7 +4315,7 @@
         if (!d) return out;
         const tpl = ((spec.template || {}).spec) || {};
         const next = JSON.parse(JSON.stringify(d.spec));
-        const ctr = (tpl.containers || []).find((x) => !x.name || x.name === d.name);
+        const ctr = (Array.isArray(tpl.containers) ? tpl.containers : []).find((x) => x && (!x.name || x.name === d.name));
         if (tpl.containers && !ctr) return say(`(no container named "${d.name}" in that patch; nothing changed)`, "warn"), out;
         if (ctr) {
           if (ctr.image) next.image = ctr.image;
@@ -4346,7 +4352,7 @@
           next.apparmor = !a || a.type === "Unconfined" ? null : a.type === "RuntimeDefault" ? "runtime/default" : a.localhostProfile || null;
         }
         if (tpl.tolerations === null) next.tolerations = [];
-        else if (Array.isArray(tpl.tolerations)) next.tolerations = tpl.tolerations.map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
+        else if (Array.isArray(tpl.tolerations)) next.tolerations = tolerationsFrom(tpl.tolerations);
         if (Array.isArray(tpl.imagePullSecrets)) next.pullSecrets = tpl.imagePullSecrets.map((x) => x.name);
         if (tpl.nodeSelector === null) next.nodeSelector = {};
         else if (tpl.nodeSelector) next.nodeSelector = { ...tpl.nodeSelector };
@@ -4711,7 +4717,11 @@
       return load(next.id);
     }
     if (cmd === "hint") return print(scenario.hints[Math.min(hintLevel++, scenario.hints.length - 1)], "dim");
-    for (const [text, cls] of kubectl(cluster, cmd)) print(text, cls);
+    let result;
+    try { result = kubectl(cluster, cmd); } catch {
+      result = [["(the playground could not run that command; check its quoting, or type 'help')", "warn"]];
+    }
+    for (const [text, cls] of result) print(text, cls);
     renderMap();
     if (cluster.dirty) settleSoon(4);
     else check();

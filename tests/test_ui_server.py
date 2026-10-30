@@ -8,6 +8,7 @@ import json
 import sys
 import threading
 import unittest
+from unittest import mock
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -48,6 +49,28 @@ class KubectlArgsTest(unittest.TestCase):
         for line in ["config view", "edit deploy web", "proxy", "port-forward svc/web 8080:80", "attach web"]:
             with self.subTest(line=line), self.assertRaises(ValueError):
                 server.kubectl_args(line, "q")
+
+    def test_refuses_flags_with_attached_values(self):
+        # kubectl reads -shttps://host as --server=https://host.
+        for line in ["get pods -shttps://evil", "get pods -s=https://evil", "apply -f/etc/passwd"]:
+            with self.subTest(line=line), self.assertRaises(ValueError):
+                server.kubectl_args(line, "q")
+
+    def test_refuses_local_file_reads(self):
+        for line in ["apply -f /etc/passwd", "create -f ~/.ssh/id_rsa", "apply -k .", "get -f x.yaml",
+                     "create secret generic x --from-file=/root/.kube/config", "create configmap x --from-env-file .env",
+                     "logs -f web"]:
+            with self.subTest(line=line), self.assertRaises(ValueError):
+                server.kubectl_args(line, "q")
+
+    def test_refuses_unknown_commands_that_could_be_plugins(self):
+        for line in ["evil-plugin", "krew install x", "foo get pods"]:
+            with self.subTest(line=line), self.assertRaises(ValueError):
+                server.kubectl_args(line, "q")
+
+    def test_container_commands_keep_their_own_flags(self):
+        args = server.kubectl_args("exec web -- curl -s -f http://api", "q")
+        self.assertEqual(args[-4:], ["curl", "-s", "-f", "http://api"])
 
     def test_requires_the_command_first(self):
         # Otherwise "-n x config view" would hide `config` behind a flag value.
@@ -151,6 +174,21 @@ class HttpTest(unittest.TestCase):
         big = json.dumps({"yaml": "x" * (server.MAX_BODY + 10)})
         resp, data = self.request("POST", "/api/levels/00/apply", token="test-token", body=big)
         self.assertFalse(json.loads(data)["ok"])
+
+    def test_malformed_bodies_get_an_answer(self):
+        # A JSON array, or a negative length, once dropped the connection without a response.
+        with mock.patch.object(server, "practice_context", return_value="kind-k8s-quest"):
+            resp, data = self.request("POST", "/api/levels/00/kubectl", token="test-token", body="[]")
+            self.assertEqual(resp.status, 200)
+            self.assertIn("JSON object", json.loads(data)["output"])
+            conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+            conn.putrequest("POST", "/api/levels/00/kubectl")
+            for k, v in {"X-Quest-Token": "test-token", "Content-Type": "application/json", "Content-Length": "-1"}.items():
+                conn.putheader(k, v)
+            conn.endheaders()
+            resp = conn.getresponse()
+            self.assertIn("Content-Length", json.loads(resp.read())["output"])
+            conn.close()
 
 
 if __name__ == "__main__":

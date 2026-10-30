@@ -53,6 +53,17 @@ BLOCKED_FLAGS = (
     # Flags that write files on this machine.
     "--log-file", "--log-dir", "--output-directory", "--cache-dir",
 )
+# Flags that read files on this machine; the YAML editor applies manifests instead.
+FILE_FLAGS = ("-f", "--filename", "-k", "--kustomize", "--from-file", "--from-env-file")
+# Short flags kubectl also accepts with the value attached, as in -shttps://host.
+SHORT_VALUE_FLAGS = ("-s", "-f", "-k")
+# The console runs these sub-commands only: any other name could start a kubectl
+# plugin from this machine's PATH.
+ALLOWED_COMMANDS = {
+    "get", "describe", "logs", "explain", "top", "events", "api-resources", "api-versions", "version", "cluster-info",
+    "create", "apply", "delete", "patch", "label", "annotate", "scale", "rollout", "set", "expose", "autoscale", "run",
+    "exec", "debug", "wait", "auth", "cordon", "uncordon", "drain", "taint", "certificate",
+}
 # Sub-commands that need a real terminal, never finish, or touch local files.
 # `cp` is blocked because it can write files on this machine.
 BLOCKED_COMMANDS = {"config", "proxy", "port-forward", "attach", "edit", "plugin", "completion", "alpha", "cp"}
@@ -116,9 +127,17 @@ def kubectl_args(line, namespace):
         args = args[1:]
     if not args:
         raise ValueError("type a kubectl command, for example: get pods")
-    for arg in args:
-        if arg.split("=", 1)[0] in BLOCKED_FLAGS:
-            raise ValueError(f"{arg.split('=', 1)[0]} is not allowed here: the dashboard only talks to the practice cluster")
+    # Everything after `--` is the command run inside a container, not kubectl's flags.
+    own = args[:args.index("--")] if "--" in args else args
+    for arg in own:
+        name = arg.split("=", 1)[0]
+        if not arg.startswith("--") and arg[:2] in SHORT_VALUE_FLAGS:
+            name = arg[:2]
+        if name in BLOCKED_FLAGS:
+            raise ValueError(f"{name} is not allowed here: the dashboard only talks to the practice cluster")
+        if name in FILE_FLAGS:
+            raise ValueError(f"{name} reads files on this machine; paste the manifest into the YAML editor instead"
+                             + (" (for logs, -f follows forever: leave it out)" if name == "-f" else ""))
         if arg in ("|", ">", ">>", "<", "&&", ";", "||"):
             raise ValueError("this console runs one kubectl command, without a shell (no pipes or redirects)")
     command = args[0]
@@ -127,6 +146,8 @@ def kubectl_args(line, namespace):
     if command in BLOCKED_COMMANDS:
         raise ValueError(f"'kubectl {command}' needs a real terminal; use your terminal for it"
                          + (", or the YAML editor instead of edit" if command == "edit" else ""))
+    if command not in ALLOWED_COMMANDS:
+        raise ValueError(f"'kubectl {command}' is not available in this console; run it in your terminal")
     if not any(a.split("=", 1)[0] in NAMESPACE_FLAGS for a in args):
         # Before the sub-command, so it never lands after `--` in exec.
         args = ["-n", namespace] + args
@@ -156,6 +177,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -212,11 +234,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def read_json(self):
         length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
-            raise ValueError("request too large")
+        if not 0 <= length <= MAX_BODY:
+            raise ValueError("request too large" if length > MAX_BODY else "bad Content-Length")
         if not self.headers.get("Content-Type", "").startswith("application/json"):
             raise ValueError("expected JSON")
-        return json.loads(self.rfile.read(length) or b"{}")
+        body = json.loads(self.rfile.read(length) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("expected a JSON object")
+        return body
 
     def do_POST(self):
         if not self.authorised():

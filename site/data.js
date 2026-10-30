@@ -375,6 +375,70 @@ window.QUEST = {
 
   // Troubleshooting reference: symptom -> meaning -> causes -> commands.
   // scenarios lists the playground scenarios that practise it.
+  // How the troubleshooting reference groups its symptoms, in display order.
+  doctorGroups: [
+    ["Pod will not start", [
+      "ImagePullBackOff / ErrImagePull",
+      "CreateContainerConfigError",
+      "StartError, exit code 128, empty logs",
+      "exec format error",
+      "Init:0/1 (or Init:CrashLoopBackOff)",
+      "ContainerCreating (for minutes)",
+      "Multi-Attach error for volume",
+      "CreateContainerError: apparmor profile not found"
+    ]],
+    ["Restarting or not Ready", [
+      "CrashLoopBackOff",
+      "Liveness probe failed, container restarted",
+      "OOMKilled",
+      "Running but 0/1 Ready",
+      "Config changed, app still uses the old value",
+      "Evicted"
+    ]],
+    ["Scheduling and storage", [
+      "Pending",
+      "Pending with no events at all",
+      "PersistentVolumeClaim Pending",
+      "DaemonSet not on every node"
+    ]],
+    ["Networking and traffic", [
+      "Service has no endpoints",
+      "Connection refused / timed out",
+      "Some requests fail, some work",
+      "Could not resolve host (DNS)",
+      "Ingress returns 404 or 503",
+      "Ingress serves the fake certificate",
+      "HTTPRoute not attached (Gateway API)"
+    ]],
+    ["Deployments and jobs", [
+      "Deployment 0/N with no Pods (FailedCreate)",
+      "Rollout stuck",
+      "Helm release failed",
+      "Job failed: BackoffLimitExceeded",
+      "CronJob does not run",
+      "HPA TARGETS <unknown>",
+      "VPA recommends, nothing changes",
+      "Terminating forever"
+    ]],
+    ["Access and security", [
+      "Forbidden (403) from the API",
+      "kubectl get pods shows nothing",
+      "FailedCreate: denied by ValidatingAdmissionPolicy",
+      "Image has CRITICAL vulnerabilities",
+      "Secrets readable in etcd",
+      "Who deleted it? (audit log)"
+    ]],
+    ["Nodes and control plane", [
+      "Node NotReady",
+      "Drain blocked by a PodDisruptionBudget",
+      "x509: certificate has expired",
+      "kubeadm upgrade apply fails",
+      "Node NotReady after a kubelet upgrade",
+      "etcd snapshot fails",
+      "Restore etcd from a snapshot"
+    ]]
+  ],
+
   doctor: [
     { status: "Pending", meaning: "The scheduler has not found a node for the Pod.",
       causes: ["Requests bigger than any node's free capacity (Insufficient cpu/memory)", "nodeSelector or node affinity matches no node", "A taint the Pod does not tolerate", "A PersistentVolumeClaim that is not Bound"],
