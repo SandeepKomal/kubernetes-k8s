@@ -23,8 +23,8 @@ nothing.
 | --- | --- |
 | Pods, kubectl, imperative and declarative | Level 00 |
 | kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace, Namespace stuck Terminating |
-| Deployments, rolling updates, rollback, pause and resume | Level 03 · Playground: Bad rollout, Rollout paused |
-| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key, Secret volume not found |
+| Deployments, rolling updates, rollback, pause and resume, image tags | Level 03 · Playground: Bad rollout, Rollout paused, Old code on :latest |
+| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key, Secret volume not found, Secret encoded twice |
 | Requests, limits, QoS, LimitRange, PriorityClass and preemption | Level 07 · Playground: Pending, OOMKilled, OOMKilled with no limit set, Critical Pod can't schedule |
 | Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe, Slow start killed · [probes.md](probes.md) |
 | Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running, CronJob blocked by a hung Job · [reference/manifests/jobs](../reference/manifests/jobs/) |
@@ -46,13 +46,13 @@ nothing.
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down, LoadBalancer pending · [reference/manifests/services](../reference/manifests/services/) |
 | Ingress, IngressClass, path types, TLS | Playground: Ingress 404, Ingress 503, Ingress path too exact, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
-| NetworkPolicy | Level 11 · Playground: NetworkPolicy · [network-policies.md](network-policies.md) |
+| NetworkPolicy, ingress and egress | Level 11 · Playground: NetworkPolicy, Egress lockdown breaks DNS · [network-policies.md](network-policies.md) |
 
 ## Storage (CKA)
 
 | Topic | Practise it |
 | --- | --- |
-| PersistentVolumes, claims, StorageClasses, default class | Level 08 · Playground: PVC Pending |
+| PersistentVolumes, claims, StorageClasses, default class, volume expansion | Level 08 · Playground: PVC Pending, Volume full |
 | Access modes, Multi-Attach, Deployment strategy | Playground: Multi-Attach volume |
 | StatefulSets: ordered start, volumes | Level 15 · Playground: StatefulSet stuck at 0 |
 
@@ -62,10 +62,10 @@ nothing.
 | --- | --- |
 | RBAC, ServiceAccounts, `auth can-i` | Level 10 · Playground: RBAC forbidden · [reference/manifests/rbac](../reference/manifests/rbac/) |
 | Users, certificates and CertificateSigningRequests | Playground: New user access |
-| Pod Security Standards, securityContext | Level 17 · Playground: Pod Security |
+| Pod Security Standards, securityContext | Level 17 · Playground: Pod Security, Read-only root breaks nginx |
 | AppArmor profiles | Playground: AppArmor profile |
 | ResourceQuota and LimitRange | Level 07 · Playground: Quota exceeded · [reference/manifests/resources](../reference/manifests/resources/) |
-| Admission policy (ValidatingAdmissionPolicy) | Playground: Untrusted registry · [security.md](security.md) |
+| Admission policy and webhooks | Playground: Untrusted registry, Admission webhook down · [security.md](security.md) |
 | Audit logging | Playground: Audit log |
 | Encryption of Secrets at rest | Playground: Encryption at rest |
 | Image scanning | Playground: Vulnerable image (simulated scanner, made-up CVE ids) |

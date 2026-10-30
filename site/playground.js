@@ -17,6 +17,10 @@
   const APPS = {
     nginx: {
       mem: 24, port: 80, root: true, health: ["/", "/index.html"], body: "<h1>Welcome to nginx!</h1>", bins: ["nginx", "/docker-entrypoint.sh", "sh", "/bin/sh"],
+      writes: ["/var/cache/nginx", "/var/run"], // what it must write at start, so a read-only root needs volumes there
+      crashLogs: (x) => ["/docker-entrypoint.sh: Configuration complete; ready for start up", x.pod.last && x.pod.last.rofs === "/var/run"
+        ? 'nginx: [emerg] open() "/var/run/nginx.pid" failed (30: Read-only file system)'
+        : 'nginx: [emerg] mkdir() "/var/cache/nginx/client_temp" failed (30: Read-only file system)'],
       logs: (x) => ["/docker-entrypoint.sh: Configuration complete; ready for start up",
         ...(x.pod.spec.probe && !APPS.nginx.health.includes(x.pod.spec.probe)
           ? [`10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`, `10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`]
@@ -50,6 +54,21 @@
       logs: (x) => ["checkout: starting", `checkout: payments reachable at ${x.env.PAYMENTS_URL}`, "checkout: listening on :8080"],
       crashLogs: (x) => ["checkout: starting", `checkout: fatal: cannot reach payments at ${x.env.PAYMENTS_URL}: ${x.pod.last.dep}`]
     },
+    "policy-webhook": { mem: 30, port: 8443, health: ["/healthz"], body: "ok", logs: ["policy-webhook: serving TLS on :8443"] },
+    inventory: {
+      mem: 50, port: 8080, health: ["/healthz"], body: "inventory: ok",
+      logs: ["inventory: opening /data/inventory.db", "inventory: listening on :8080"],
+      crashLogs: ["inventory: opening /data/inventory.db", "inventory: replaying write-ahead log", "inventory: fatal: write /data/inventory.db-wal: no space left on device"]
+    },
+    accounts: {
+      mem: 40, port: 8080, health: ["/healthz"], body: "accounts: ok", needsSecret: { env: "DB_PASSWORD", value: "practice-pass" },
+      logs: ["accounts: connecting to postgres.kitchen:5432 as accounts", "accounts: listening on :8080"],
+      crashLogs: ["accounts: connecting to postgres.kitchen:5432 as accounts", 'accounts: fatal: password authentication failed for user "accounts"']
+    },
+    shop: {
+      mem: 40, port: 8080, health: ["/healthz"], body: "shop: ok",
+      logs: (x) => [`shop: starting version ${x.pod.version}`, "shop: listening on :8080"]
+    },
     oven: { mem: 300, port: 8080, health: ["/healthz"], body: "oven: ok", logs: ["oven: warming up", "oven: ready on :8080"] },
     reports: {
       mem: 400, port: 8080, health: ["/healthz"], body: "reports: ok",
@@ -58,7 +77,10 @@
     }
   };
   const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1",
-    "localhost:5000/ledger:4.2", "localhost:5000/invoice:2.0", "localhost:5000/invoice:2.0-arm64", "localhost:5000/menu-beta:0.9"]);
+    "localhost:5000/ledger:4.2", "localhost:5000/invoice:2.0", "localhost:5000/invoice:2.0-arm64", "localhost:5000/menu-beta:0.9",
+    "localhost:5000/policy-webhook:1.3", "localhost:5000/inventory:1.8", "localhost:5000/accounts:3.2", "localhost:5000/shop:latest", "localhost:5000/shop:2.4.0", "localhost:5000/shop:2.5.0"]);
+  // The registry's digest for each shop tag, and what :latest pointed to when the nodes last pulled it.
+  const SHOP = { latest: "2.5.0", cached: "2.4.0", digests: { "2.4.0": "sha256:7c41e09b2f", "2.5.0": "sha256:e83a1d5c90" } };
   // Images built for one CPU architecture only; the rest are multi-arch.
   const IMAGE_PLATFORMS = { "localhost:5000/invoice:2.0-arm64": ["linux/arm64"], "localhost:5000/invoice:2.0": ["linux/amd64", "linux/arm64"] };
 
@@ -122,6 +144,7 @@
     ["serviceaccounts", "sa", "v1", "true", "ServiceAccount"], ["services", "svc", "v1", "true", "Service"],
     ["validatingadmissionpolicies", "", "admissionregistration.k8s.io/v1", "false", "ValidatingAdmissionPolicy"],
     ["validatingadmissionpolicybindings", "", "admissionregistration.k8s.io/v1", "false", "ValidatingAdmissionPolicyBinding"],
+    ["validatingwebhookconfigurations", "", "admissionregistration.k8s.io/v1", "false", "ValidatingWebhookConfiguration"],
     ["daemonsets", "ds", "apps/v1", "true", "DaemonSet"], ["deployments", "deploy", "apps/v1", "true", "Deployment"],
     ["replicasets", "rs", "apps/v1", "true", "ReplicaSet"], ["statefulsets", "sts", "apps/v1", "true", "StatefulSet"],
     ["horizontalpodautoscalers", "hpa", "autoscaling/v2", "true", "HorizontalPodAutoscaler"],
@@ -176,6 +199,7 @@
     job: "jobs", jobs: "jobs",
     cj: "cronjobs", cronjob: "cronjobs", cronjobs: "cronjobs",
     limits: "limitranges", limitrange: "limitranges", limitranges: "limitranges",
+    validatingwebhookconfiguration: "webhooks", validatingwebhookconfigurations: "webhooks",
     backup: "backups", backups: "backups", "backups.backup.kitchen.example": "backups",
     csr: "csrs", certificatesigningrequest: "csrs", certificatesigningrequests: "csrs",
     gtw: "gateways", gateway: "gateways", gateways: "gateways",
@@ -1384,6 +1408,130 @@
       tries: ["kubectl get cronjobs", "kubectl get jobs"]
     },
     {
+      id: "webhook",
+      title: "Admission webhook down",
+      done: "The policy webhook runs again, enforcing with failurePolicy Fail, and menu is back.",
+      level: { id: "21", text: "Level 21 · Final boss: ready for production" },
+      story: "After last night's node upgrades nothing came back: menu has 0 of 3 Pods, and so does the policy webhook that checks every new Pod. Scaling either one changes nothing.",
+      goal: "Get menu running, with the policy webhook back on duty and enforcing as before.",
+      deployments: [
+        { name: "menu", replicas: 3, image: "nginx:1.27", req: 64, lim: 128, age: 30 * HOUR },
+        { name: "policy-webhook", replicas: 2, image: "localhost:5000/policy-webhook:1.3", req: 32, lim: 64, age: 90 * 24 * HOUR }
+      ],
+      services: [{ name: "policy-webhook", selector: { app: "policy-webhook" }, ip: "10.96.88.4", port: 443, age: 90 * 24 * HOUR }],
+      webhooks: [{ name: "kitchen-policy", hook: "validate.policy.kitchen.example", svc: "policy-webhook", policy: "Fail" }],
+      won: (c) => c.deploymentReady("menu") && c.deploymentReady("policy-webhook") && c.webhooks.some((x) => x.policy === "Fail"),
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((x) => x.ready).length}/3 Running` }),
+      hints: [
+        "kubectl describe deploy menu shows no Pods; the ReplicaSet does: kubectl get events. FailedCreate: failed calling webhook \"validate.policy.kitchen.example\": connection refused.",
+        "kubectl get validatingwebhookconfigurations, then -o yaml: every Pod CREATE goes to the policy-webhook Service, and failurePolicy is Fail. The webhook's own Pods are Pods too, so they are refused by the webhook that is down.",
+        `Break the deadlock for a moment: kubectl patch validatingwebhookconfiguration kitchen-policy -p '{"webhooks":[{"name":"validate.policy.kitchen.example","failurePolicy":"Ignore"}]}'. Once policy-webhook runs, set it back to "Fail".`
+      ],
+      lesson: "A webhook with failurePolicy Fail that is down rejects every matching request, including the Pods that would bring it back. Exclude the webhook's own namespace with a namespaceSelector, run it with several replicas and a PodDisruptionBudget, and if it happens, switch to Ignore only until it is back.",
+      tries: ["kubectl get pods", "kubectl get events"]
+    },
+    {
+      id: "dnsegress",
+      title: "Egress lockdown breaks DNS",
+      done: "checkout reaches payments by name, and the namespace keeps denying all other egress.",
+      level: { id: "11", text: "Level 11 · Everyone can reach the database" },
+      story: "The security team added a default-deny egress policy, plus an exception so checkout may still call payments on 8080. checkout has crashed ever since: it cannot even look payments up.",
+      goal: "Get checkout running with the default-deny egress policy in place.",
+      deployments: [
+        { name: "checkout", replicas: 1, image: "localhost:5000/checkout:3.1", req: 64, lim: 128, age: 50 * MIN, env: { PAYMENTS_URL: "http://payments-svc:8080" } },
+        { name: "payments", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 3 * HOUR }, web()
+      ],
+      services: [{ name: "payments-svc", selector: { app: "payments" }, ip: "10.96.30.11", port: 8080, age: 3 * HOUR }],
+      policies: [
+        { name: "default-deny-egress", podSelector: {}, types: ["Egress"], egress: [], age: HOUR },
+        { name: "allow-checkout-to-payments", podSelector: { app: "checkout" }, types: ["Egress"], egress: [{ to: [{ podSelector: { app: "payments" } }], ports: [8080] }], age: HOUR }
+      ],
+      won: (c) => c.deploymentReady("checkout") && c.policies.some((np) => np.name === "default-deny-egress" && !np.egress.length),
+      check: (c) => { const ok = c.deploymentReady("checkout"); return { label: "checkout → payments-svc", ok, text: ok ? "connected" : "lookup times out" }; },
+      hints: [
+        "kubectl logs deploy/checkout --previous: lookup payments-svc on 10.96.0.10:53: i/o timeout. That is DNS, not payments. Try kubectl exec deploy/web -- nslookup payments-svc too.",
+        "kubectl describe networkpolicy allow-checkout-to-payments: egress to payments on 8080 only. Looking up a name is egress too: UDP and TCP 53 to CoreDNS in kube-system.",
+        `Allow DNS next to the payments rule: kubectl patch networkpolicy allow-checkout-to-payments -p '{"spec":{"egress":[{"to":[{"podSelector":{"matchLabels":{"app":"payments"}}}],"ports":[{"port":8080}]},{"to":[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}},"podSelector":{"matchLabels":{"k8s-app":"kube-dns"}}}],"ports":[{"protocol":"UDP","port":53},{"protocol":"TCP","port":53}]}]}}'`
+      ],
+      lesson: "Once any Egress policy selects a Pod, everything not allowed is blocked, DNS included. A default-deny egress policy almost always needs a companion rule allowing UDP and TCP 53 to kube-dns; the symptom is lookups timing out, not connections refused.",
+      tries: ["kubectl get pods", "kubectl get networkpolicy"]
+    },
+    {
+      id: "volumefull",
+      title: "Volume full",
+      done: "inventory has room on a bigger volume, with its data intact.",
+      level: { id: "08", text: "Level 08 · Data that survives" },
+      story: "inventory started crash-looping during the lunch rush. It ran for months without trouble and nobody has deployed it since April.",
+      goal: "Get inventory running again without losing the data on its volume.",
+      deployments: [{ name: "inventory", replicas: 1, image: "localhost:5000/inventory:1.8", req: 64, lim: 128, age: 120 * 24 * HOUR, pvc: "inventory-data", restarts: 8, strategy: "Recreate" }],
+      pvcs: [{ name: "inventory-data", size: "1Gi", class: "standard", full: true }],
+      won: (c) => { const v = c.pvcs.find((x) => x.name === "inventory-data"); return c.deploymentReady("inventory") && !v.terminating && parseMem(v.size) > 1024; },
+      check: (c) => { const v = c.pvcs.find((x) => x.name === "inventory-data"); return { label: "inventory-data", ok: !v.full, text: v.full ? `${v.size}, 100% used` : `${v.size}, room to grow` }; },
+      hints: [
+        "kubectl logs deploy/inventory --previous: no space left on device, writing to /data. kubectl get pvc: inventory-data is 1Gi.",
+        `Grow the claim: kubectl patch pvc inventory-data -p '{"spec":{"resources":{"requests":{"storage":"5Gi"}}}}'. The answer is in the error: the StorageClass must allow it. kubectl get storageclass shows ALLOWVOLUMEEXPANSION false.`,
+        `kubectl patch storageclass standard -p '{"allowVolumeExpansion":true}', then patch the claim to 5Gi again. Never delete the claim: its data goes with it.`
+      ],
+      lesson: "A full volume shows up as 'no space left on device' in the app's logs, not as a Kubernetes event. Claims can grow, never shrink, and only when their StorageClass sets allowVolumeExpansion. Watch kubelet_volume_stats_used_bytes before it is full.",
+      tries: ["kubectl get pods", "kubectl get pvc"]
+    },
+    {
+      id: "base64twice",
+      title: "Secret encoded twice",
+      done: "accounts logs in with the real password.",
+      level: { id: "05", text: "Level 05 · Missing configuration" },
+      story: "accounts was moved to a new database. The password in the vault is practice-pass, the DBA confirmed it works, and the Secret was created from it. accounts still cannot log in.",
+      goal: "Get accounts running. The database password is practice-pass.",
+      deployments: [web(), { name: "accounts", replicas: 1, image: "localhost:5000/accounts:3.2", req: 64, lim: 128, age: 25 * MIN, restarts: 7,
+        secretEnv: { env: "DB_PASSWORD", secret: "db-credentials", key: "DB_PASSWORD" } }],
+      secrets: [{ name: "db-credentials", data: { DB_PASSWORD: "cHJhY3RpY2UtcGFzcw==" } }],
+      won: (c) => c.deploymentReady("accounts"),
+      check: (c) => ({ label: "accounts", ok: c.deploymentReady("accounts"), text: c.deploymentReady("accounts") ? "logged in" : "password rejected" }),
+      hints: [
+        "kubectl logs deploy/accounts --previous: password authentication failed. Kubernetes passes the Secret's value as it is, so look at what the value is.",
+        "kubectl get secret db-credentials -o yaml, then decode it: echo <value> | base64 -d. It prints more base64, not practice-pass: someone encoded it before putting it under data:, which encodes it again.",
+        "Recreate it from the plain value and let kubectl encode it: kubectl delete secret db-credentials, then kubectl create secret generic db-credentials --from-literal=DB_PASSWORD=practice-pass"
+      ],
+      lesson: "Values under a Secret's data: are base64-encoded once, by you; under stringData:, or with kubectl create secret --from-literal, Kubernetes encodes them. Encoding by hand and then using stringData or --from-literal gives the app a base64 string as its password.",
+      tries: ["kubectl get pods", "kubectl get secret db-credentials -o yaml"]
+    },
+    {
+      id: "readonlyroot",
+      title: "Read-only root breaks nginx",
+      done: "web runs with a read-only root filesystem, writing only to its own volumes.",
+      level: { id: "17", text: "Level 17 · Rejected at the door" },
+      story: "The security team's hardening change made every container's root filesystem read-only. Most apps took it fine; web, plain nginx, has crashed ever since.",
+      goal: "Get web running while keeping readOnlyRootFilesystem: true.",
+      deployments: [web({ sec: { readOnlyRoot: true }, restarts: 6, age: 40 * MIN }), api()],
+      won: (c) => c.deploymentReady("web") && !!c.desired(c.deployments.find((d) => d.name === "web")).sec.readOnlyRoot,
+      check: (c) => ({ label: "web", ok: c.deploymentReady("web"), text: c.deploymentReady("web") ? "Running, read-only root" : "Read-only file system" }),
+      hints: [
+        "kubectl logs deploy/web --previous: mkdir() \"/var/cache/nginx/client_temp\" failed (30: Read-only file system).",
+        "nginx writes to /var/cache/nginx and /var/run at start. Keep the root read-only and give it writable emptyDir volumes at those two paths.",
+        `kubectl patch deployment web -p '{"spec":{"template":{"spec":{"volumes":[{"name":"cache","emptyDir":{}},{"name":"run","emptyDir":{}}],"containers":[{"name":"web","volumeMounts":[{"name":"cache","mountPath":"/var/cache/nginx"},{"name":"run","mountPath":"/var/run"}]}]}}}}'`
+      ],
+      lesson: "readOnlyRootFilesystem is good hardening, but most images write somewhere at start: caches, pid files, /tmp. Mount an emptyDir at each of those paths rather than turning the protection off.",
+      tries: ["kubectl get pods", "kubectl get deploy web -o yaml"]
+    },
+    {
+      id: "stalelatest",
+      title: "Old code on :latest",
+      done: "Every shop Pod runs 2.5.0, from a tag that cannot move.",
+      level: { id: "03", text: "Level 03 · A deploy went wrong" },
+      story: "CI pushed shop 2.5.0 as localhost:5000/shop:latest forty minutes ago, and someone ran a rollout restart. The new checkout button is still missing: the shop is serving 2.4.0.",
+      goal: "Get every shop Pod running 2.5.0, in a way that cannot silently run old code again.",
+      deployments: [{ name: "shop", replicas: 2, image: "localhost:5000/shop:latest", req: 64, lim: 128, age: 35 * MIN, pullPolicy: "IfNotPresent" }],
+      won: (c) => c.deploymentReady("shop") && c.podsOf("shop").every((x) => x.version === "2.5.0") && !c.deployments[0].spec.image.endsWith(":latest"),
+      check: (c) => { const v = [...new Set(c.podsOf("shop").map((x) => x.version))].join(", "); return { label: "shop runs", ok: v === "2.5.0", text: v }; },
+      hints: [
+        "kubectl logs deploy/shop: version 2.4.0. kubectl describe pod on a shop Pod shows its Image ID; docker buildx imagetools inspect localhost:5000/shop:latest shows what :latest points to now.",
+        "kubectl get deploy shop -o yaml: imagePullPolicy IfNotPresent. The nodes already have an image called shop:latest, the old one, so a restart never pulls again.",
+        "Deploy the version, not the tag: kubectl set image deployment/shop shop=localhost:5000/shop:2.5.0"
+      ],
+      lesson: "A tag like latest can point to a new image while nodes keep the old one, and IfNotPresent never checks again. Deploy immutable version tags or digests, so every rollout says exactly what runs and a rollback means something.",
+      tries: ["kubectl logs deploy/shop", "kubectl get deploy shop -o yaml"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -1553,10 +1701,10 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey", "secretvolume", "limitrange"]],
-    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "statefulset", "diskpressure"]],
-    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "pathtype", "ingresstls", "gateway", "netpol"]],
-    ["Security", ["rbac", "csr", "podsecurity", "quota"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey", "secretvolume", "limitrange", "base64twice", "readonlyroot", "stalelatest"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "volumefull", "statefulset", "diskpressure"]],
+    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "pathtype", "ingresstls", "gateway", "netpol", "dnsegress"]],
+    ["Security", ["rbac", "csr", "podsecurity", "webhook", "quota"]],
     ["Operations and delivery", ["job", "cronjob", "cronhung", "rollout", "paused", "helm", "drain", "finalizer"]],
     ["Cluster administration", ["context", "nsstuck", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
     ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
@@ -1588,7 +1736,7 @@
       };
       this.bindings = JSON.parse(JSON.stringify(scenario.bindings || []));
       this.clusterBindings = [];
-      this.policies = JSON.parse(JSON.stringify(scenario.policies || []));
+      this.policies = JSON.parse(JSON.stringify(scenario.policies || [])).map((np) => ({ ingress: [], egress: [], ...np }));
       this.taints = Object.fromEntries(NODES.map((n) => [n, JSON.parse(JSON.stringify((scenario.taints || {})[n] || []))]));
       this.nsLabels = { "kubernetes.io/metadata.name": NS, ...(scenario.nsLabels || {}) };
       this.hpas = JSON.parse(JSON.stringify(scenario.hpas || []));
@@ -1641,6 +1789,7 @@
       this.kubelet = scenario.kubelet ? { ...scenario.kubelet } : null; // { node, running, enabled }
       this.helm = scenario.helm ? JSON.parse(JSON.stringify(scenario.helm)) : null;
       this.limitRanges = JSON.parse(JSON.stringify(scenario.limitRanges || [])); // namespace defaults: { name, lim, req }
+      this.webhooks = JSON.parse(JSON.stringify(scenario.webhooks || [])); // validating webhooks: { name, hook, svc, policy }
       // A node whose image disk is nearly full: the kubelet taints it and evicts Pods.
       this.disk = scenario.diskPressure ? { ...scenario.diskPressure, pressure: true } : null;
       if (this.disk) this.taints[this.disk.node].push(DISK_TAINT);
@@ -1658,7 +1807,7 @@
             secretEnv: d.secretEnv ? { ...d.secretEnv } : null, command: d.command ? [...d.command] : null,
             livenessCfg: d.livenessCfg ? { ...d.livenessCfg } : null, startup: d.startup ? { ...d.startup } : null,
             antiAffinity: d.antiAffinity || null, priorityClassName: d.priorityClassName || null,
-            secretVol: d.secretVol ? { ...d.secretVol } : null
+            secretVol: d.secretVol ? { ...d.secretVol } : null, emptyDirs: [...(d.emptyDirs || [])], pullPolicy: d.pullPolicy || null
           },
           labels: { ...(d.labels || {}) }, strategy: d.strategy || "RollingUpdate", paused: false, pendingSpec: null,
           hash: this.rand(10)
@@ -1733,6 +1882,12 @@
           msg: `Error creating: pods "${dep.name}-${dep.hash}-${this.rand(5)}" is forbidden: no PriorityClass with name ${spec.priorityClassName} was found` });
         return null;
       }
+      const hook = dep && this.webhookError();
+      if (hook) {
+        this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
+        this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate", msg: `Error creating: ${hook}` });
+        return null;
+      }
       const overQuota = dep && !denied.length && this.quotaError(spec);
       if (dep && (denied.length || overQuota)) {
         const name = `${dep.name}-${dep.hash}-${this.rand(5)}`;
@@ -1751,6 +1906,11 @@
         node: opts.node || null, creating: !opts.settled, events: []
       };
       if (!pod.node) pod.node = this.place(pod);
+      // A mutable tag runs whatever the node pulled last, unless the policy says to pull again.
+      if (/^localhost:5000\/shop:/.test(spec.image)) {
+        const tag = spec.image.split(":").pop();
+        pod.version = tag !== "latest" ? tag : spec.pullPolicy === "Always" ? SHOP.latest : SHOP.cached;
+      }
       this.pods.push(pod);
       if (opts.settled) this.evaluate(pod, !opts.age || opts.age < HOUR || pod.state !== "Running");
       return pod;
@@ -1776,8 +1936,14 @@
       if (used + (spec.req || 0) <= this.quota.memory) return null;
       return `requested: requests.memory=${fmtMem(spec.req)}, used: requests.memory=${fmtMem(used)}, limited: requests.memory=${fmtMem(this.quota.memory)}`;
     }
+    // A validating webhook with failurePolicy Fail rejects every Pod while its Service has no endpoints.
+    webhookError() {
+      const w = this.webhooks.find((x) => x.policy === "Fail" && !this.endpointsOf(x.svc).length);
+      const svc = w && this.services.find((x) => x.name === w.svc);
+      return w ? `Internal error occurred: failed calling webhook "${w.hook}": failed to call webhook: Post "https://${w.svc}.${NS}.svc:443/validate?timeout=10s": dial tcp ${svc ? svc.ip : "10.96.0.1"}:443: connect: connection refused` : null;
+    }
     blocked(spec) {
-      return this.admissionErrors(spec).length > 0 || !!this.quotaError(spec) ||
+      return !!this.webhookError() || this.admissionErrors(spec).length > 0 || !!this.quotaError(spec) ||
         (!!spec.priorityClassName && !this.priorityClasses.some((x) => x.name === spec.priorityClassName)) || this.vaps.some((v) => v.bound && !String(spec.image).startsWith(v.prefix));
     }
 
@@ -2157,6 +2323,11 @@
       else if (app.needsEnv && !pod.env[app.needsEnv]) pod.last = { reason: "Error", code: 1 };
       else if (app.needsDep && !this.dependencyOk(pod, app)) pod.last = { reason: "Error", code: 1, dep: this.dependencyOk(pod, app, true) };
       else if (pod.spec.lim && app.mem > pod.spec.lim) pod.last = { reason: "OOMKilled", code: 137 };
+      else if (pod.spec.pvc && (this.pvcOf(pod) || {}).full) pod.last = { reason: "Error", code: 1 };
+      else if (app.needsSecret && pod.spec.secretEnv && ((this.secrets.find((x) => x.name === pod.spec.secretEnv.secret) || { data: {} }).data[pod.spec.secretEnv.key]) !== app.needsSecret.value) pod.last = { reason: "Error", code: 1 };
+      else if ((pod.spec.sec || {}).readOnlyRoot && app.writes && app.writes.some((w) => !(pod.spec.emptyDirs || []).includes(w))) {
+        pod.last = { reason: "Error", code: 1, rofs: app.writes.find((w) => !(pod.spec.emptyDirs || []).includes(w)) };
+      }
       else if (pod.spec.liveness && pod.spec.liveness !== app.port) pod.last = { reason: "Completed", code: 0, liveness: true };
       else if (pod.spec.liveness && app.startSecs && startBudget < app.startSecs) pod.last = { reason: "Error", code: 137, slow: true, liveness: true };
       if (pod.last) {
@@ -2192,6 +2363,7 @@
       if (!url) return why ? `${app.needsDep} is not set` : false;
       const m = /^(?:https?:\/\/)?([^/:]+)(?::(\d+))?/.exec(url);
       const res = this.reach(pod, m[1], m[2] ? Number(m[2]) : 80);
+      if (why && res.dnsBlocked) return `dial tcp: lookup ${m[1]} on 10.96.0.10:53: read udp 10.244.1.14:47321->10.96.0.10:53: i/o timeout`;
       if (why) return res.ok ? "" : res.text.replace(/^wget: bad address '([^:']+).*$/, "dial tcp: lookup $1 on 10.96.0.10:53: no such host");
       return res.ok;
     }
@@ -2226,6 +2398,7 @@
       if (this.edgeHost(host)) return this.viaEdge(host, "/");
       const ip = /^\d+\.\d+\.\d+\.\d+$/.test(host);
       if (!ip && this.dnsDown()) return { ok: false, text: `wget: bad address '${host}:${port}'` };
+      if (!ip && src && !this.dnsAllowed(src)) return { ok: false, dnsBlocked: true, text: `wget: bad address '${host}:${port}'` };
       const svc = ip ? this.services.find((x) => x.ip === host) : this.resolve(host);
       if (!svc) return { ok: false, text: ip ? `wget: download timed out` : `wget: bad address '${host}:${port}'` };
       if (svc.static) return port === svc.port ? { ok: true, text: svc.body } : { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
@@ -2234,7 +2407,7 @@
       if (!eps.length) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       const dst = eps[this.rr++ % eps.length]; // kube-proxy spreads connections over the endpoints
       const app = APPS[appOf(dst.spec.image)];
-      if (!src || !this.allowed(src, dst, app.port)) return { ok: false, text: "wget: download timed out" };
+      if (!src || !this.allowed(src, dst, app.port) || !this.egressAllowed(src, dst, app.port)) return { ok: false, text: "wget: download timed out" };
       // The Service forwards to targetPort; nothing listens there unless it is the app's port.
       if (svc.targetPort !== undefined && svc.targetPort !== app.port) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       return { ok: true, text: app.body };
@@ -2260,6 +2433,16 @@
     }
 
     // NetworkPolicy: may traffic from one Pod reach another on this port?
+    // Egress: a Pod selected by an Egress policy may open only what its rules allow, DNS lookups included.
+    egressRules(src) {
+      const ps = this.policies.filter((np) => np.types.includes("Egress") && selects(np.podSelector, src.labels || {}));
+      return ps.length ? ps.flatMap((np) => np.egress) : null;
+    }
+    dnsAllowed(src) { const r = src && this.egressRules(src); return !r || r.some((x) => x.dns || (!x.to && (!x.ports || x.ports.includes(53)))); }
+    egressAllowed(src, dst, port) {
+      const r = this.egressRules(src);
+      return !r || r.some((x) => !x.dns && (!x.to || x.to.some((t) => selects(t.podSelector, dst.labels))) && (!x.ports || x.ports.includes(port)));
+    }
     allowed(src, dst, port) {
       const policies = this.policies.filter((np) => selects(np.podSelector, dst.labels) && np.types.includes("Ingress"));
       if (!policies.length) return true;
@@ -2657,6 +2840,11 @@
       if (!known) return say(`ERROR: ${image}: not found`, "warn");
       const platforms = IMAGE_PLATFORMS[image] || ["linux/amd64", "linux/arm64"];
       say(`Name:      ${image}`);
+      if (/^localhost:5000\/shop:/.test(image)) {
+        const tag = image.split(":").pop();
+        const v = tag === "latest" ? SHOP.latest : tag;
+        say(`Digest:    ${SHOP.digests[v]}${tag === "latest" ? `   (pushed 40 minutes ago: version ${v})` : ""}`);
+      }
       say(`MediaType: ${platforms.length > 1 ? "application/vnd.oci.image.index.v1+json" : "application/vnd.oci.image.manifest.v1+json"}`);
       if (platforms.length > 1) {
         say("Manifests:");
@@ -3328,15 +3516,19 @@
     if (/^kubectl get secrets?\b/.test(first) && /-o\s*json/.test(first) && /^kubectl replace -f -/.test(filters[filters.length - 1] || "")) {
       return c.rewriteSecrets(first);
     }
-    let lines = kubectl(c, first);
+    let lines = /^echo\s/.test(first) ? [[first.replace(/^echo\s+(-n\s+)?/, "").replace(/^(["'])(.*)\1$/, "$2"), ""]] : kubectl(c, first);
     for (const f of filters) {
       const w = tokenize(f);
       if (w[0] === "grep") lines = lines.filter(([t]) => grepLines([t], w.filter((x) => !x.startsWith("-"))[1], w.includes("-i"), w.includes("-v")).length);
       else if (w[0] === "tail") lines = lines.slice(-(Number((w.find((x) => /^-\d+$/.test(x)) || "").slice(1)) || Number(w[w.indexOf("-n") + 1]) || 10));
       else if (w[0] === "head") lines = lines.slice(0, Number((w.find((x) => /^-\d+$/.test(x)) || "").slice(1)) || Number(w[w.indexOf("-n") + 1]) || 10);
       else if (w[0] === "wc" && w.includes("-l")) lines = [[String(lines.length), ""]];
+      else if (w[0] === "base64") {
+        const decode = w.includes("-d") || w.includes("--decode");
+        try { lines = lines.map(([t]) => [decode ? unb64(t.trim()) : b64(t), ""]); } catch { return [["base64: invalid input", "warn"]]; }
+      }
       else if (["hexdump", "xxd", "less", "more", "cat", "strings"].includes(w[0])) continue;
-      else return [[`${w[0]}: not available in this playground's pipes (grep, tail, head, wc -l, hexdump)`, "warn"]];
+      else return [[`${w[0]}: not available in this playground's pipes (grep, tail, head, wc -l, base64, hexdump)`, "warn"]];
     }
     return lines;
   }
@@ -3348,6 +3540,7 @@
     if (sc.runAsUser !== undefined) sec.runAsUser = sc.runAsUser;
     if (sc.capabilities && sc.capabilities.drop) sec.drop = sc.capabilities.drop;
     if (sc.seccompProfile && sc.seccompProfile.type) sec.seccomp = sc.seccompProfile.type;
+    if (sc.readOnlyRootFilesystem !== undefined) sec.readOnlyRoot = sc.readOnlyRootFilesystem === true || sc.readOnlyRootFilesystem === "true";
   }
 
   const vapYaml = (v) => ["apiVersion: admissionregistration.k8s.io/v1", "kind: ValidatingAdmissionPolicy", "metadata:", `  name: ${v.name}`, "spec:",
@@ -3359,6 +3552,10 @@
     `        kubernetes.io/metadata.name: ${NS}`];
   const vapResource = (kind) => `validatingadmissionpolicies${kind === "vapbindings" ? "bindings" : ""}.admissionregistration.k8s.io`;
   const b64 = (x) => (typeof btoa === "function" ? btoa(x) : Buffer.from(x).toString("base64"));
+  const unb64 = (x) => {
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(x) || x.length % 4) throw new Error("invalid base64");
+    return typeof atob === "function" ? atob(x) : Buffer.from(x, "base64").toString();
+  };
 
   // Runs one command line against a cluster. Returns [text, class] lines.
   function kubectl(c, line) {
@@ -3430,6 +3627,9 @@
       }
       return { kind, name };
     }
+    const webhookYaml = (x) => ["apiVersion: admissionregistration.k8s.io/v1", "kind: ValidatingWebhookConfiguration", "metadata:", `  name: ${x.name}`, "webhooks:", `- name: ${x.hook}`,
+      "  clientConfig:", "    service:", `      name: ${x.svc}`, `      namespace: ${NS}`, "      path: /validate", `  failurePolicy: ${x.policy}`,
+      "  rules:", "  - apiGroups: [\"\"]", "    apiVersions: [\"v1\"]", "    operations: [\"CREATE\"]", "    resources: [\"pods\"]", "  sideEffects: None"].forEach((l) => say(l));
     const notFound = (kind, name) => say(`Error from server (NotFound): ${kind.replace(/s$/, "") === "deployment" ? "deployments.apps" : kind} "${name}" not found`, "warn");
     const podByName = (name) => c.pods.find((p) => p.name === name);
     const depByName = (name) => c.deployments.find((d) => d.name === name);
@@ -3482,6 +3682,9 @@
         }
       }
       if (spec.command) lines.push(`${pad}  command: [${spec.command.map((x) => JSON.stringify(x)).join(", ")}]`);
+      if (spec.pullPolicy) lines.push(`${pad}  imagePullPolicy: ${spec.pullPolicy}`);
+      if ((spec.sec || {}).readOnlyRoot) lines.push(`${pad}  securityContext:`, `${pad}    readOnlyRootFilesystem: true`);
+      if ((spec.emptyDirs || []).length) lines.push(`${pad}  volumeMounts:`, ...spec.emptyDirs.map((m) => `${pad}  - mountPath: ${m}`));
       if (spec.liveness && spec.livenessCfg) {
         lines.push(`${pad}  livenessProbe:`, `${pad}    httpGet: {path: /healthz, port: ${spec.liveness}}`, `${pad}    initialDelaySeconds: ${spec.livenessCfg.initialDelaySeconds}`,
           `${pad}    periodSeconds: ${spec.livenessCfg.periodSeconds}`, `${pad}    failureThreshold: ${spec.livenessCfg.failureThreshold}`);
@@ -3700,6 +3903,14 @@
           ...c.cronjobs.map((x) => [x.name, x.schedule, "<none>", String(x.suspend), c.activeJobs(x).length, x.last || "8d", "30d"])]);
         return out;
       }
+      if (kind === "webhooks") {
+        const list = c.webhooks.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("validatingwebhookconfigurations.admissionregistration.k8s.io", name), out;
+        if (!list.length) return say("No resources found"), out;
+        if (name && flags.o === "yaml") return webhookYaml(list[0]), out;
+        table([["NAME", "WEBHOOKS", "AGE"], ...list.map((x) => [x.name, 1, "90d"])]);
+        return out;
+      }
       if (kind === "limitranges") {
         if (!c.limitRanges.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "CREATED AT"], ...c.limitRanges.map((x) => [x.name, "2026-09-02T08:00:00Z"])]);
@@ -3743,7 +3954,7 @@
       }
       if (kind === "storageclasses") {
         table([["NAME", "PROVISIONER", "RECLAIMPOLICY", "VOLUMEBINDINGMODE", "ALLOWVOLUMEEXPANSION", "AGE"],
-          ...c.storageClasses.map((x) => [x.name + (x.isDefault ? " (default)" : ""), "rancher.io/local-path", "Delete", "Immediate", "false", "12d"])]);
+          ...c.storageClasses.map((x) => [x.name + (x.isDefault ? " (default)" : ""), "rancher.io/local-path", "Delete", "Immediate", x.expand ? "true" : "false", "12d"])]);
         return out;
       }
       if (kind === "ingresses") {
@@ -3915,6 +4126,7 @@
         say("Containers:");
         say(`  ${cname}:`);
         say(`    Image:          ${p.spec.image}`);
+        if (p.version) say(`    Image ID:       localhost:5000/shop@${SHOP.digests[p.version]}`);
         if (st === "Running") say("    State:          Running");
         else if (p.node) say(`    State:          Waiting\n      Reason:       ${st}`);
         else say("    State:          Waiting");
@@ -4048,6 +4260,11 @@
           say("  Warning  JobAlreadyActive  2m (x288 over 3d)    cronjob-controller  Not starting job because prior execution is running and concurrency policy is Forbid", "warn row");
         } else say("Events:                        <none>");
         return out;
+      }
+      if (kind === "webhooks") {
+        const x = c.webhooks.find((y) => y.name === name);
+        if (!x) return notFound("validatingwebhookconfigurations.admissionregistration.k8s.io", name), out;
+        return webhookYaml(x), out;
       }
       if (kind === "limitranges") {
         const x = c.limitRanges.find((y) => y.name === name);
@@ -4290,14 +4507,23 @@
         say(`Namespace:    ${NS}`);
         say("Spec:");
         say(`  PodSelector:     ${sel(np.podSelector) || "<none> (Allowing the specific traffic to all pods in this namespace)"}`);
-        if (!np.ingress.length) say("  Allowing ingress traffic:\n    <none> (Selected pods are isolated for ingress connectivity)");
-        for (const rule of np.ingress) {
+        if (!np.types.includes("Ingress")) say("  Not affecting ingress traffic");
+        else if (!np.ingress.length) say("  Allowing ingress traffic:\n    <none> (Selected pods are isolated for ingress connectivity)");
+        for (const rule of np.types.includes("Ingress") ? np.ingress : []) {
           say("  Allowing ingress traffic:");
           say(`    To Port: ${rule.ports ? rule.ports.map((x) => x + "/TCP").join(", ") : "<any> (traffic allowed to all ports)"}`);
           say("    From:");
           for (const f of rule.from || []) say(`      PodSelector: ${sel(f.podSelector) || "<none>"}`);
         }
-        say("  Not affecting egress traffic");
+        if (!np.types.includes("Egress")) say("  Not affecting egress traffic");
+        else if (!np.egress.length) say("  Allowing egress traffic:\n    <none> (Selected pods are isolated for egress connectivity)");
+        for (const rule of np.types.includes("Egress") ? np.egress : []) {
+          say("  Allowing egress traffic:");
+          say(`    To Port: ${rule.ports ? rule.ports.map((x, i) => `${x}/${(rule.protos || [])[i] || "TCP"}`).join(", ") : "<any> (traffic allowed to all ports)"}`);
+          say("    To:");
+          if (rule.dns) say("      NamespaceSelector: kubernetes.io/metadata.name=kube-system\n      PodSelector: k8s-app=kube-dns");
+          else for (const t of rule.to || []) say(`      PodSelector: ${sel(t.podSelector) || "<none>"}`);
+        }
         say(`  Policy Types: ${np.types.join(", ")}`);
         return out;
       }
@@ -4635,6 +4861,14 @@
         say(`${kind.replace(/s$/, "")}.rbac.authorization.k8s.io "${name}" deleted`);
         return out;
       }
+      if (kind === "webhooks") {
+        if (!c.webhooks.some((x) => x.name === name)) return notFound("validatingwebhookconfigurations.admissionregistration.k8s.io", name), out;
+        c.webhooks = c.webhooks.filter((x) => x.name !== name);
+        c.retry = true;
+        say(`validatingwebhookconfiguration.admissionregistration.k8s.io "${name}" deleted`);
+        say("(every Pod in the cluster now skips the policy check, until someone remembers to put it back)", "warn");
+        return out;
+      }
       if (kind === "limitranges") {
         if (!c.limitRanges.some((x) => x.name === name)) return notFound("limitranges", name), out;
         c.limitRanges = c.limitRanges.filter((x) => x.name !== name);
@@ -4961,6 +5195,18 @@
         const np = c.policies.find((x) => x.name === name);
         if (!np) return notFound("networkpolicies.networking.k8s.io", name), out;
         if (spec.podSelector) np.podSelector = { ...(spec.podSelector.matchLabels || {}) };
+        if (Array.isArray(spec.egress)) {
+          // A rule to kube-dns on port 53 is the DNS rule; the rest select Pods in this namespace.
+          np.egress = spec.egress.map((r) => {
+            const ports = r.ports ? r.ports.map((x) => Number(x.port)) : null;
+            const dns = (r.to || []).some((t) => ((t.podSelector || {}).matchLabels || {})["k8s-app"] === "kube-dns" ||
+              ((t.namespaceSelector || {}).matchLabels || {})["kubernetes.io/metadata.name"] === "kube-system") && (!ports || ports.includes(53));
+            const protos = r.ports ? r.ports.map((x) => x.protocol || "TCP") : null;
+            return { to: dns || !r.to ? null : r.to.map((t) => ({ podSelector: { ...((t.podSelector || {}).matchLabels || {}) } })), ports, protos, dns };
+          });
+          if (!np.types.includes("Egress")) np.types.push("Egress");
+          c.retry = true;
+        }
         if (Array.isArray(spec.ingress)) {
           np.ingress = spec.ingress.map((r) => ({
             from: r.from ? r.from.map((f) => ({ podSelector: { ...((f.podSelector || {}).matchLabels || {}) } })) : null,
@@ -5049,6 +5295,11 @@
           }
         }
         if (tpl.securityContext) mergeSec(next.sec, tpl.securityContext);
+        if (ctr && ctr.imagePullPolicy !== undefined) next.pullPolicy = ctr.imagePullPolicy;
+        if (Array.isArray(tpl.volumes) || (ctr && Array.isArray(ctr.volumeMounts))) {
+          const vols = Array.isArray(tpl.volumes) ? tpl.volumes : [];
+          next.emptyDirs = (ctr && Array.isArray(ctr.volumeMounts) ? ctr.volumeMounts : []).filter((m) => m && vols.some((v) => v && v.name === m.name && v.emptyDir)).map((m) => m.mountPath);
+        }
         for (const sc of [tpl.securityContext, ctr && ctr.securityContext]) {
           if (!sc || !("appArmorProfile" in sc)) continue;
           const a = sc.appArmorProfile;
@@ -5115,11 +5366,27 @@
         say(`httproute.gateway.networking.k8s.io/${name} patched`);
         return out;
       }
+      if (kind === "webhooks") {
+        const x = c.webhooks.find((y) => y.name === name);
+        if (!x) return notFound("validatingwebhookconfigurations.admissionregistration.k8s.io", name), out;
+        const w = (Array.isArray(patch.webhooks) ? patch.webhooks : []).find((y) => y && (!y.name || y.name === x.hook));
+        if (!w || w.failurePolicy === undefined) return say(`This playground patches failurePolicy: -p '{"webhooks":[{"name":"${x.hook}","failurePolicy":"Ignore"}]}'`, "dim"), out;
+        if (!/^(Fail|Ignore)$/.test(w.failurePolicy)) return say(`The ValidatingWebhookConfiguration "${name}" is invalid: webhooks[0].failurePolicy: Unsupported value: "${w.failurePolicy}": supported values: "Fail", "Ignore"`, "warn"), out;
+        x.policy = w.failurePolicy;
+        c.retry = true;
+        say(`validatingwebhookconfiguration.admissionregistration.k8s.io/${name} patched`);
+        if (x.policy === "Ignore") say("(Pods are now admitted without the check while the webhook is down; put Fail back once it runs)", "warn");
+        return out;
+      }
       if (kind === "storageclasses") {
         const x = c.storageClasses.find((y) => y.name === name);
         if (!x) return notFound("storageclasses.storage.k8s.io", name), out;
+        if (patch.allowVolumeExpansion !== undefined) {
+          x.expand = patch.allowVolumeExpansion === true || patch.allowVolumeExpansion === "true";
+          return say(`storageclass.storage.k8s.io/${name} patched`), out;
+        }
         const flag = (((patch.metadata || {}).annotations) || {})["storageclass.kubernetes.io/is-default-class"];
-        if (flag === undefined) return say("(this playground patches the storageclass.kubernetes.io/is-default-class annotation)", "dim"), out;
+        if (flag === undefined) return say("(this playground patches allowVolumeExpansion and the storageclass.kubernetes.io/is-default-class annotation)", "dim"), out;
         x.isDefault = String(flag) === "true";
         c.retry = true;
         say(`storageclass.storage.k8s.io/${name} patched`);
@@ -5132,7 +5399,15 @@
         if (keys.length) {
           return say(`The PersistentVolumeClaim "${name}" is invalid: spec: Forbidden: spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims`, "warn"), out;
         }
-        return say(`persistentvolumeclaim/${name} patched (no change)`, "dim"), out;
+        const want = parseMem((((spec.resources || {}).requests) || {}).storage);
+        if (!want) return say(`persistentvolumeclaim/${name} patched (no change)`, "dim"), out;
+        if (want < parseMem(v.size)) return say(`The PersistentVolumeClaim "${name}" is invalid: spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`, "warn"), out;
+        const sc = c.storageClasses.find((x) => x.name === v.class);
+        if (!sc || !sc.expand) return say(`Error from server (Forbidden): persistentvolumeclaims "${name}" is forbidden: only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize`, "warn"), out;
+        v.size = fmtMem(want);
+        v.full = false;
+        c.retry = true;
+        return say(`persistentvolumeclaim/${name} patched`), out;
       }
       if (kind === "ingresses") {
         const x = c.ingresses.find((y) => y.name === name);
@@ -5226,7 +5501,7 @@
       if (cmd === "nslookup") {
         const host = inner[1];
         if (!host) return say("nslookup: missing host name", "warn"), out;
-        if (c.dnsDown()) {
+        if (c.dnsDown() || !c.dnsAllowed(p)) {
           say(";; connection timed out; no servers could be reached", "warn");
           say("command terminated with exit code 1", "dim");
           return out;
@@ -5300,18 +5575,21 @@
   // Fill a reference command's <blanks> from what the open scenario really has,
   // so a cheat sheet command runs as written. The troubled Pod comes first.
   function fillBlanks(c, cmd) {
-    const pod = [...c.pods].filter((p) => !p.job).sort((a, b) => a.ready - b.ready)[0];
+    // exec needs a running container; everything else wants the troubled Pod.
+    const exec = /^kubectl exec\b/.test(cmd);
+    const pod = [...c.pods].filter((p) => !p.job).sort((a, b) => (exec ? b.ready - a.ready : a.ready - b.ready))[0];
     const svc = c.services.find((x) => !x.static) || c.services[0];
     const dep = c.deployments[0];
     const file = (ext) => Object.keys(c.files).find((f) => f.endsWith(ext) && !f.includes("staging"));
-    const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0], limitrange: c.limitRanges[0], cronjob: c.cronjobs[0] };
+    const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0], limitrange: c.limitRanges[0], cronjob: c.cronjobs[0], storageclass: c.storageClasses[0] };
     const v = {
       ctx: "kind-k8s-quest", ns: c.oldNs && !c.oldNs.gone ? c.oldNs.name : c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
       container: pod && (pod.owner || pod.name), svc: svc && svc.name, "node-ip": "172.18.0.2", nodePort: svc && svc.nodePort,
       cj: c.cronjobs[0] && c.cronjobs[0].name, image: pod && pod.spec.image, n: 1, revision: 1, release: c.helm && c.helm.name,
       chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : c.disk ? c.disk.node : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
       registry: "registry.kitchen.example", user: "ci", token: "practice-token", sa: "default", "1.x.y": "1.34.1", snapshot: "etcd-0300",
-      "file.crt": file(".crt"), "file.key": file(".key")
+      "file.crt": file(".crt"), "file.key": file(".key"),
+      value: c.secrets[0] && Object.keys(c.secrets[0].data).length ? b64(Object.values(c.secrets[0].data)[0]) : null
     };
     return cmd.replace(/(\S*)\s+<name>/g, (m, before) => {
       const obj = named[before];
