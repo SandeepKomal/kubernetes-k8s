@@ -1,0 +1,13 @@
+There are four faults: two stop the Pods starting, one stops them becoming
+Ready, and one stops traffic reaching them. Start with
+`kubectl describe pod -l app=storefront` and read every Event.
+---
+Look closely at: the image tag, the name of the ConfigMap the volume
+mounts versus `kubectl get configmaps`, the readiness probe's port, and the
+Service's selector versus the Pods' labels.
+---
+kubectl set image deployment/storefront web=nginx:1.27-alpine
+kubectl patch deployment storefront --type=json -p '[
+  {"op":"replace","path":"/spec/template/spec/volumes/0/configMap/name","value":"storefront-page"},
+  {"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/port","value":80}]'
+kubectl patch service storefront --type=merge -p '{"spec":{"selector":{"app":"storefront"}}}'

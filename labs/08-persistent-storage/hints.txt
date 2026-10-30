@@ -1,0 +1,10 @@
+`kubectl describe pvc ledger-data` and `kubectl get storageclass`. Which
+classes exist on this cluster?
+---
+You cannot change a claim's storageClassName. Delete the claim (and the Pod
+using it) and create them again without `fast-ssd`.
+---
+kubectl delete pod ledger
+kubectl delete pvc ledger-data
+Remove the `storageClassName: fast-ssd` line from a copy of the level's
+setup.yaml, then `kubectl apply -f` it.

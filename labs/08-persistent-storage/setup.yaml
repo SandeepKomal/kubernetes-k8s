@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ledger-data
+spec:
+  storageClassName: fast-ssd
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ledger
+  labels:
+    app: ledger
+spec:
+  containers:
+    - name: ledger
+      image: busybox:1.36
+      command: ["sh", "-c", "date >> /data/ledger.txt; sleep 3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: ledger-data

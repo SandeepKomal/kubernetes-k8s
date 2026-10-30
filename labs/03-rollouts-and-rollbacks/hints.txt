@@ -1,0 +1,10 @@
+Start with `kubectl rollout history deployment/storefront` and
+`kubectl get pods`. Which revision worked?
+---
+`kubectl rollout undo` goes back to the previous revision. Scaling is
+`kubectl scale`. The strategy lives under `spec.strategy.rollingUpdate`.
+---
+kubectl rollout undo deployment/storefront
+kubectl scale deployment/storefront --replicas=3
+kubectl patch deployment storefront --type=merge -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":0,"maxSurge":1}}}}'
+kubectl rollout status deployment/storefront

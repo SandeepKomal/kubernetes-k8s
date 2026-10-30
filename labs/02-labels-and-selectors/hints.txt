@@ -1,0 +1,9 @@
+Compare `kubectl describe service menu-api` (look at Selector) with
+`kubectl get pods --show-labels`. Do they agree?
+---
+The selector says `app=menu`, the Pods say `app=menu-api`. Fixing only that
+would also match the debug Pod. Which label is different on the debug Pod?
+---
+Select on both labels:
+  kubectl patch service menu-api --type=merge -p '{"spec":{"selector":{"app":"menu-api","tier":"web"}}}'
+Or `kubectl edit service menu-api` and change the selector by hand.

@@ -1,174 +1,161 @@
-## First Create a user in AWS IAM with any name
-## Attach Policies to the newly created user
-## below policies
-AmazonEC2FullAccess
+# EKS from zero to a CI deploy account
 
-AmazonEKS_CNI_Policy
+This guide creates an Amazon EKS cluster with `eksctl`, then gives a CI
+system (Jenkins, GitHub Actions, GitLab...) its own **least-privilege**
+identity that can deploy to one namespace and nothing else.
 
-AmazonEKSClusterPolicy	
+> Costs money: EKS charges per cluster-hour, plus the EC2 nodes. Delete the
+> cluster when you finish (last step).
 
-AmazonEKSWorkerNodePolicy
+## 1. Tools
 
-AWSCloudFormationFullAccess
+| Tool | Install guide | Check |
+| --- | --- | --- |
+| AWS CLI v2 | <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html> | `aws --version` |
+| kubectl (within one minor version of the cluster) | <https://kubernetes.io/docs/tasks/tools/> | `kubectl version --client` |
+| eksctl | <https://eksctl.io/installation/> | `eksctl version` |
 
-IAMFullAccess
+See also [kubernetes_installation.md](./kubernetes_installation.md).
 
-#### One more policy we need to create with content as below
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "VisualEditor0",
-            "Effect": "Allow",
-            "Action": "eks:*",
-            "Resource": "*"
-        }
-    ]
-}
-```
-Attach this policy to your user as well
+## 2. Who runs eksctl?
 
-![Policies To Attach](https://github.com/jaiswaladi246/EKS-Complete/blob/main/Policies.png)
-
-# AWSCLI
+eksctl creates CloudFormation stacks, IAM roles, a VPC and EC2 instances, so
+the identity that runs it needs broad rights. Use an **admin role you assume
+for this task**, or AWS IAM Identity Center (SSO), rather than a long-lived
+IAM user with access keys. Never put those keys in a repository or a CI
+variable you do not need.
 
 ```bash
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-sudo apt install unzip
-unzip awscliv2.zip
-sudo ./aws/install
-aws configure
+aws sts get-caller-identity       # confirm who you are before creating anything
 ```
 
-## KUBECTL
+## 3. Create the cluster
 
-```bash
-curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl
-chmod +x ./kubectl
-sudo mv ./kubectl /usr/local/bin
-kubectl version --short --client
-```
-
-## EKSCTL
-
-```bash
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-sudo mv /tmp/eksctl /usr/local/bin
-eksctl version
-```
-
-## Create EKS CLUSTER
-
-```bash
-eksctl create cluster --name=my-eks22 \
-                      --region=ap-south-1 \
-                      --zones=ap-south-1a,ap-south-1b \
-                      --version=1.30 \
-                      --without-nodegroup
-
-eksctl utils associate-iam-oidc-provider \
-    --region ap-south-1 \
-    --cluster my-eks22 \
-    --approve
-
-eksctl create nodegroup --cluster=my-eks22 \
-                       --region=ap-south-1 \
-                       --name=node2 \
-                       --node-type=t3.medium \
-                       --nodes=3 \
-                       --nodes-min=2 \
-                       --nodes-max=4 \
-                       --node-volume-size=20 \
-                       --ssh-access \
-                       --ssh-public-key=Key \
-                       --managed \
-                       --asg-access \
-                       --external-dns-access \
-                       --full-ecr-access \
-                       --appmesh-access \
-                       --alb-ingress-access
-```
-
-* Open INBOUND TRAFFIC IN ADDITIONAL Security Group
-* Create Servcie account/ROLE/BIND-ROLE/Token
-
-## Create Service Account, Role & Assign that role, And create a secret for Service Account and geenrate a Token
-
-### Creating Service Account
-
+Prefer a config file over a long command line: it can be reviewed and
+committed.
 
 ```yaml
+# cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: kitchen
+  region: ap-south-1
+  version: "1.33"            # pick a version from `eksctl utils describe-cluster-versions`
+iam:
+  withOIDC: true             # needed for IAM roles for service accounts
+managedNodeGroups:
+  - name: general
+    instanceType: t3.medium
+    minSize: 2
+    desiredCapacity: 2
+    maxSize: 4
+    volumeSize: 20
+    privateNetworking: true  # nodes get no public IPs
+```
+
+```bash
+eksctl create cluster -f cluster.yaml        # ~15-20 minutes
+kubectl get nodes
+```
+
+eksctl writes your kubeconfig. On another machine:
+`aws eks update-kubeconfig --name kitchen --region ap-south-1`.
+
+Notes on the choices above:
+
+- No `--ssh-access`: use AWS Systems Manager Session Manager to reach nodes
+  if you ever need to.
+- No `--full-ecr-access` or `--alb-ingress-access` on the node role: give
+  those permissions to the specific controller that needs them, through IAM
+  roles for service accounts or EKS Pod Identity. See
+  [Deploy the AWS Load Balancer Controller](./Kubernetes/Deploy%20the%20AWS%20Load%20Balancer%20Controller).
+
+## 4. A namespace and a deploy identity for CI
+
+The CI system should be able to deploy the app, and nothing more: not read
+Secrets in other namespaces, not touch nodes, not change RBAC.
+
+```yaml
+# ci-deployer.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webapps
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: jenkins
+  name: ci-deployer
   namespace: webapps
-```
-
-### Create Role 
-
-
-```yaml
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: app-role
+  name: deployer
   namespace: webapps
 rules:
-  - apiGroups:
-        - ""
-        - apps
-        - autoscaling
-        - batch
-        - extensions
-        - policy
-        - rbac.authorization.k8s.io
-    resources:
-      - pods
-      - secrets
-      - componentstatuses
-      - configmaps
-      - daemonsets
-      - deployments
-      - events
-      - endpoints
-      - horizontalpodautoscalers
-      - ingress
-      - jobs
-      - limitranges
-      - namespaces
-      - nodes
-      - pods
-      - persistentvolumes
-      - persistentvolumeclaims
-      - resourcequotas
-      - replicasets
-      - replicationcontrollers
-      - serviceaccounts
-      - services
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-```
-
-### Bind the role to service account
-
-
-```yaml
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: app-rolebinding
-  namespace: webapps 
+  name: ci-deployer
+  namespace: webapps
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: webapps
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: app-role 
-subjects:
-- namespace: webapps 
-  kind: ServiceAccount
-  name: jenkins 
+  name: deployer
 ```
 
-### Generate token using service account in the namespace
+```bash
+kubectl apply -f ci-deployer.yaml
 
-[Create Token](https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#:~:text=To%20create%20a%20non%2Dexpiring,with%20that%20generated%20token%20data.)
+# Prove it before you trust it:
+kubectl auth can-i create deployments -n webapps --as=system:serviceaccount:webapps:ci-deployer   # yes
+kubectl auth can-i get secrets      -n webapps --as=system:serviceaccount:webapps:ci-deployer   # no
+kubectl auth can-i delete nodes                 --as=system:serviceaccount:webapps:ci-deployer   # no
+```
+
+No `delete` verb: deleting things is a human decision. No `secrets`:
+Secrets come from a secret manager (External Secrets Operator) instead of
+the pipeline.
+
+The hands-on version of this is [Level 10 · Too much access](./labs/10-rbac-least-privilege/).
+
+## 5. Give CI a token
+
+Short-lived tokens are the default since Kubernetes 1.24. Create one for a
+fixed duration and store it in your CI system's secret store:
+
+```bash
+kubectl create token ci-deployer -n webapps --duration=24h
+```
+
+Better, where your CI supports it: skip Kubernetes tokens entirely and use
+OIDC federation (GitHub Actions to an IAM role, then an EKS access entry
+for that role). Then there is no long-lived secret to leak or rotate.
+
+## 6. Clean up
+
+```bash
+eksctl delete cluster -f cluster.yaml
+```
+
+Check the CloudFormation console afterwards: a stack that fails to delete
+(often because of a load balancer created by a Service) keeps costing money.

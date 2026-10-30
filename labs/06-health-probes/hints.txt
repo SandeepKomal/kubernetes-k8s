@@ -1,0 +1,9 @@
+Look at the Events in `kubectl describe pod -l app=api`. There are two
+different failure messages. Which probe produces each one?
+---
+nginx returns 404 for /healthz, and nothing listens on port 8080.
+Probes live in the Deployment's Pod template, so edit the Deployment.
+---
+kubectl patch deployment api --type=json -p '[
+  {"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/path","value":"/"},
+  {"op":"replace","path":"/spec/template/spec/containers/0/livenessProbe/tcpSocket/port","value":80}]'

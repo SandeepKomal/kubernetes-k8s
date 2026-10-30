@@ -3,7 +3,7 @@
 ### Install kubectl CLI tool on EC2:
 
 ```
-curl -o kubectl https://s3.us-west-2.amazonaws.com/amazon-eks/1.23.7/2022-06-29/bin/linux/amd64/kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"   # keep within one minor version of your cluster
 ```
 ```
 chmod +x ./kubectl
@@ -15,15 +15,16 @@ mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/
 echo 'export PATH=$PATH:$HOME/bin' >> ~/.bashrc
 ```
 ```
-kubectl version --short --client
+kubectl version --client
 ```
 ### Install  Kustomize CLI tool on EC2:
 
+kubectl already includes Kustomize (`kubectl apply -k <dir>`, `kubectl kustomize <dir>`). Install the standalone CLI only if you need commands like `kustomize edit`.
+
 ```
 curl --silent --location --remote-name \
-  "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v3.2.3/kustomize_kustomize.v3.2.3_linux_amd64" && \
-  chmod a+x kustomize_kustomize.v3.2.3_linux_amd64 && \
-  sudo mv kustomize_kustomize.v3.2.3_linux_amd64 /usr/local/bin/kustomize
+  "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" && \
+  bash install_kustomize.sh && sudo mv kustomize /usr/local/bin/kustomize
 ```
 ```
 kustomize version

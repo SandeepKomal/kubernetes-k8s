@@ -1,0 +1,8 @@
+`kubectl get deploy reports`, then `kubectl describe rs -l app=reports` and
+`kubectl describe quota`. Is the quota or the scheduler saying no?
+---
+64 CPUs is more than the quota allows and more than any kind node has.
+`kubectl set resources` changes requests and limits in one command.
+---
+kubectl set resources deployment reports --requests=cpu=100m,memory=64Mi --limits=cpu=100m,memory=64Mi
+kubectl rollout status deployment/reports

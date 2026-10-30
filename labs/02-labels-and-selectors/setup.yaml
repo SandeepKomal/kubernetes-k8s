@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: menu-api
+      tier: web
+  template:
+    metadata:
+      labels:
+        app: menu-api
+        tier: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: menu-api-debug
+  labels:
+    app: menu-api
+    tier: debug
+spec:
+  containers:
+    - name: web
+      image: nginx:1.27
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: menu-api
+spec:
+  selector:
+    app: menu
+  ports:
+    - port: 80
+      targetPort: 80

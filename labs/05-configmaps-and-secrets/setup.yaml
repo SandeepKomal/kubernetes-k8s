@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: checkout-config
+data:
+  payment_mode: sandbox
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: busybox:1.36
+          command: ["sh", "-c", "echo mode=$PAYMENT_MODE; sleep 3600"]
+          env:
+            - name: PAYMENT_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: checkout-config
+                  key: PAYMENT_MODE
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: checkout-secrets
+                  key: API_TOKEN

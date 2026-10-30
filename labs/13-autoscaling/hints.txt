@@ -1,0 +1,9 @@
+`kubectl get deploy menu -o yaml`: is there a `resources.requests.cpu`?
+Then look at `kubectl autoscale --help` and `kubectl create pdb --help`.
+---
+Three commands: `kubectl set resources ... --requests=cpu=...`,
+`kubectl autoscale ...`, `kubectl create pdb ...`.
+---
+kubectl set resources deployment menu --requests=cpu=50m,memory=32Mi
+kubectl autoscale deployment menu --min=2 --max=6 --cpu-percent=60
+kubectl create pdb menu --selector=app=menu --min-available=1

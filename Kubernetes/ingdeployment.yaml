@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: customer
-        image: 637423236688.dkr.ecr.us-east-1.amazonaws.com/spring:latest
+        image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/spring:latest
         imagePullPolicy: Always
         env:
         - name: DB_USERNAME

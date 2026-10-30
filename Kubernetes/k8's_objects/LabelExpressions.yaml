@@ -1,9 +1,28 @@
-apiVersion: v1
-kind: Service
+# Set-based selector: In, NotIn, Exists, DoesNotExist.
+# Deployments, ReplicaSets, Jobs, DaemonSets and NetworkPolicies support
+# matchExpressions. Services do NOT: a Service selector is equality-only.
+#
+# Try it on the command line too:
+#   kubectl get pods -l 'environment in (production,staging),tier notin (database)'
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: my-service
+  name: my-deployment-set-based
 spec:
+  replicas: 2
   selector:
+    matchLabels:
+      app: my-app
     matchExpressions:
-    - {key: environment, operator: In, values: [production, staging]}
-    - {key: tier, operator: NotIn, values: [database]}
+      - {key: environment, operator: In, values: [production, staging]}
+      - {key: tier, operator: NotIn, values: [database]}
+  template:
+    metadata:
+      labels:
+        app: my-app
+        environment: staging
+        tier: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27

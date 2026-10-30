@@ -1,0 +1,14 @@
+`kubectl get networkpolicy` and `kubectl describe networkpolicy allow-everything`.
+An ingress rule of `{}` means "from anywhere".
+---
+You need two policies: one that selects every Pod and allows nothing, and
+one that selects `app=db` and allows ingress from Pods with `app=api` on
+TCP port 80. Then delete allow-everything.
+---
+See the YAML in the Field notes for the default deny. The db policy:
+  spec:
+    podSelector: {matchLabels: {app: db}}
+    policyTypes: ["Ingress"]
+    ingress:
+      - from: [{podSelector: {matchLabels: {app: api}}}]
+        ports: [{protocol: TCP, port: 80}]
