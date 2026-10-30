@@ -228,7 +228,7 @@ It is published with GitHub Pages at
 
 | Section | Description |
 | --- | --- |
-| Playground | Seventeen simulated incidents to diagnose and fix with kubectl, beside a live cluster map: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, Pending, OOMKilled, a liveness probe restart loop, a stuck init container, a node selector, an untolerated taint, a failing readiness probe, a Service with no endpoints, a NetworkPolicy, RBAC forbidden, Pod Security rejection, a bad rollout, an HPA showing `<unknown>` and an ignored VPA recommendation |
+| Playground | Twenty-four simulated incidents to diagnose and fix with kubectl, beside a live cluster map. Pods: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, Pending, OOMKilled, a liveness probe restart loop, a stuck init container. Scheduling and storage: a node selector, an untolerated taint, a PVC stuck Pending. Networking: a failing readiness probe, a Service with no endpoints, DNS across namespaces, Ingress 404 and 503, a NetworkPolicy. Security and operations: RBAC forbidden, Pod Security rejection, an exceeded ResourceQuota, a failed Job, a bad rollout, a drain blocked by a PodDisruptionBudget. Autoscaling: an HPA showing `<unknown>` and an ignored VPA recommendation |
 | Path | All levels, with progress saved in the browser |
 | Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
 | YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
@@ -252,6 +252,8 @@ cookies. To run it locally: `python3 -m http.server -d site 8000`.
 | Platform or SRE role | Levels 15 to 21, then the [production example](examples/production-app/) |
 | Team onboarding | Assign levels as onboarding tasks; review real workloads with the [production readiness checklist](docs/production-checklist.md) |
 | Running on AWS | Complete the levels, then follow the [EKS quickstart](docs/eks-quickstart.md) |
+
+To see how far the course takes you, [docs/coverage.md](docs/coverage.md) maps every CKA, CKAD and CKS topic to a level, playground scenario or guide, and lists what is not covered yet.
 
 ## Production example
 

@@ -268,6 +268,103 @@ c = fresh("podsecurity");
 assert.match(step(c, "kubectl label namespace kitchen pod-security.kubernetes.io/enforce=privileged --overwrite"), /lowering the security level/);
 assert.ok(c.deploymentReady("menu") && !won(c), "lowering the namespace level runs the Pod but does not count");
 
+// PVC Pending: no default StorageClass; the claim's class cannot be edited.
+c = fresh("pvc");
+assert.match(step(c, "kubectl describe pod " + podOf(c, "uploads")), /pod has unbound immediate PersistentVolumeClaims/);
+assert.match(step(c, "kubectl get pvc"), /uploads-data\s+Pending/);
+assert.match(step(c, "kubectl describe pvc uploads-data"), /no storage class is set/);
+assert.match(step(c, `kubectl patch pvc uploads-data -p '{"spec":{"storageClassName":"standard"}}'`), /spec is immutable after creation/);
+assert.match(step(c, "kubectl delete pvc uploads-data"), /pvc-protection/);
+assert.ok(!won(c), "deleting the claim must not fix it");
+c = fresh("pvc");
+assert.doesNotMatch(step(c, "kubectl get storageclass"), /\(default\)/);
+step(c, `kubectl patch storageclass standard -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'`);
+assert.ok(won(c), "pvc: fixed by restoring the default StorageClass");
+assert.match(step(c, "kubectl get pvc"), /uploads-data\s+Bound\s+pvc-\S+\s+1Gi\s+RWO\s+standard/);
+
+// Ingress 404: no class, so no controller serves it.
+c = fresh("ingress404");
+assert.match(step(c, "curl -i http://menu.kitchen.example/"), /HTTP\/1.1 404 Not Found/);
+assert.match(step(c, "kubectl get ingress"), /menu\s+<none>\s+menu.kitchen.example\s+80/);
+assert.match(step(c, "curl http://menu-svc/"), /Could not resolve host: menu-svc.*only resolve inside the cluster/);
+step(c, `kubectl patch ingress menu -p '{"spec":{"ingressClassName":"traefik"}}'`);
+assert.ok(!won(c), "a class with no controller must not fix it");
+step(c, `kubectl patch ingress menu -p '{"spec":{"ingressClassName":"nginx"}}'`);
+assert.ok(won(c), "ingress404: fixed by the class");
+assert.match(step(c, "curl http://menu.kitchen.example/"), /Welcome to nginx/);
+assert.match(step(c, `kubectl exec ${podOf(c, "api")} -- wget -qO- http://menu.kitchen.example/`), /Welcome to nginx/);
+
+// Ingress 503: the backend Service name is wrong.
+c = fresh("ingress503");
+assert.match(step(c, "curl -i http://menu.kitchen.example/"), /503 Service Temporarily Unavailable/);
+assert.match(step(c, "kubectl describe ingress menu"), /menu-service:80 \(<error: endpoints "menu-service" not found>\)/);
+step(c, `kubectl patch ingress menu -p '{"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"menu-svc","port":{"number":8080}}}}]}}]}}'`);
+assert.ok(!won(c), "the right Service on the wrong port is still 503");
+assert.match(step(c, "kubectl describe ingress menu"), /has no port 8080/);
+step(c, `kubectl patch ingress menu -p '{"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"menu-svc","port":{"number":80}}}}]}}]}}'`);
+assert.ok(won(c), "ingress503: fixed by the backend");
+
+// DNS across namespaces: a bare name only searches the Pod's namespace.
+c = fresh("dns");
+assert.match(step(c, "kubectl logs deployment/checkout"), /lookup payments-svc on 10.96.0.10:53: no such host/);
+assert.match(step(c, "kubectl get svc"), /No resources found in kitchen namespace/);
+assert.match(step(c, "kubectl get svc -A"), /payments\s+payments-svc/);
+assert.match(step(c, "kubectl get svc -n payments"), /payments-svc\s+ClusterIP/);
+assert.match(step(c, `kubectl exec ${podOf(c, "web")} -- nslookup payments-svc`), /NXDOMAIN/);
+assert.match(step(c, `kubectl exec ${podOf(c, "web")} -- nslookup payments-svc.payments`), /payments-svc.payments.svc.cluster.local/);
+step(c, "kubectl set env deployment/checkout PAYMENTS_URL=http://payments-svc.payments:80");
+assert.ok(!won(c), "the wrong port must not fix it");
+step(c, "kubectl set env deployment/checkout PAYMENTS_URL=http://payments-svc.payments:8080");
+assert.ok(won(c), "dns: fixed by the namespace-qualified name");
+
+// Quota exceeded: right-size the request; raising or removing the quota does not count.
+c = fresh("quota");
+assert.match(step(c, "kubectl get quota"), /requests.memory: 320Mi\/512Mi/);
+const ors = step(c, "kubectl get rs").match(/orders-\S+/)[0];
+assert.match(step(c, "kubectl describe rs " + ors), /exceeded quota: kitchen-quota, requested: requests.memory=256Mi, used: requests.memory=320Mi, limited: requests.memory=512Mi/);
+step(c, `kubectl patch quota kitchen-quota -p '{"spec":{"hard":{"requests.memory":"1Gi"}}}'`);
+assert.ok(c.deploymentReady("orders") && !won(c), "raising the quota runs it but does not count");
+c = fresh("quota");
+assert.match(step(c, "kubectl delete quota kitchen-quota"), /no memory budget/);
+assert.ok(!won(c), "removing the quota does not count");
+c = fresh("quota");
+step(c, "kubectl set resources deployment/orders --requests=memory=128Mi");
+assert.ok(won(c), "quota: fixed by a right-sized request");
+
+// Failed Job: immutable; delete and create again with the right URL.
+c = fresh("job");
+assert.match(step(c, "kubectl get jobs"), /import-menu\s+Failed\s+0\/1/);
+assert.match(step(c, "kubectl describe job import-menu"), /4 Failed[\s\S]*BackoffLimitExceeded/);
+assert.match(step(c, "kubectl logs job/import-menu"), /menu-svc:8080[\s\S]*Connection refused/);
+assert.match(step(c, `kubectl patch job import-menu -p '{"spec":{"backoffLimit":10}}'`), /field is immutable/);
+assert.match(step(c, "kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc/menu.json"), /already exists/);
+step(c, "kubectl delete job import-menu");
+step(c, "kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc:8080/menu.json");
+assert.ok(!won(c), "the same wrong URL fails again");
+step(c, "kubectl delete job import-menu");
+step(c, "kubectl create job import-menu --image=busybox:1.36 -- wget -qO- http://menu-svc/menu.json");
+assert.ok(won(c), "job: fixed by the right URL");
+assert.match(step(c, "kubectl get jobs"), /import-menu\s+Complete\s+1\/1/);
+
+// Drain blocked by a PodDisruptionBudget.
+c = fresh("drain");
+assert.match(step(c, "kubectl drain worker-2"), /cannot delete DaemonSet-managed Pods/);
+assert.match(step(c, "kubectl drain worker-2 --ignore-daemonsets"), /violate the pod's disruption budget/);
+assert.match(step(c, "kubectl get nodes"), /worker-2\s+Ready,SchedulingDisabled/);
+assert.match(step(c, "kubectl get pdb"), /web-pdb\s+2\s+N\/A\s+0/);
+assert.ok(!won(c));
+step(c, "kubectl drain worker-2 --ignore-daemonsets --disable-eviction");
+assert.ok(!won(c), "bypassing the budget does not count");
+c = fresh("drain");
+step(c, "kubectl delete pdb web-pdb");
+step(c, "kubectl drain worker-2 --ignore-daemonsets");
+assert.ok(!won(c), "deleting the budget does not count");
+c = fresh("drain");
+step(c, "kubectl scale deployment/web --replicas=3");
+assert.match(step(c, "kubectl drain worker-2 --ignore-daemonsets"), /node\/worker-2 drained/);
+assert.ok(won(c), "drain: fixed by scaling up first");
+assert.doesNotMatch(step(c, "kubectl get pods -o wide"), /worker-2/);
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
