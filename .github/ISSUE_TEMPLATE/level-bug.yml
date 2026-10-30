@@ -1,0 +1,28 @@
+name: A level does not work
+description: A quest level fails to start, checks pass or fail wrongly, or a hint is misleading.
+labels: ["level", "bug"]
+body:
+  - type: input
+    id: level
+    attributes:
+      label: Level
+      placeholder: "e.g. 06"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Paste the output of `./quest check` and anything else relevant.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `kind version` and `kubectl version`.

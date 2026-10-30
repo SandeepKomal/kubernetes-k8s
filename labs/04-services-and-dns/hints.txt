@@ -1,0 +1,10 @@
+Compare the Service's TargetPort (`kubectl describe svc kitchen`) with the
+port the container listens on (`kubectl get deploy kitchen -o yaml`).
+---
+targetPort should be 80 (or the port's name, `http`, which survives port
+changes). For the new Service, `kubectl expose` can create it; the node port
+needs a small edit afterwards, or write the YAML yourself.
+---
+kubectl patch svc kitchen --type=json -p '[{"op":"replace","path":"/spec/ports/0/targetPort","value":80}]'
+Then create kitchen-public with type: NodePort, selector app=kitchen,
+port 80, targetPort 80, nodePort 30080 (see solution for the YAML).

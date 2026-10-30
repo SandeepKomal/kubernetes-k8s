@@ -1,0 +1,9 @@
+# Local practice cluster for Kubernetes Quest: one control plane, two workers.
+# Created by `./quest up`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-quest
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

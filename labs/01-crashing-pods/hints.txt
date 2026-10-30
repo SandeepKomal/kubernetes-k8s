@@ -1,0 +1,12 @@
+Run `kubectl describe pod menu` and read the Events. Then run
+`kubectl logs orders`. Each one tells you exactly what is wrong.
+---
+`menu` asks for an image that does not exist: read the name letter by letter.
+`orders` runs a command that the shell cannot find.
+---
+menu: the image can be changed in place:
+  kubectl set image pod/menu menu=nginx:1.27
+orders: the command cannot be changed in place. Export, fix `sleeep`, replace:
+  kubectl get pod orders -o yaml > orders.yaml
+  (change sleeep to sleep)
+  kubectl replace --force -f orders.yaml

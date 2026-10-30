@@ -19,8 +19,14 @@ spec:
           ports:
             - containerPort: 8082
           env:
+            # Never put connection strings with passwords in a manifest.
+            # Create the Secret first:
+            #   kubectl create secret generic todo-api-secrets --from-literal=mongodb-uri='mongodb+srv://...'
             - name: "spring.data.mongodb.uri"
-              value: "mongodb+srv://root:321654@cluster0.p9jq2.mongodb.net/todo?retryWrites=true&w=majority"
+              valueFrom:
+                secretKeyRef:
+                  name: todo-api-secrets
+                  key: mongodb-uri
       affinity:
         podAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

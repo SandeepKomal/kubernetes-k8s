@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kitchen
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kitchen
+  template:
+    metadata:
+      labels:
+        app: kitchen
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
+          ports:
+            - name: http
+              containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kitchen
+spec:
+  selector:
+    app: kitchen
+  ports:
+    - port: 80
+      targetPort: 8080

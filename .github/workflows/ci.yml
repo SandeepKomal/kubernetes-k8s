@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint scripts and manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+
+      - name: Validate every manifest against the Kubernetes schema
+        run: |
+          find Kubernetes labs -type f \( -name '*.yaml' -o -name '*.yml' \) -not -name kind.yaml -print0 |
+            xargs -0 kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0
+
+      - name: Validate YAML embedded in solutions
+        run: |
+          for f in labs/*/solution.sh; do
+            awk "/<<'YAML'/{f=1;next} /^YAML\$/{f=0} f" "$f"; echo ---
+          done | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+
+      - name: Every level has the files it needs
+        run: |
+          for d in labs/[0-9][0-9]-*/; do
+            for f in README.md hints.txt check.sh solution.sh; do
+              test -f "$d$f" || { echo "missing $d$f"; exit 1; }
+            done
+            test -x "${d}solution.sh" || { echo "${d}solution.sh is not executable"; exit 1; }
+          done
+
+      - name: Site scripts parse
+        run: node --check site/app.js && node --check site/data.js
+
+  levels:
+    name: Level ${{ matrix.level }} on kind
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        level: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kind
+        run: |
+          curl -sSLo /usr/local/bin/kind https://github.com/kubernetes-sigs/kind/releases/download/v0.30.0/kind-linux-amd64
+          chmod +x /usr/local/bin/kind
+
+      - name: Create the practice cluster
+        run: ./quest up
+
+      - name: Start broken, fail, solve, pass
+        run: tests/run-level.sh ${{ matrix.level }}
+
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all,events -n "quest-$(printf '%02d' ${{ matrix.level }})" || true
+          kubectl get nodes -o wide || true

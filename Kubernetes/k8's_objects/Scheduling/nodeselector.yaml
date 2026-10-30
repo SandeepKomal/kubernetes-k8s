@@ -17,7 +17,7 @@ spec:
         team: analytics
       containers:
       - name: nginx
-        image: nginx:1.7.9
+        image: nginx:1.27
         ports:
         - containerPort: 80
         resources:
@@ -25,9 +25,7 @@ spec:
           # based on CPU utilization
           requests:
             cpu: "10m"
-          limits:
-            cpu: "20m"
-          requests:
             memory: "1G"
           limits:
+            cpu: "20m"
             memory: "2G"

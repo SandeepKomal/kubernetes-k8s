@@ -1,0 +1,52 @@
+# Kubernetes Quest: the labs
+
+Fifteen hands-on levels. Each one is a ticket from the on-call queue of
+**Kubelet Kitchen**, a made-up food-delivery startup, and each one starts
+with something already broken in your practice cluster.
+
+You learn a concept by fixing it, and `./quest check` tells you, check by
+check, when you have got it right.
+
+| # | Level | You will learn |
+| --- | --- | --- |
+| 00 | [Hello, cluster](00-hello-cluster/) | Pods, kubectl, imperative vs declarative |
+| 01 | [Pods that will not start](01-crashing-pods/) | `ImagePullBackOff`, `CrashLoopBackOff`, describe, logs |
+| 02 | [The Service that routes nowhere](02-labels-and-selectors/) | Labels, selectors, endpoints |
+| 03 | [A deploy went wrong](03-rollouts-and-rollbacks/) | Deployments, ReplicaSets, rollout, rollback |
+| 04 | [Connection refused](04-services-and-dns/) | Service ports, types, cluster DNS |
+| 05 | [Missing configuration](05-configmaps-and-secrets/) | ConfigMaps, Secrets, env vs files |
+| 06 | [Never ready, always restarting](06-health-probes/) | Readiness, liveness, startup probes |
+| 07 | [Stuck in Pending](07-resources-and-quotas/) | Requests, limits, QoS, ResourceQuota |
+| 08 | [Data that survives](08-persistent-storage/) | PV, PVC, StorageClass |
+| 09 | [The cleanup that never ran](09-jobs-and-cronjobs/) | Jobs, CronJobs, concurrency |
+| 10 | [Too much access](10-rbac-least-privilege/) | ServiceAccounts, RBAC, `auth can-i` |
+| 11 | [Everyone can reach the database](11-network-policies/) | NetworkPolicy, default deny |
+| 12 | [The GPU node](12-scheduling/) | nodeSelector, taints, tolerations |
+| 13 | [Ready for the dinner rush](13-autoscaling/) | HPA, PodDisruptionBudget |
+| 14 | [Boss level: the Friday night incident](14-boss-friday-incident/) | Everything, plus a postmortem |
+
+## How a level works
+
+```bash
+./quest start 3      # resets namespace quest-03 and breaks something in it
+                     # read labs/03-rollouts-and-rollbacks/README.md
+kubectl get pods     # investigate; kubectl already points at quest-03
+./quest check        # ✔ / ✘ for every acceptance criterion
+./quest hint         # stuck? hints go from a nudge to the answer
+./quest solution     # the reference solution, with comments
+```
+
+Every level is independent: start anywhere, restart any time.
+
+## Inside a level folder
+
+| File | Purpose |
+| --- | --- |
+| `README.md` | The ticket, the mission, field notes and the production lens |
+| `setup.yaml` / `setup.sh` | The broken starting state |
+| `check.sh` | The acceptance checks, built on [`lib.sh`](lib.sh) |
+| `hints.txt` | Hints, separated by `---`, weakest first |
+| `solution.sh` | A reference solution; CI runs it to prove the level works |
+| `cleanup.sh` | Optional: undoes cluster-wide changes (node labels, taints) |
+
+Want to add a level? See [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-quest-level).
