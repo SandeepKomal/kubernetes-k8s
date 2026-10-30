@@ -59,9 +59,15 @@ jobs:
       - name: Site data is complete and well formed
         run: node tests/check_site_data.js
 
+      - name: Playground simulator
+        run: node tests/check_playground.js
+
+      - name: YAML X-ray explainer
+        run: node tests/check_xray.js
+
       - name: Site and dashboard scripts parse
         run: |
-          node --check site/app.js && node --check site/data.js && node --check site/quiz-bank.js && node --check labs/ui/app.js
+          node --check site/app.js && node --check site/data.js && node --check site/quiz-bank.js && node --check site/playground.js && node --check site/xray-explain.js && node --check labs/ui/app.js
           python3 -m py_compile labs/ui/server.py
           python3 -c "import json; json.load(open('.devcontainer/devcontainer.json'))"
 
