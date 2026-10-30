@@ -26,10 +26,10 @@ nothing.
 | Deployments, rolling updates, rollback | Level 03 · Playground: Bad rollout |
 | ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key |
 | Requests, limits, QoS | Level 07 · Playground: Pending, OOMKilled |
-| Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe · [probes.md](probes.md) |
+| Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe, Slow start killed · [probes.md](probes.md) |
 | Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running · [reference/manifests/jobs](../reference/manifests/jobs/) |
 | StatefulSets and headless Services | Level 15 · [reference/manifests/statefulsets](../reference/manifests/statefulsets/) |
-| DaemonSets | Level 19 · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
+| DaemonSets | Level 19 · Playground: DaemonSet missing a node · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
 | Init containers and native sidecars | Level 16 · Playground: Init container |
 | nodeSelector, affinity, taints, tolerations, topology spread | Level 12 · Playground: Node selector, Untolerated taint · [reference/manifests/scheduling](../reference/manifests/scheduling/) |
 | HorizontalPodAutoscaler | Level 13 · Playground: HPA not scaling · [reference/manifests/autoscaling](../reference/manifests/autoscaling/) |
@@ -42,7 +42,7 @@ nothing.
 
 | Topic | Practise it |
 | --- | --- |
-| Labels and selectors | Level 02 · Playground: No endpoints |
+| Labels and selectors | Level 02 · Playground: No endpoints, Canary leaking |
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down · [reference/manifests/services](../reference/manifests/services/) |
 | Ingress, IngressClass, TLS | Playground: Ingress 404, Ingress 503, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
@@ -53,6 +53,7 @@ nothing.
 | Topic | Practise it |
 | --- | --- |
 | PersistentVolumes, claims, StorageClasses, default class | Level 08 · Playground: PVC Pending |
+| Access modes, Multi-Attach, Deployment strategy | Playground: Multi-Attach volume |
 | Volumes in StatefulSets | Level 15 |
 
 ## Security (CKA, CKAD, CKS)
@@ -83,6 +84,7 @@ nothing.
 | Certificate expiry and renewal with kubeadm | Playground: Certificates expired |
 | Finalizers and objects stuck Terminating | Playground: Stuck Terminating |
 | Private registries and imagePullSecrets | Playground: Private registry |
+| Container command, image architecture | Playground: Wrong command, Wrong CPU architecture |
 | Backing up and restoring etcd | Playground: etcd backup, etcd restore |
 | Upgrading a cluster with kubeadm | Playground: kubeadm upgrade |
 

@@ -16,13 +16,24 @@
   // what an HTTP request to the app returns.
   const APPS = {
     nginx: {
-      mem: 24, port: 80, root: true, health: ["/", "/index.html"], body: "<h1>Welcome to nginx!</h1>",
+      mem: 24, port: 80, root: true, health: ["/", "/index.html"], body: "<h1>Welcome to nginx!</h1>", bins: ["nginx", "/docker-entrypoint.sh", "sh", "/bin/sh"],
       logs: (x) => ["/docker-entrypoint.sh: Configuration complete; ready for start up",
         ...(x.pod.spec.probe && !APPS.nginx.health.includes(x.pod.spec.probe)
           ? [`10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`, `10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`]
           : ['10.244.1.1 - - "GET / HTTP/1.1" 200 615'])]
     },
-    busybox: { mem: 4, port: 8080, root: true, health: ["/healthz"], body: "api: ok", logs: ["api: listening on :8080"] },
+    busybox: { mem: 4, port: 8080, root: true, health: ["/healthz"], body: "api: ok", logs: ["api: listening on :8080"], bins: ["sh", "/bin/sh", "busybox", "sleep", "wget"] },
+    ledger: {
+      mem: 180, port: 8080, health: ["/healthz"], body: "ledger: ok", startSecs: 90,
+      logs: ["ledger: starting", "ledger: loading 2.1M records into the cache (about 90s)", "ledger: cache ready", "ledger: listening on :8080"],
+      crashLogs: ["ledger: starting", "ledger: loading 2.1M records into the cache (about 90s)", "ledger: loaded 34%", "ledger: received SIGTERM while loading, exiting"]
+    },
+    invoice: {
+      mem: 60, port: 8080, health: ["/healthz"], body: "invoice: ok",
+      logs: ["invoice: starting on linux/amd64", "invoice: listening on :8080"],
+      crashLogs: ["exec /usr/local/bin/invoice: exec format error"]
+    },
+    "menu-beta": { mem: 30, port: 8081, health: ["/healthz"], body: "menu (beta)", logs: ["menu-beta: listening on :8081"] },
     reporter: {
       mem: 30, port: 8080, health: ["/healthz"], body: "reporter: ok",
       logs: (x) => x.c.canI(`system:serviceaccount:${NS}:${x.pod.spec.sa}`, "list", "pods")
@@ -46,11 +57,15 @@
       crashLogs: ["reports: building the daily report", "reports: loading every order into memory..."]
     }
   };
-  const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1"]);
+  const LOCAL_IMAGES = new Set(["localhost:5000/orders:2.3", "localhost:5000/oven:1.4", "localhost:5000/reports:1.0", "localhost:5000/reporter:1.2", "localhost:5000/checkout:3.1",
+    "localhost:5000/ledger:4.2", "localhost:5000/invoice:2.0", "localhost:5000/invoice:2.0-arm64", "localhost:5000/menu-beta:0.9"]);
+  // Images built for one CPU architecture only; the rest are multi-arch.
+  const IMAGE_PLATFORMS = { "localhost:5000/invoice:2.0-arm64": ["linux/arm64"], "localhost:5000/invoice:2.0": ["linux/amd64", "linux/arm64"] };
 
   function appOf(image) {
     image = String(image || "").replace(/^(registry\.kitchen\.example|docker\.io\/library)\//, "");
     if (LOCAL_IMAGES.has(image)) return image.split("/")[1].split(":")[0];
+    if (/^localhost:5000\/invoice:/.test(image)) return null;
     if (/^nginx(:1\.\d+(\.\d+)?(-alpine)?)?$/.test(image)) return "nginx";
     if (/^busybox(:1\.3[0-9](\.\d+)?)?$/.test(image)) return "busybox";
     return null;
@@ -113,6 +128,7 @@
     clusterrole: "clusterroles", clusterroles: "clusterroles",
     sa: "serviceaccounts", serviceaccount: "serviceaccounts", serviceaccounts: "serviceaccounts",
     rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets",
+    ds: "daemonsets", daemonset: "daemonsets", daemonsets: "daemonsets",
     secret: "secrets", secrets: "secrets",
     validatingadmissionpolicy: "vaps", validatingadmissionpolicies: "vaps",
     validatingadmissionpolicybinding: "vapbindings", validatingadmissionpolicybindings: "vapbindings",
@@ -949,6 +965,137 @@
       tries: ["kubectl get nodes", "kubeadm certs check-expiration"]
     },
     {
+      id: "cmdtypo",
+      title: "Wrong command",
+      done: "menu starts with the right command.",
+      level: { id: "01", text: "Level 01 · Pods that will not start" },
+      story: "Someone added an explicit command to the menu Deployment to tune nginx. Since then its Pods restart in a loop, and kubectl logs prints nothing at all.",
+      goal: "Get menu Running again.",
+      deployments: [api(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 20 * MIN, command: ["ngnix", "-g", "daemon off;"] }],
+      won: (c) => c.deploymentReady("menu"),
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "kubectl logs is empty because the process never started. kubectl describe pod on a menu Pod: Last State, Reason StartError, Exit Code 128.",
+        "The event says: exec: \"ngnix\": executable file not found in $PATH. Compare the command with kubectl get deploy menu -o yaml.",
+        `Fix the typo: kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","command":["nginx","-g","daemon off;"]}]}}}}' (or set "command": null to use the image's own).`
+      ],
+      lesson: "StartError with exit code 128 and empty logs means the container's command could not even start: a typo, a missing binary or a script without execute permission. The events name it; logs cannot.",
+      tries: ["kubectl get pods", "kubectl logs deployment/menu"]
+    },
+    {
+      id: "startup",
+      title: "Slow start killed",
+      done: "ledger gets the time it needs to start, and keeps its liveness probe.",
+      level: { id: "06", text: "Level 06 · Never ready, always restarting" },
+      story: "After the ledger data doubled, its Pods restart every 40 seconds and never become Ready. Nothing in the code changed.",
+      goal: "Let ledger finish starting, without giving up the liveness probe that restarts it if it hangs later.",
+      deployments: [web(), { name: "ledger", replicas: 2, image: "localhost:5000/ledger:4.2", req: 256, lim: 512, age: 25 * MIN, liveness: 8080, livenessCfg: { initialDelaySeconds: 10, periodSeconds: 10, failureThreshold: 3 } }],
+      won: (c) => { const d = c.deployments.find((x) => x.name === "ledger"); return !!d.spec.liveness && c.deploymentReady("ledger"); },
+      check: (c) => ({ label: "ledger", ok: c.deploymentReady("ledger"), text: `${c.podsOf("ledger").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "kubectl logs deployment/ledger --previous: it was still loading when SIGTERM arrived. kubectl describe pod: Liveness probe failed, Killing.",
+        "The liveness probe allows 10s + 3 × 10s = 40s; loading takes about 90s. A startupProbe holds liveness back until the app has started once.",
+        `kubectl patch deployment ledger -p '{"spec":{"template":{"spec":{"containers":[{"name":"ledger","startupProbe":{"httpGet":{"path":"/healthz","port":8080},"periodSeconds":10,"failureThreshold":30}}]}}}}'`
+      ],
+      lesson: "A liveness probe that runs before a slow app has started kills it in a loop. A startupProbe (failureThreshold × periodSeconds longer than the slowest start) protects startup and keeps liveness strict afterwards.",
+      tries: ["kubectl get pods", "kubectl logs deployment/ledger --previous"]
+    },
+    {
+      id: "arch",
+      title: "Wrong CPU architecture",
+      done: "invoice runs a multi-arch image on the amd64 nodes.",
+      level: { id: "01", text: "Level 01 · Pods that will not start" },
+      story: "A developer built and pushed invoice 2.0 from an Apple Silicon laptop. On the cluster it crashes instantly, while it works on their machine.",
+      goal: "Get invoice 2.0 Running on the cluster's nodes.",
+      deployments: [web(), { name: "invoice", replicas: 2, image: "localhost:5000/invoice:2.0-arm64", req: 64, lim: 128, age: 15 * MIN }],
+      nodeLabels: { "worker-1": { "kubernetes.io/arch": "amd64" }, "worker-2": { "kubernetes.io/arch": "amd64" }, "worker-3": { "kubernetes.io/arch": "amd64" } },
+      won: (c) => { const d = c.deployments.find((x) => x.name === "invoice"); return /invoice:2\.0$/.test(d.spec.image) && c.deploymentReady("invoice"); },
+      check: (c) => ({ label: "invoice", ok: c.deploymentReady("invoice"), text: c.deployments.find((x) => x.name === "invoice").spec.image.split("/").pop() }),
+      hints: [
+        "kubectl logs deployment/invoice: exec format error. The binary is for another CPU. Compare with kubectl get nodes -L kubernetes.io/arch.",
+        "docker buildx imagetools inspect localhost:5000/invoice:2.0-arm64 shows a single platform. curl http://localhost:5000/v2/invoice/tags/list lists the other tags; inspect them too.",
+        "The pipeline also pushes a multi-arch tag: kubectl set image deployment/invoice invoice=localhost:5000/invoice:2.0"
+      ],
+      lesson: "exec format error means the image was built for another CPU architecture. Build multi-arch images (docker buildx build --platform linux/amd64,linux/arm64) and check them with imagetools inspect.",
+      tries: ["kubectl get pods", "kubectl logs deployment/invoice"]
+    },
+    {
+      id: "multiattach",
+      title: "Multi-Attach volume",
+      done: "uploads rolls out with Recreate, so its ReadWriteOnce volume moves cleanly.",
+      level: { id: "08", text: "Level 08 · Data that survives" },
+      story: "A routine image update of uploads has been stuck for 20 minutes. The new Pod sits in ContainerCreating on another node; the old one keeps running.",
+      goal: "Finish the rollout, and make sure the next image update does not get stuck the same way.",
+      deployments: [web(), { name: "uploads", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 5 * HOUR, pvc: "uploads-data" }],
+      pvcs: [{ name: "uploads-data", size: "5Gi", class: "standard" }],
+      setup: (c) => {
+        const d = c.deployments.find((x) => x.name === "uploads");
+        const old = c.podsOf("uploads")[0];
+        c.rollout(d, { ...d.spec, image: "busybox:1.37" });
+        const fresh = c.podsOf("uploads").find((p) => !p.old);
+        fresh.node = NODES.find((n) => n !== old.node);
+        c.evaluate(fresh, true);
+      },
+      won: (c) => { const d = c.deployments.find((x) => x.name === "uploads"); return d.strategy === "Recreate" && d.spec.image === "busybox:1.37" && c.deploymentReady("uploads"); },
+      check: (c) => ({ label: "uploads", ok: c.deploymentReady("uploads"), text: c.deploymentReady("uploads") ? "rolled out" : "stuck" }),
+      hints: [
+        "kubectl get pods -o wide: old and new Pod are on different nodes. kubectl describe the new Pod: FailedAttachVolume, Multi-Attach error.",
+        "The claim is ReadWriteOnce: one node at a time. A RollingUpdate starts the new Pod before stopping the old one, so the old one never lets go.",
+        `Stop the old Pod before starting the new one: kubectl patch deployment uploads -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'`
+      ],
+      lesson: "A single-replica Deployment with a ReadWriteOnce volume needs strategy Recreate (or a StatefulSet): a rolling update would need the volume on two nodes at once. Scaling to 0 and back only fixes this rollout, not the next.",
+      tries: ["kubectl get pods -o wide", "kubectl describe deployment uploads"]
+    },
+    {
+      id: "canary",
+      title: "Canary leaking",
+      done: "menu-svc sends traffic only to the stable menu, and the beta keeps its own Service.",
+      level: { id: "02", text: "Level 02 · The Service that routes nowhere" },
+      story: "Since the menu beta test started, about one request in three to menu-svc fails with connection refused. The beta team says their own Service, menu-beta-svc, works fine.",
+      goal: "Make menu-svc reach only the stable menu Pods, and keep the beta running behind its own Service.",
+      deployments: [
+        { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR, labels: { track: "stable" } },
+        { name: "menu-beta", replicas: 1, image: "localhost:5000/menu-beta:0.9", req: 32, lim: 64, age: 40 * MIN, labels: { app: "menu", track: "beta" } },
+        api()
+      ],
+      services: [
+        { name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", targetPort: 80, age: 30 * HOUR },
+        { name: "menu-beta-svc", selector: { app: "menu", track: "beta" }, ip: "10.96.41.9", targetPort: 8081, age: 40 * MIN }
+      ],
+      won: (c) => {
+        const eps = c.endpointsOf("menu-svc");
+        return eps.length === 2 && eps.every((p) => p.labels.track === "stable") && c.deploymentReady("menu-beta") && c.endpointsOf("menu-beta-svc").length === 1;
+      },
+      check: (c) => { const eps = c.endpointsOf("menu-svc"); const bad = eps.filter((p) => p.labels.track !== "stable").length; return { label: "menu-svc endpoints", ok: !bad && eps.length > 0, text: `${eps.length - bad} stable, ${bad} beta` }; },
+      hints: [
+        "Call it a few times: kubectl exec deploy/api -- wget -qO- -T 2 http://menu-svc. Then kubectl get endpoints menu-svc: count the addresses.",
+        "kubectl get pods --show-labels: the beta Pods carry app=menu too, so menu-svc's selector picks them, and they listen on 8081, not 80.",
+        "Narrow the stable Service: kubectl set selector service menu-svc app=menu,track=stable"
+      ],
+      lesson: "A Service sends traffic to every Ready Pod its selector matches, whoever owns them. Give each track its own label and select on it; a canary must not share the stable Service by accident.",
+      tries: ["kubectl get endpoints", "kubectl get pods --show-labels"]
+    },
+    {
+      id: "daemonset",
+      title: "DaemonSet missing a node",
+      done: "log-agent runs on every node, including the GPU node, which stays reserved.",
+      level: { id: "19", text: "Level 19 · One agent per node" },
+      story: "Logs from worker-3 stopped arriving after it became the GPU node. The log-agent DaemonSet reports everything ready.",
+      goal: "Get log-agent onto every node, without opening the GPU node to ordinary workloads.",
+      deployments: [web()],
+      taints: { "worker-3": [{ key: "dedicated", value: "gpu", effect: "NoSchedule" }] },
+      daemonsets: [{ name: "log-agent", image: "busybox:1.36", req: 32, lim: 64, age: 20 * 24 * HOUR, tolerations: [] }],
+      won: (c) => c.taints["worker-3"].some((t) => t.key === "dedicated") && NODES.every((n) => c.pods.some((p) => p.ds === "log-agent" && p.node === n && p.ready)),
+      check: (c) => { const n = new Set(c.pods.filter((p) => p.ds === "log-agent" && p.ready).map((p) => p.node)).size; return { label: "log-agent", ok: n === NODES.length, text: `${n}/${NODES.length} nodes` }; },
+      hints: [
+        "kubectl get ds log-agent: DESIRED 2, not 3. A DaemonSet only counts the nodes it is allowed on. kubectl get pods -o wide shows which node is missing.",
+        "kubectl describe node worker-3: Taints dedicated=gpu:NoSchedule. kubectl describe ds log-agent: no tolerations.",
+        `Let the agent tolerate it: kubectl patch ds log-agent -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"dedicated","operator":"Exists","effect":"NoSchedule"}]}}}}'`
+      ],
+      lesson: "A DaemonSet's DESIRED count already excludes nodes its Pods may not run on, so it looks healthy while a node is missing. Node agents need tolerations for every taint in use; removing the taint would open the node to everything else.",
+      tries: ["kubectl get ds", "kubectl get pods -o wide"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -1118,9 +1265,9 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "pullsecret", "cmreload", "secretkey"]],
-    ["Scheduling and storage", ["pending", "nodeselector", "taint", "pvc"]],
-    ["Networking", ["probe", "service", "svcport", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "pullsecret", "cmreload", "secretkey"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "daemonset", "pvc", "multiattach"]],
+    ["Networking", ["probe", "service", "canary", "svcport", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
     ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain", "finalizer"]],
     ["Cluster administration", ["context", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
@@ -1190,6 +1337,8 @@
       this.coredns = scenario.coredns === undefined ? 2 : scenario.coredns; // CoreDNS replicas
       this.registryAuth = scenario.registryAuth || null; // a private registry: { server, user, token }
       this.saPullSecrets = {};
+      this.daemonsets = JSON.parse(JSON.stringify(scenario.daemonsets || []));
+      this.rr = 0; // which endpoint a Service picks next
       // Expired control-plane certificates: what has been renewed and restarted since.
       this.certs = scenario.certsExpired ? { renewed: new Set(), out: {}, restarted: {}, kubeconfig: false, useAdmin: false } : null;
       this.certFiles = scenario.certFiles || {}; // TLS files on disk: path → { cn, pair }
@@ -1208,8 +1357,10 @@
             nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default", cpuReq: d.cpu || 0,
             tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
             init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null,
-            secretEnv: d.secretEnv ? { ...d.secretEnv } : null
+            secretEnv: d.secretEnv ? { ...d.secretEnv } : null, command: d.command ? [...d.command] : null,
+            livenessCfg: d.livenessCfg ? { ...d.livenessCfg } : null, startup: d.startup ? { ...d.startup } : null
           },
+          labels: { ...(d.labels || {}) }, strategy: d.strategy || "RollingUpdate",
           hash: this.rand(10)
         };
         this.deployments.push(dep);
@@ -1226,6 +1377,7 @@
         if (bare) { bare.finalizers = [...(p.finalizers || [])]; bare.stuck = !!p.stuck; }
       }
       for (const j of scenario.jobs || []) this.runJob({ ...j, created: this.now() - (j.age || 0) });
+      this.syncDaemonSets(true);
       if (scenario.setup) scenario.setup(this);
       this.reconcileHpas();
     }
@@ -1272,7 +1424,7 @@
       const pod = {
         name: opts.name || `${dep.name}-${dep.hash}-${this.rand(5)}`,
         owner: dep ? dep.name : null, hash: dep ? dep.hash : null,
-        labels: { app: dep ? dep.name : opts.name }, spec,
+        labels: { app: dep ? dep.name : opts.name, ...(dep ? dep.labels || {} : {}) }, spec,
         created: this.now() - (opts.age || 0), restarts: opts.restarts || 0,
         node: opts.node || null, creating: !opts.settled, events: []
       };
@@ -1336,6 +1488,25 @@
 
     nodesFor(pod) { return NODES.filter((n) => selects(pod.spec.nodeSelector, this.nodeLabels[n])); }
 
+    // A DaemonSet runs one Pod on every node it may schedule to.
+    dsWants(ds, node) { return this.tolerates({ spec: { tolerations: ds.tolerations } }, node) && this.nodeReady(node); }
+    syncDaemonSets(initial) {
+      for (const ds of this.daemonsets) {
+        for (const node of NODES) {
+          const have = this.pods.find((p) => p.ds === ds.name && p.node === node && !p.terminating);
+          if (this.dsWants(ds, node) && !have) {
+            const pod = this.addPod(null, {
+              name: `${ds.name}-${this.rand(5)}`, node, settled: true, age: initial ? ds.age : 0,
+              spec: { image: ds.image, env: {}, req: ds.req, lim: ds.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default",
+                cpuReq: 0, tolerations: JSON.parse(JSON.stringify(ds.tolerations)), liveness: null, init: null, sec: {}, pvc: null, apparmor: null }
+            });
+            if (pod) { pod.ds = ds.name; pod.labels = { app: ds.name }; }
+          } else if (!this.dsWants(ds, node) && have) {
+            this.pods = this.pods.filter((p) => p !== have);
+          }
+        }
+      }
+    }
     pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
 
     pullAllowed(pod) {
@@ -1502,6 +1673,17 @@
         return;
       }
       const scheduled = ["Normal", "Scheduled", "default-scheduler", `Successfully assigned ${NS}/${pod.name} to ${pod.node}`];
+      // A ReadWriteOnce volume attaches to one node at a time.
+      const holder = pod.spec.pvc && this.pods.find((o) => o !== pod && !o.terminating && o.node && o.node !== pod.node &&
+        o.spec.pvc === pod.spec.pvc && o.state && o.state !== "ContainerCreating");
+      if (holder) {
+        const claim = this.pvcOf(pod);
+        pod.state = "ContainerCreating";
+        pod.events = [scheduled, ["Warning", "FailedAttachVolume", "attachdetach-controller",
+          `Multi-Attach error for volume "${claim ? claim.volume : pod.spec.pvc}" Volume is already used by pod(s) ${holder.name}`],
+          ["Warning", "FailedMount", "kubelet", `Unable to attach or mount volumes: unmounted volumes=[data], unattached volumes=[data]: timed out waiting for the condition`]];
+        return;
+      }
       if (this.registryAuth && String(img).startsWith(this.registryAuth.server + "/") && !this.pullAllowed(pod)) {
         pod.state = "ImagePullBackOff";
         pod.events = [scheduled,
@@ -1567,15 +1749,33 @@
         ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`],
         ["Normal", "Created", "kubelet", `Created container: ${c}`],
         ["Normal", "Started", "kubelet", `Started container ${c}`]];
-      if (app.needsEnv && !pod.env[app.needsEnv]) pod.last = { reason: "Error", code: 1 };
+      const arch = (this.nodeLabels[pod.node] || {})["kubernetes.io/arch"] || "amd64";
+      const platforms = IMAGE_PLATFORMS[img];
+      const lc = pod.spec.livenessCfg;
+      const st = pod.spec.startup;
+      const startBudget = st ? st.failureThreshold * st.periodSeconds : lc ? lc.initialDelaySeconds + lc.failureThreshold * lc.periodSeconds : Infinity;
+      if (pod.spec.command && app.bins && !app.bins.includes(pod.spec.command[0])) {
+        pod.state = "CrashLoopBackOff";
+        pod.last = { reason: "StartError", code: 128 };
+        pod.restarts = Math.max(pod.restarts, 4);
+        pod.events = [scheduled, ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`], ["Normal", "Created", "kubelet", `Created container: ${c}`],
+          ["Warning", "Failed", "kubelet", `Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "${pod.spec.command[0]}": executable file not found in $PATH: unknown`],
+          ["Warning", "BackOff", "kubelet", `Back-off restarting failed container ${c} in pod ${pod.name}`]];
+        return;
+      }
+      if (platforms && !platforms.includes("linux/" + arch)) pod.last = { reason: "Error", code: 255, arch: true };
+      else if (app.needsEnv && !pod.env[app.needsEnv]) pod.last = { reason: "Error", code: 1 };
       else if (app.needsDep && !this.dependencyOk(pod, app)) pod.last = { reason: "Error", code: 1, dep: this.dependencyOk(pod, app, true) };
       else if (pod.spec.lim && app.mem > pod.spec.lim) pod.last = { reason: "OOMKilled", code: 137 };
       else if (pod.spec.liveness && pod.spec.liveness !== app.port) pod.last = { reason: "Completed", code: 0, liveness: true };
+      else if (pod.spec.liveness && app.startSecs && startBudget < app.startSecs) pod.last = { reason: "Error", code: 137, slow: true, liveness: true };
       if (pod.last) {
         pod.state = "CrashLoopBackOff";
         pod.restarts = Math.max(pod.restarts, 1);
         const ip = `10.244.${NODES.indexOf(pod.node) + 1}.${10 + this.pods.indexOf(pod)}`;
-        const killed = pod.last.liveness ? [
+        const killed = pod.last.slow ? [
+          ["Warning", "Unhealthy", "kubelet", `Liveness probe failed: Get "http://${ip}:${app.port}/healthz": dial tcp ${ip}:${app.port}: connect: connection refused`],
+          ["Normal", "Killing", "kubelet", `Container ${c} failed liveness probe, will be restarted`]] : pod.last.liveness ? [
           ["Warning", "Unhealthy", "kubelet", `Liveness probe failed: Get "http://${ip}:${pod.spec.liveness}/": dial tcp ${ip}:${pod.spec.liveness}: connect: connection refused`],
           ["Normal", "Killing", "kubelet", `Container ${c} failed liveness probe, will be restarted`]] : [];
         pod.events = [...started, ...killed, ["Warning", "BackOff", "kubelet", `Back-off restarting failed container ${c} in pod ${pod.name}`]];
@@ -1641,7 +1841,7 @@
       if (port !== svc.port) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       const eps = this.endpointsOf(svc.name);
       if (!eps.length) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
-      const dst = eps[0];
+      const dst = eps[this.rr++ % eps.length]; // kube-proxy spreads connections over the endpoints
       const app = APPS[appOf(dst.spec.image)];
       if (!src || !this.allowed(src, dst, app.port)) return { ok: false, text: "wget: download timed out" };
       // The Service forwards to targetPort; nothing listens there unless it is the app's port.
@@ -1681,9 +1881,10 @@
     settle() {
       this.retry = false;
       this.bindPvcs();
+      this.syncDaemonSets(false);
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
-      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|ImagePullBackOff|Init:)/.test(x.state || "");
+      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|ImagePullBackOff|ContainerCreating|Init:)/.test(x.state || "");
       for (const p of this.pods.filter((x) => !x.creating && !x.terminating && retrying(x))) {
         if (!p.node) p.node = this.place(p);
         if (p.node) this.evaluate(p, true);
@@ -1698,7 +1899,10 @@
         const allUp = fresh.length && fresh.every((p) => p.ready);
         // A rollout replaces old Pods only once new ones are Running; broken
         // old Pods go straight away.
-        this.pods = this.pods.filter((p) => !(p.owner === d.name && p.old && (allUp || !p.ready)));
+        const before = this.pods.length;
+        this.pods = this.pods.filter((p) => !(p.owner === d.name && p.old && (allUp || !p.ready || d.strategy === "Recreate")));
+        // Pods that were waiting on what the old ones held (a volume) get another try.
+        if (this.pods.length < before && this.podsOf(d.name).some((p) => p.state === "ContainerCreating")) this.retry = true;
         // The ReplicaSet keeps trying to create the Pods it is missing (outside a
         // rollout, where maxSurge limits how many new Pods may exist).
         if (!this.podsOf(d.name).some((p) => p.old)) {
@@ -1858,6 +2062,7 @@
     "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
     "kubeadm certs check-expiration | renew all     openssl x509 -in <crt> -noout -enddate     mv | cp <files> <dest>     export KUBECONFIG=<file>",
     "kubectl create secret tls <name> --cert=<file> --key=<file>     curl -v https://<host>/  (-k skips the check)",
+    "kubectl get ds | describe ds <name>     docker buildx imagetools inspect <image>     curl http://localhost:5000/v2/<repo>/tags/list",
     "kubeadm upgrade plan | apply <version>     apt-get update | install <pkg>=<version>     apt-mark hold | unhold",
     "systemctl daemon-reload | restart kubelet     trivy image <image>     ssh <node> sudo aa-status | apparmor_parser <file>",
     "kubectl get secrets | validatingadmissionpolicy | validatingadmissionpolicybinding",
@@ -1874,6 +2079,11 @@
   function curl(c, words, say) {
     const url = words.slice(1).reverse().find((x) => !x.startsWith("-") && /[a-z]/.test(x));
     if (!url) return say("curl: no URL specified", "warn");
+    const reg = /^(?:https?:\/\/)?localhost:5000\/v2\/([\w-]+)\/tags\/list$/.exec(url);
+    if (reg) {
+      const tags = [...LOCAL_IMAGES].filter((x) => x.startsWith(`localhost:5000/${reg[1]}:`)).map((x) => x.split(":").pop());
+      return say(tags.length ? JSON.stringify({ name: reg[1], tags }) : `{"errors":[{"code":"NAME_UNKNOWN","message":"repository name not known to registry"}]}`, tags.length ? "" : "warn");
+    }
     const m = /^(?:https?:\/\/)?([^/:]+)(?::\d+)?(\/[^\s]*)?/.exec(url);
     if (!c.edgeHost(m[1])) {
       return say(`curl: (6) Could not resolve host: ${m[1]}${c.resolve(m[1]) ? "  (cluster Service names only resolve inside the cluster; use kubectl exec)" : ""}`, "warn");
@@ -2020,6 +2230,21 @@
       return say(`${cmd}: the kubeadm upgrade scenario simulates this; here nothing needs it.`, "dim");
     }
     if (cmd === "trivy") return trivy(words, say);
+    if (cmd === "docker" || cmd === "crane") {
+      const image = words.slice(1).reverse().find((x) => !x.startsWith("-") && /[:/]/.test(x));
+      const inspect = (cmd === "docker" && ((words[1] === "buildx" && words[2] === "imagetools" && words[3] === "inspect") || (words[1] === "manifest" && words[2] === "inspect"))) || (cmd === "crane" && words[1] === "manifest");
+      if (!inspect || !image) return say("This playground runs: docker buildx imagetools inspect <image> (or docker manifest inspect <image>)", "dim");
+      const known = LOCAL_IMAGES.has(image) || appOf(image);
+      if (!known) return say(`ERROR: ${image}: not found`, "warn");
+      const platforms = IMAGE_PLATFORMS[image] || ["linux/amd64", "linux/arm64"];
+      say(`Name:      ${image}`);
+      say(`MediaType: ${platforms.length > 1 ? "application/vnd.oci.image.index.v1+json" : "application/vnd.oci.image.manifest.v1+json"}`);
+      if (platforms.length > 1) {
+        say("Manifests:");
+        platforms.forEach((pl) => say(`  Platform:  ${pl}`));
+      } else say(`Platform:  ${platforms[0]}   (a single-architecture image)`, "warn");
+      return;
+    }
     if (cmd === "ssh") {
       const node = words[1];
       let rest = words.slice(2).filter((x) => x !== "--");
@@ -2080,7 +2305,7 @@
       return say(`This playground runs systemctl, journalctl, crictl, aa-status and apparmor_parser on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
     }
     if (cmd === "helm") return helm(c, words, say, opt);
-    return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, etcdctl, etcdutl, kubeadm, apt-get, trivy, ssh, ls, cat, grep and sed; type 'help'.`, "warn");
+    return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, docker buildx imagetools, etcdctl, etcdutl, kubeadm, apt-get, trivy, openssl, ssh, ls, cat, grep, sed, mv and cp; type 'help'.`, "warn");
   }
 
   // mv and cp on the control-plane node, with *.yaml globs.
@@ -2738,6 +2963,12 @@
             `${pad}        name: ${spec.secretEnv.secret}`, `${pad}        key: ${spec.secretEnv.key}`);
         }
       }
+      if (spec.command) lines.push(`${pad}  command: [${spec.command.map((x) => JSON.stringify(x)).join(", ")}]`);
+      if (spec.liveness && spec.livenessCfg) {
+        lines.push(`${pad}  livenessProbe:`, `${pad}    httpGet: {path: /healthz, port: ${spec.liveness}}`, `${pad}    initialDelaySeconds: ${spec.livenessCfg.initialDelaySeconds}`,
+          `${pad}    periodSeconds: ${spec.livenessCfg.periodSeconds}`, `${pad}    failureThreshold: ${spec.livenessCfg.failureThreshold}`);
+      }
+      if (spec.startup) lines.push(`${pad}  startupProbe:`, `${pad}    httpGet: {path: /healthz, port: ${spec.liveness || 8080}}`, `${pad}    periodSeconds: ${spec.startup.periodSeconds}`, `${pad}    failureThreshold: ${spec.startup.failureThreshold}`);
       if (spec.apparmor) {
         lines.push(`${pad}  securityContext:`, `${pad}    appArmorProfile:`,
           ...(spec.apparmor === "runtime/default" ? [`${pad}      type: RuntimeDefault`] : [`${pad}      type: Localhost`, `${pad}      localhostProfile: ${spec.apparmor}`]));
@@ -3000,6 +3231,18 @@
         else table([["NAME", "POLICYNAME", "PARAMREF", "AGE"], ...list.map((v) => [v.binding, v.name, "<unset>", "3d"])]);
         return out;
       }
+      if (kind === "daemonsets") {
+        const list = c.daemonsets.filter((x) => !name || x.name === name);
+        if (name && !list.length) return notFound("daemonsets.apps", name), out;
+        if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "DESIRED", "CURRENT", "READY", "UP-TO-DATE", "AVAILABLE", "NODE SELECTOR", "AGE"], ...list.map((x) => {
+          const want = NODES.filter((n) => c.dsWants(x, n)).length;
+          const pods = c.pods.filter((p) => p.ds === x.name);
+          const ready = pods.filter((p) => p.ready).length;
+          return [x.name, want, pods.length, ready, pods.length, ready, "<none>", age(x.age)];
+        })]);
+        return out;
+      }
       if (kind === "pdbs") {
         if (!c.pdbs.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "MIN AVAILABLE", "MAX UNAVAILABLE", "ALLOWED DISRUPTIONS", "AGE"],
@@ -3087,7 +3330,10 @@
         say(`    Restart Count:  ${p.restarts}`);
         if (p.spec.lim) say(`    Limits:\n      memory:       ${fmtMem(p.spec.lim)}`);
         if (p.spec.req) say(`    Requests:\n      memory:       ${fmtMem(p.spec.req)}`);
-        if (p.spec.liveness) say(`    Liveness:       http-get http://:${p.spec.liveness}/ delay=0s timeout=1s period=10s #success=1 #failure=3`);
+        if (p.spec.command) say(`    Command:\n${p.spec.command.map((x) => "      " + x).join("\n")}`);
+        const lcfg = p.spec.livenessCfg || { initialDelaySeconds: 0, periodSeconds: 10, failureThreshold: 3 };
+        if (p.spec.liveness) say(`    Liveness:       http-get http://:${p.spec.liveness}/${p.spec.livenessCfg ? "healthz" : ""} delay=${lcfg.initialDelaySeconds}s timeout=1s period=${lcfg.periodSeconds}s #success=1 #failure=${lcfg.failureThreshold}`);
+        if (p.spec.startup) say(`    Startup:        http-get http://:${p.spec.liveness || 8080}/healthz delay=0s timeout=1s period=${p.spec.startup.periodSeconds}s #success=1 #failure=${p.spec.startup.failureThreshold}`);
         if (p.spec.probe) say(`    Readiness:      http-get http://:${APPS[appOf(p.spec.image)]?.port || 80}${p.spec.probe} delay=0s timeout=1s period=10s #success=1 #failure=3`);
         if (p.spec.envFrom) say(`    Environment Variables from:\n      ${p.spec.envFrom}  ConfigMap  Optional: false`);
         const env = Object.entries(p.spec.env);
@@ -3108,11 +3354,12 @@
         const ready = c.podsOf(d.name).filter((p) => p.ready && !p.creating && !p.terminating).length;
         say(`Name:               ${d.name}`);
         say(`Namespace:          ${NS}`);
-        say(`Selector:           app=${d.name}`);
+        say(`Selector:           app=${d.labels.app || d.name}`);
         say(`Replicas:           ${d.replicas} desired | ${ready} available | ${d.replicas - Math.min(ready, d.replicas)} unavailable`);
-        say("StrategyType:       RollingUpdate");
+        say(`StrategyType:       ${d.strategy}`);
+        if (d.strategy === "RollingUpdate") say("RollingUpdateStrategy:  25% max unavailable, 25% max surge");
         say("Pod Template:");
-        say(`  Labels:  app=${d.name}`);
+        say(`  Labels:  ${sel({ app: d.name, ...d.labels })}`);
         say("  Containers:");
         say(`   ${d.name}:`);
         say(`    Image:      ${d.spec.image}`);
@@ -3328,6 +3575,22 @@
         for (const [k, v] of Object.entries(x.data)) say(`${k}:  ${v.length} bytes`);
         return out;
       }
+      if (kind === "daemonsets") {
+        const x = c.daemonsets.find((y) => y.name === name);
+        if (!x) return notFound("daemonsets.apps", name), out;
+        const pods = c.pods.filter((p) => p.ds === x.name);
+        say(`Name:           ${x.name}`);
+        say(`Selector:       app=${x.name}`);
+        say("Node-Selector:  <none>");
+        say(`Desired Number of Nodes Scheduled: ${NODES.filter((n) => c.dsWants(x, n)).length}`);
+        say(`Current Number of Nodes Scheduled: ${pods.length}`);
+        say(`Pods Status:    ${pods.filter((p) => p.ready).length} Running / 0 Waiting / 0 Succeeded / 0 Failed`);
+        say("Pod Template:");
+        say(`  Containers:\n   ${x.name}:\n    Image:  ${x.image}`);
+        say(`  Tolerations:  ${x.tolerations.length ? x.tolerations.map((t) => `${t.key}${t.operator === "Exists" ? "" : "=" + t.value}:${t.effect || "<all>"}${t.operator === "Exists" ? " op=Exists" : ""}`).join(", ") : "<none>"}`);
+        say("Events:         <none>");
+        return out;
+      }
       if (kind === "pdbs") {
         const b = c.pdbs.find((x) => x.name === name);
         if (!b) return notFound("poddisruptionbudgets.policy", name), out;
@@ -3465,6 +3728,11 @@
       if (st.startsWith("Init:")) return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: PodInitializing`, "warn"), out;
       const crashLogsOf = () => (typeof app.crashLogs === "function" ? app.crashLogs({ env: c.envOf(p), c, pod: p }) : app.crashLogs || []);
       const runLogs = () => (typeof app.logs === "function" ? app.logs({ env: p.env || c.envOf(p), c, pod: p }) : app.logs);
+      if (p.last && p.last.reason === "StartError") return say("(no output: the process never started. kubectl describe pod says why.)", "dim"), out;
+      if ((flags.previous || st === "CrashLoopBackOff") && p.last && p.last.slow) {
+        crashLogsOf().forEach((l) => say(l));
+        return out;
+      }
       if ((flags.previous || st === "CrashLoopBackOff") && p.last && p.last.liveness) {
         [...runLogs(), "2026/10/30 10:41:07 [notice] 1#1: signal 15 (SIGTERM) received, exiting", "2026/10/30 10:41:07 [notice] 1#1: exit"].forEach((l) => say(l));
         return out;
@@ -3518,7 +3786,7 @@
         if (kind !== "services") return say("error: kubectl set selector works on Services: kubectl set selector service <name> app=<label>", "warn"), out;
         const s = svcByName(name);
         if (!s) return notFound("services", name), out;
-        const pairs = rest.filter((x) => x.includes("="));
+        const pairs = rest.filter((x) => x.includes("=")).flatMap((x) => x.split(","));
         if (!pairs.length) return say("error: give the new selector, for example app=menu", "warn"), out;
         s.selector = Object.fromEntries(pairs.map((x) => x.split("=")));
         say(`service/${s.name} selector updated`);
@@ -3733,6 +4001,10 @@
           fresh.hash = p.hash;
           say(`(the ReplicaSet creates a replacement from the same template: ${fresh.name})`, "dim");
         }
+      } else if (p.ds) {
+        c.pods = c.pods.filter((x) => x !== p);
+        c.retry = true;
+        say(`(the DaemonSet ${p.ds} creates a replacement on ${p.node})`, "dim");
       } else {
         c.pods = c.pods.filter((x) => x !== p);
         say("(a bare Pod has no controller, so nothing brings it back; type 'reset' to start again)", "dim");
@@ -3994,6 +4266,15 @@
         say(`networkpolicy.networking.k8s.io/${name} patched`);
         return out;
       }
+      if (kind === "daemonsets") {
+        const x = c.daemonsets.find((y) => y.name === name);
+        if (!x) return notFound("daemonsets.apps", name), out;
+        const tpl = ((spec.template || {}).spec) || {};
+        if (!("tolerations" in tpl)) return say(`This playground patches a DaemonSet's tolerations: -p '{"spec":{"template":{"spec":{"tolerations":[...]}}}}'`, "dim"), out;
+        x.tolerations = (tpl.tolerations || []).map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
+        c.retry = true;
+        return say(`daemonset.apps/${name} patched`), out;
+      }
       if (kind === "pods") {
         const p = podByName(name);
         if (!p) return notFound("pods", name), out;
@@ -4032,6 +4313,13 @@
         if (tpl.containers && !ctr) return say(`(no container named "${d.name}" in that patch; nothing changed)`, "warn"), out;
         if (ctr) {
           if (ctr.image) next.image = ctr.image;
+          if (ctr.command === null) next.command = null;
+          else if (Array.isArray(ctr.command)) next.command = ctr.command.map(String);
+          if (ctr.startupProbe === null) next.startup = null;
+          else if (ctr.startupProbe) next.startup = { failureThreshold: Number(ctr.startupProbe.failureThreshold) || 3, periodSeconds: Number(ctr.startupProbe.periodSeconds) || 10 };
+          if (ctr.livenessProbe && next.livenessCfg) {
+            for (const k of ["initialDelaySeconds", "periodSeconds", "failureThreshold"]) if (ctr.livenessProbe[k] !== undefined) next.livenessCfg[k] = Number(ctr.livenessProbe[k]);
+          }
           if (ctr.readinessProbe === null) next.probe = null;
           else if (ctr.readinessProbe && ctr.readinessProbe.httpGet && ctr.readinessProbe.httpGet.path) next.probe = ctr.readinessProbe.httpGet.path;
           if (ctr.envFrom === null) next.envFrom = null;
@@ -4063,6 +4351,14 @@
         if (tpl.nodeSelector === null) next.nodeSelector = {};
         else if (tpl.nodeSelector) next.nodeSelector = { ...tpl.nodeSelector };
         if (spec.replicas !== undefined) return say("Use kubectl scale for replicas here.", "dim"), out;
+        if (spec.strategy && spec.strategy.type) {
+          if (spec.strategy.type === "Recreate" && spec.strategy.rollingUpdate !== null && d.strategy === "RollingUpdate") {
+            return say(`The Deployment "${name}" is invalid: spec.strategy.rollingUpdate: Forbidden: may not be specified when strategy \`type\` is 'Recreate'\n(add "rollingUpdate": null to the patch to clear it)`, "warn"), out;
+          }
+          d.strategy = spec.strategy.type;
+          c.retry = true;
+          if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched`), out;
+        }
         if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched (no change)`, "dim"), out;
         if (d.spec.probe && !next.probe) say("(removing the probe makes Pods Ready, but nothing then checks they really are)", "warn");
         if (d.spec.liveness && !next.liveness) say("(without a liveness probe nobody restarts the app if it hangs; point the probe at the right port instead)", "warn");
@@ -4461,7 +4757,7 @@
       "hpa", "vpa", "namespace", "pvc", "storageclass", "ingress", "ingressclass", "quota", "job", "pdb", "cordon", "uncordon", "drain", "curl",
       "helm", "rollback", "history", "httproute", "gateway", "cronjob", "csr", "certificate", "approve", "config", "set-context", "etcdctl", "ssh",
       "etcdutl", "restore", "kubeadm", "upgrade", "plan", "apt-get", "apt-mark", "apt-cache", "madison", "systemctl", "daemon-reload", "trivy",
-      "secret", "validatingadmissionpolicy", "validatingadmissionpolicybinding", "aa-status", "apparmor_parser", "sed", "grep", "replace", "control-plane"];
+      "secret", "daemonset", "imagetools", "startupProbe", "strategy", "validatingadmissionpolicy", "validatingadmissionpolicybinding", "aa-status", "apparmor_parser", "sed", "grep", "replace", "control-plane"];
     const hits = [...new Set(names)].filter((n) => n.startsWith(stem) && n !== stem);
     if (hits.length === 1) input.value = v.slice(0, start) + prefix + hits[0] + " ";
     else if (hits.length > 1) {

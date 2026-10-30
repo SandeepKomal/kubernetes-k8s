@@ -132,7 +132,23 @@ window.QUEST_QUIZ_BANK = {
         "regcred must be type Opaque",
         "The kubelet caches the first failure for a day"
       ], answer: 1,
-      why: "Secrets are namespaced and a Pod never reads another namespace's. Create the docker-registry Secret in every namespace that pulls from the registry, or have your tooling copy it." }
+      why: "Secrets are namespaced and a Pod never reads another namespace's. Create the docker-registry Secret in every namespace that pulls from the registry, or have your tooling copy it." },
+    { q: "A Pod restarts in a loop, `kubectl logs` prints nothing, and describe shows `Reason: StartError, Exit Code: 128`. What is the likely cause?",
+      options: [
+        "The app ran out of memory",
+        "The container's command could not be executed: a typo, a missing binary or a script without execute permission; the Failed event names it",
+        "A failing readiness probe",
+        "The node is NotReady"
+      ], answer: 1,
+      why: "With StartError the process never ran, so there are no logs to read. OOMKilled would be exit code 137, and a readiness probe never restarts a container." },
+    { q: "An image works on a developer's Apple Silicon laptop but crashes on the cluster with `exec format error`. What fixes it for good?",
+      options: [
+        "Raise the memory limit",
+        "Build and push a multi-architecture image (`docker buildx build --platform linux/amd64,linux/arm64`) and use that tag",
+        "Add `privileged: true`",
+        "Restart the kubelet"
+      ], answer: 1,
+      why: "The binary was compiled for arm64 and the nodes are amd64. `docker buildx imagetools inspect` shows an image's platforms; a nodeSelector on kubernetes.io/arch only helps if nodes of that architecture exist." }
   ],
 
   "02": [
@@ -183,7 +199,15 @@ window.QUEST_QUIZ_BANK = {
         "The Pod's name",
         "Annotations"
       ], answer: 3,
-      why: "Labels identify and select objects, and their values are limited to 63 characters of letters, digits, `-`, `_` and `.`, so a URL cannot be one. Annotations hold arbitrary non-identifying text, which is what CI and GitOps tools use them for." }
+      why: "Labels identify and select objects, and their values are limited to 63 characters of letters, digits, `-`, `_` and `.`, so a URL cannot be one. Annotations hold arbitrary non-identifying text, which is what CI and GitOps tools use them for." },
+    { q: "A stable Deployment and a canary Deployment both label their Pods `app: menu`. The stable Service selects `app: menu`. What happens?",
+      options: [
+        "Only the stable Pods get traffic, because they were created first",
+        "The Service sends traffic to both, in proportion to the number of Ready Pods; give each track its own label and select on it",
+        "The API server rejects the second Deployment",
+        "The canary Pods never become Ready"
+      ], answer: 1,
+      why: "A Service knows nothing about Deployments; it selects Pods by label. Add a label such as `track: stable` and include it in the stable Service's selector." }
   ],
 
   "03": [
@@ -619,7 +643,15 @@ window.QUEST_QUIZ_BANK = {
         "Add a startupProbe with enough failureThreshold × periodSeconds to cover start-up; liveness and readiness only run after it succeeds",
         "Increase the memory limit"
       ], answer: 2,
-      why: "A startupProbe gives slow starters time without weakening liveness for the rest of the Pod's life. A huge initialDelaySeconds delays detection of real hangs after every restart." }
+      why: "A startupProbe gives slow starters time without weakening liveness for the rest of the Pod's life. A huge initialDelaySeconds delays detection of real hangs after every restart." },
+    { q: "An app needs about 90 seconds to start. Its liveness probe has `initialDelaySeconds: 10`, `periodSeconds: 10` and `failureThreshold: 3`. What happens, and what is the clean fix?",
+      options: [
+        "It starts normally; liveness only runs after readiness passes",
+        "It is killed after about 40 seconds, in a loop; add a startupProbe whose failureThreshold × periodSeconds exceeds the slowest start",
+        "It is marked NotReady but keeps running",
+        "The Deployment is paused"
+      ], answer: 1,
+      why: "Liveness does not wait for readiness. A startupProbe holds liveness and readiness back until it succeeds once, so the liveness probe can stay strict for hangs later." }
   ],
 
   "07": [
@@ -761,7 +793,23 @@ window.QUEST_QUIZ_BANK = {
         "PVCs can never be deleted",
         "The StorageClass has reclaimPolicy Retain"
       ], answer: 1,
-      why: "Delete or scale down the Pods that use it and the deletion completes. Whether the disk itself survives then depends on the PersistentVolume's reclaimPolicy." }
+      why: "Delete or scale down the Pods that use it and the deletion completes. Whether the disk itself survives then depends on the PersistentVolume's reclaimPolicy." },
+    { q: "A single-replica Deployment with a ReadWriteOnce PVC gets a new image. The new Pod lands on another node and stays ContainerCreating with `Multi-Attach error`. Why, and what prevents it next time?",
+      options: [
+        "The PVC is full",
+        "RollingUpdate starts the new Pod before stopping the old one, and the volume can only attach to one node; use strategy Recreate (or a StatefulSet)",
+        "The StorageClass is missing",
+        "The image is too large"
+      ], answer: 1,
+      why: "The old Pod keeps the volume attached and is only removed after the new one is Ready, which never happens. Recreate stops the old Pod first; ReadWriteMany storage avoids the problem entirely." },
+    { q: "You patch a Deployment to `strategy: {type: Recreate}` and the API server answers `spec.strategy.rollingUpdate: Forbidden`. Why?",
+      options: [
+        "Recreate needs a StatefulSet",
+        "The existing rollingUpdate settings (maxSurge, maxUnavailable) are kept by the merge patch and are not allowed with Recreate; set `rollingUpdate: null` in the same patch",
+        "Recreate requires replicas: 0",
+        "Only admins can change the strategy"
+      ], answer: 1,
+      why: "A merge patch only changes the fields you name, so the defaulted rollingUpdate block stays. Clearing it in the same patch makes the object valid." }
   ],
 
   "09": [
@@ -1769,7 +1817,23 @@ window.QUEST_QUIZ_BANK = {
         "Each kubelet creates them from local manifest files",
         "The scheduler spreads them over random nodes"
       ], answer: 1,
-      why: "DaemonSet Pods go through the default scheduler, using a `matchFields` affinity on `metadata.name`. So a full node can leave an agent Pending, and a high priority class lets it preempt other Pods." }
+      why: "DaemonSet Pods go through the default scheduler, using a `matchFields` affinity on `metadata.name`. So a full node can leave an agent Pending, and a high priority class lets it preempt other Pods." },
+    { q: "A log agent DaemonSet shows `DESIRED 2, READY 2` on a three-node cluster. One node is tainted `dedicated=gpu:NoSchedule`. What is going on?",
+      options: [
+        "Everything is fine; DaemonSets skip GPU nodes",
+        "DESIRED counts only nodes whose taints the DaemonSet tolerates, so the GPU node is silently left out; add a toleration for that taint",
+        "The third Pod is Pending",
+        "The DaemonSet hit its maxUnavailable"
+      ], answer: 1,
+      why: "Node agents need tolerations for every taint in use. Removing the taint instead would open the GPU node to ordinary workloads." },
+    { q: "You delete one Pod of a DaemonSet. What happens?",
+      options: [
+        "It is gone until the DaemonSet is recreated",
+        "The DaemonSet controller creates a replacement on the same node",
+        "A Deployment-style rollout restarts all its Pods",
+        "The node is cordoned"
+      ], answer: 1,
+      why: "The controller keeps exactly one Pod on every eligible node. To roll all of them, use `kubectl rollout restart daemonset/<name>`." }
   ],
 
   "20": [
