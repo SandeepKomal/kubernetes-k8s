@@ -22,12 +22,12 @@ nothing.
 | Topic | Practise it |
 | --- | --- |
 | Pods, kubectl, imperative and declarative | Level 00 |
-| kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace |
+| kubeconfig contexts and namespaces | Level 00 · Playground: Wrong namespace, Namespace stuck Terminating |
 | Deployments, rolling updates, rollback, pause and resume | Level 03 · Playground: Bad rollout, Rollout paused |
-| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key |
-| Requests, limits, QoS, PriorityClass and preemption | Level 07 · Playground: Pending, OOMKilled, Critical Pod can't schedule |
+| ConfigMaps and Secrets | Level 05 · Playground: CrashLoopBackOff, Missing ConfigMap, ConfigMap not reloaded, Missing Secret key, Secret volume not found |
+| Requests, limits, QoS, LimitRange, PriorityClass and preemption | Level 07 · Playground: Pending, OOMKilled, OOMKilled with no limit set, Critical Pod can't schedule |
 | Probes (liveness, readiness, startup) | Level 06 · Playground: Liveness probe, Readiness probe, Slow start killed · [probes.md](probes.md) |
-| Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running · [reference/manifests/jobs](../reference/manifests/jobs/) |
+| Jobs and CronJobs | Level 09 · Playground: Failed Job, CronJob not running, CronJob blocked by a hung Job · [reference/manifests/jobs](../reference/manifests/jobs/) |
 | StatefulSets and headless Services | Level 15 · [reference/manifests/statefulsets](../reference/manifests/statefulsets/) |
 | DaemonSets | Level 19 · Playground: DaemonSet missing a node · [reference/manifests/daemonsets](../reference/manifests/daemonsets/) |
 | Init containers and native sidecars | Level 16 · Playground: Init container |
@@ -44,7 +44,7 @@ nothing.
 | --- | --- |
 | Labels and selectors | Level 02 · Playground: No endpoints, Canary leaking |
 | Service types, ports, DNS | Level 04 · Playground: DNS across namespaces, Wrong targetPort, CoreDNS down, LoadBalancer pending · [reference/manifests/services](../reference/manifests/services/) |
-| Ingress, IngressClass, TLS | Playground: Ingress 404, Ingress 503, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
+| Ingress, IngressClass, path types, TLS | Playground: Ingress 404, Ingress 503, Ingress path too exact, Ingress TLS · [reference/manifests/ingress](../reference/manifests/ingress/) |
 | Gateway API: GatewayClass, Gateway, HTTPRoute | Playground: Gateway API route |
 | NetworkPolicy | Level 11 · Playground: NetworkPolicy · [network-policies.md](network-policies.md) |
 
@@ -79,7 +79,7 @@ nothing.
 | Pod states and events | Level 01 · Playground scenarios · Troubleshoot page |
 | Application and Service failures | Levels 01, 02, 04, 06, 14 · Troubleshoot page |
 | Incident under pressure | Level 14 |
-| Node problems (NotReady, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Drain blocked |
+| Node problems (NotReady, DiskPressure and eviction, kubelet, crictl, drain) | Troubleshoot page · Playground: Node NotReady, Node DiskPressure, Drain blocked |
 | Control-plane components (static Pods, scheduler) | Playground: Scheduler down |
 | Certificate expiry and renewal with kubeadm | Playground: Certificates expired |
 | Finalizers and objects stuck Terminating | Playground: Stuck Terminating |

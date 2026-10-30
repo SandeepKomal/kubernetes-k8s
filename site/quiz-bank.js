@@ -57,7 +57,15 @@ window.QUEST_QUIZ_BANK = {
         "Move the app to the default namespace",
         "Restart kubectl"
       ], answer: 1,
-      why: "Each kubeconfig context has a default namespace. `kubectl config get-contexts` shows it; -n overrides it for one command." }
+      why: "Each kubeconfig context has a default namespace. `kubectl config get-contexts` shows it; -n overrides it for one command." },
+    { q: "You deleted a namespace three days ago and it still says Terminating. What does `kubectl describe ns <name>` usually show?",
+      options: [
+        "Nothing: it is waiting for the API server to restart",
+        "Which resources remain and which finalizers they wait on, for example a custom resource whose operator was uninstalled",
+        "That etcd is full",
+        "That the namespace has Pods running"
+      ], answer: 1,
+      why: "A namespace finishes deleting only when everything in it is gone. Remove the leftover object's finalizer once what it guarded is dealt with; never force the namespace through its /finalize API." }
   ],
 
   "01": [
@@ -461,7 +469,15 @@ window.QUEST_QUIZ_BANK = {
         "The Service needs a readiness probe",
         "kube-proxy is down"
       ], answer: 1,
-      why: "Cloud controllers (or MetalLB, cloud-provider-kind) assign the address. Without one it stays pending, but the NodePort works: `curl http://<node-ip>:<nodePort>/`." }
+      why: "Cloud controllers (or MetalLB, cloud-provider-kind) assign the address. Without one it stays pending, but the NodePort works: `curl http://<node-ip>:<nodePort>/`." },
+    { q: "An Ingress serves https://shop.example/api but returns 404 for /api/menu. Same host, same Service. Most likely cause?",
+      options: [
+        "The backend Service has no endpoints",
+        "`pathType: Exact` on /api, which matches /api only; `Prefix` matches /api/menu",
+        "The Ingress class is wrong",
+        "DNS for the host is broken"
+      ], answer: 1,
+      why: "A wrong class or missing endpoints would break /api too. Exact matches one path; Prefix matches whole path elements, so /api serves /api/menu but not /apis." }
   ],
 
   "05": [
@@ -584,7 +600,15 @@ window.QUEST_QUIZ_BANK = {
         "The Pod is Pending",
         "The key is created empty"
       ], answer: 1,
-      why: "optional: true turns a missing Secret or key from an error into an absent variable. Use it only when the app copes with the variable missing." }
+      why: "optional: true turns a missing Secret or key from an error into an absent variable. Use it only when the app copes with the variable missing." },
+    { q: "A new Pod has been in ContainerCreating for 20 minutes and `kubectl logs` has nothing. Where is the answer?",
+      options: [
+        "In the Deployment's YAML",
+        "In `kubectl describe pod` events, for example FailedMount: secret \"x\" not found",
+        "In the node's /var/log/syslog",
+        "Nowhere: delete the Pod"
+      ], answer: 1,
+      why: "The container never started, so there are no logs. The kubelet mounts volumes first and reports why it cannot in the Pod's events, then keeps retrying until the Secret or ConfigMap exists." }
   ],
 
   "06": [
@@ -750,7 +774,15 @@ window.QUEST_QUIZ_BANK = {
         "Set its limits equal to requests",
         "Add a toleration"
       ], answer: 1,
-      why: "Preemption only evicts Pods of lower priority. When everything runs at the default 0, nothing can be preempted. Give critical services a PriorityClass and leave batch work at the default." }
+      why: "Preemption only evicts Pods of lower priority. When everything runs at the default 0, nothing can be preempted. Give critical services a PriorityClass and leave batch work at the default." },
+    { q: "A Deployment sets no memory limit, yet its Pod is OOMKilled with a 128Mi limit. Where did the limit come from?",
+      options: [
+        "The node's default",
+        "A LimitRange in the namespace; the Pod has a kubernetes.io/limit-ranger annotation saying so",
+        "The container image",
+        "The HPA"
+      ], answer: 1,
+      why: "LimitRange defaults apply at admission to containers that set nothing. Set requests and limits on the workload itself; the defaults are a safety net." }
   ],
 
   "08": [
@@ -920,7 +952,15 @@ window.QUEST_QUIZ_BANK = {
     { q: "A CronJob has not created a Job for a week, and there are no error events. What is the first field to check?",
       options: ["`spec.schedule`", "`spec.suspend`", "`spec.jobTemplate.spec.backoffLimit`", "`metadata.labels`"],
       answer: 1,
-      why: "`suspend: true` silently stops new runs; `kubectl get cronjob` shows it in the SUSPEND column. After resuming, `kubectl create job <name> --from=cronjob/<cronjob>` proves the template works without waiting for the schedule." }
+      why: "`suspend: true` silently stops new runs; `kubectl get cronjob` shows it in the SUSPEND column. After resuming, `kubectl create job <name> --from=cronjob/<cronjob>` proves the template works without waiting for the schedule." },
+    { q: "A CronJob with `concurrencyPolicy: Forbid` has not run for three days, and nothing failed. What do you check?",
+      options: [
+        "The schedule's syntax",
+        "`kubectl get jobs`: a previous run may still be Running; with Forbid, every new run is skipped while it is",
+        "The image",
+        "The node's clock"
+      ], answer: 1,
+      why: "One hung Job blocks the CronJob silently (JobAlreadyActive events). Delete it, and set activeDeadlineSeconds on the job template so the next hang fails instead." }
   ],
 
   "10": [
@@ -1494,7 +1534,15 @@ window.QUEST_QUIZ_BANK = {
         "Restart the API server",
         "Recreate the namespace"
       ], answer: 1,
-      why: "The namespace controller cannot finish while it cannot list or delete some resource. Fix the broken APIService, or remove the leftover objects' finalizers, before resorting to editing the namespace finalizer." }
+      why: "The namespace controller cannot finish while it cannot list or delete some resource. Fix the broken APIService, or remove the leftover objects' finalizers, before resorting to editing the namespace finalizer." },
+    { q: "Pods on one node are Evicted and new ones are Pending with `untolerated taint {node.kubernetes.io/disk-pressure: }`. What fixes it?",
+      options: [
+        "Remove the taint with kubectl taint",
+        "Free the node's disk, for example `crictl rmi --prune` for unused images; the kubelet then lifts the taint itself",
+        "Restart the scheduler",
+        "Add more memory"
+      ], answer: 1,
+      why: "The kubelet sets the disk-pressure taint and puts it back while the disk is still full. Fix the disk, then delete the Evicted Pods with --field-selector=status.phase=Failed." }
   ],
 
   "15": [

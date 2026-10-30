@@ -530,7 +530,8 @@ window.QUEST = {
       "kubeadm upgrade apply fails",
       "Node NotReady after a kubelet upgrade",
       "etcd snapshot fails",
-      "Restore etcd from a snapshot"
+      "Restore etcd from a snapshot",
+      "Namespace stuck Terminating"
     ]]
   ],
 
@@ -561,16 +562,16 @@ window.QUEST = {
       level: "16", scenarios: ["init"] },
     { status: "ContainerCreating (for minutes)", meaning: "Stuck before the container can start, usually on volumes or networking.",
       causes: ["A mounted ConfigMap or Secret does not exist (FailedMount)", "A volume still attached to another node (Multi-Attach error)", "CNI problems assigning an IP"],
-      commands: ["kubectl describe pod <pod>   # FailedMount / FailedAttachVolume", "kubectl get events --sort-by=.lastTimestamp"],
-      level: "14" },
+      commands: ["kubectl describe pod <pod>   # FailedMount / FailedAttachVolume", "kubectl get secrets,configmaps   # in this namespace", "kubectl get events --sort-by=.lastTimestamp"],
+      level: "14", scenarios: ["secretvolume", "multiattach"] },
     { status: "Running but 0/1 Ready", meaning: "The readiness probe fails, so the Pod is kept out of its Services.",
       causes: ["Probe path or port is wrong (404 or connection refused)", "The app needs longer to start (add a startupProbe)", "A dependency the readiness check needs is down"],
       commands: ["kubectl describe pod <pod>   # Readiness probe failed", "kubectl get events --field-selector reason=Unhealthy", "kubectl logs <pod>   # the probe's requests show up here"],
       level: "06", scenarios: ["probe"] },
     { status: "OOMKilled", meaning: "The container went over its memory limit and the kernel killed it (exit code 137).",
-      causes: ["The memory limit is lower than the real working set", "A memory leak", "A runtime heap (JVM, Node.js) set larger than the limit"],
-      commands: ["kubectl describe pod <pod>   # Last State: OOMKilled", "kubectl top pod <pod>", "kubectl describe vpa <name>   # if a VPA watches it, read its recommendation"],
-      level: "07", scenarios: ["oom", "vpa"] },
+      causes: ["The memory limit is lower than the real working set", "No limit in the manifest, so the namespace's LimitRange default applies", "A memory leak", "A runtime heap (JVM, Node.js) set larger than the limit"],
+      commands: ["kubectl describe pod <pod>   # Last State: OOMKilled, and an annotation if LimitRanger set the limit", "kubectl describe limitrange", "kubectl top pod <pod>", "kubectl describe vpa <name>   # if a VPA watches it, read its recommendation"],
+      level: "07", scenarios: ["oom", "limitrange", "vpa"] },
     { status: "Service has no endpoints", meaning: "The Service's selector matches no Ready Pod.",
       causes: ["Label typo between Service selector and Pod labels", "Pods exist but are not Ready", "Service in a different namespace from the Pods"],
       commands: ["kubectl describe svc <svc>", "kubectl get pods --show-labels", "kubectl get endpointslices -l kubernetes.io/service-name=<svc>"],
@@ -584,9 +585,9 @@ window.QUEST = {
       commands: ["kubectl exec <pod> -- nslookup <svc>.<namespace>.svc.cluster.local", "kubectl get pods -n kube-system -l k8s-app=kube-dns", "kubectl get networkpolicy"],
       level: "04", scenarios: ["dns", "coredns"] },
     { status: "Ingress returns 404 or 503", meaning: "The ingress controller got the request but could not route it to a working backend.",
-      causes: ["404: no rule matches the host or path, or the wrong ingressClassName", "503: the backend Service has no Ready endpoints", "Backend Service name or port wrong in the Ingress"],
-      commands: ["kubectl describe ingress <name>   # Rules and Backends", "kubectl get endpoints <backend-svc>", "kubectl get ingressclass", "curl -i -H 'Host: <host>' http://<ingress-address>/"],
-      level: "04", scenarios: ["ingress404", "ingress503"] },
+      causes: ["404: no rule matches the host or path, or the wrong ingressClassName", "404 on sub-paths only: pathType Exact where Prefix was meant", "503: the backend Service has no Ready endpoints", "Backend Service name or port wrong in the Ingress"],
+      commands: ["kubectl describe ingress <name>   # Rules and Backends", "kubectl get ingress <name> -o yaml   # pathType", "kubectl get endpoints <backend-svc>", "kubectl get ingressclass", "curl -i -H 'Host: <host>' http://<ingress-address>/"],
+      level: "04", scenarios: ["ingress404", "ingress503", "pathtype"] },
     { status: "Forbidden (403) from the API", meaning: "Authentication worked; RBAC does not allow this user or ServiceAccount to do that.",
       causes: ["No Role or ClusterRole grants the verb", "A RoleBinding that names the wrong ServiceAccount or namespace", "Missing sub-resource like pods/log or pods/exec"],
       commands: ["kubectl auth can-i <verb> <resource> --as=system:serviceaccount:<ns>:<sa>", "kubectl auth can-i --list --as=system:serviceaccount:<ns>:<sa>", "kubectl describe rolebinding <name>"],
@@ -616,9 +617,9 @@ window.QUEST = {
       commands: ["kubectl describe job <name>", "kubectl get pods -l job-name=<name>", "kubectl logs job/<name>"],
       level: "09", scenarios: ["job"] },
     { status: "CronJob does not run", meaning: "No Jobs appear at the scheduled time.",
-      causes: ["suspend: true", "The schedule is in the controller's time zone; set timeZone", "concurrencyPolicy: Forbid while the last run is still going", "Too many missed starts (startingDeadlineSeconds)"],
-      commands: ["kubectl get cronjob <name>   # SUSPEND, LAST SCHEDULE", "kubectl describe cronjob <name>", "kubectl create job manual-run --from=cronjob/<name>"],
-      level: "09", scenarios: ["cronjob"] },
+      causes: ["suspend: true", "concurrencyPolicy: Forbid while a previous run hangs (no activeDeadlineSeconds)", "The schedule is in the controller's time zone; set timeZone", "Too many missed starts (startingDeadlineSeconds)"],
+      commands: ["kubectl get cronjob <name>   # SUSPEND, ACTIVE, LAST SCHEDULE", "kubectl describe cronjob <name>   # JobAlreadyActive", "kubectl get jobs   # one Running for days?", "kubectl create job manual-run --from=cronjob/<name>"],
+      level: "09", scenarios: ["cronjob", "cronhung"] },
     { status: "Node NotReady", meaning: "The node's kubelet stopped reporting healthy; its Pods are evicted after a timeout.",
       causes: ["The kubelet or container runtime stopped", "Disk, memory or PID pressure", "Network loss between the node and the API server", "Expired kubelet certificates"],
       commands: ["kubectl describe node <node>   # Conditions and events", "ssh <node> sudo systemctl status kubelet; sudo journalctl -u kubelet", "ssh <node> sudo crictl ps", "kubectl get pods -A -o wide --field-selector spec.nodeName=<node>"],
@@ -740,9 +741,13 @@ window.QUEST = {
       commands: ["kubectl get sts <name>   # READY 0/N", "kubectl describe pod <name>-0", "kubectl get pvc -l app=<name>"],
       level: "15", scenarios: ["statefulset"] },
     { status: "Evicted", meaning: "The kubelet removed the Pod to protect the node.",
-      causes: ["Node memory or disk pressure", "Ephemeral storage use over its limit", "BestEffort Pods go first, then Burstable over their requests"],
-      commands: ["kubectl describe node <node>   # Conditions", "kubectl get pods -A --field-selector=status.phase=Failed"],
-      level: "07" }
+      causes: ["Node disk pressure, often old images filling /var/lib/containerd", "Node memory pressure", "Ephemeral storage use over its limit", "BestEffort Pods go first, then Burstable over their requests"],
+      commands: ["kubectl describe node <node>   # Conditions and the disk-pressure taint", "ssh <node> sudo df -h; ssh <node> sudo crictl rmi --prune", "kubectl delete pods -A --field-selector=status.phase=Failed"],
+      level: "07", scenarios: ["diskpressure"] },
+    { status: "Namespace stuck Terminating", meaning: "The namespace was deleted, but something inside it is still waiting for a finalizer to be removed.",
+      causes: ["An operator was uninstalled before its custom resources, so nothing removes their finalizers", "An APIService (such as metrics) is unavailable, so the namespace cannot list everything to delete", "A PersistentVolumeClaim or Pod with its own finalizer"],
+      commands: ["kubectl describe ns <ns>   # NamespaceContentRemaining / NamespaceFinalizersRemaining", "kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n <ns>", "kubectl patch <kind> <name> -n <ns> --type=merge -p '{\"metadata\":{\"finalizers\":null}}'"],
+      level: "00", scenarios: ["nsstuck"] }
   ],
 
   // Loaded by "Load an example" in YAML X-ray: realistic, with a few gaps to find.
@@ -886,6 +891,11 @@ window.QUEST = {
     ["kubectl drain <node> --ignore-daemonsets --delete-emptydir-data", "Evict Pods before maintenance (respects PDBs)", "Nodes", "any"],
     ["kubectl uncordon <node>", "Allow scheduling again", "Nodes", "any"],
     ["kubectl taint node <node> key=value:NoSchedule", "Reserve a node (add - at the end to remove)", "Nodes", "any"],
-    ["kubectl label node <node> disk=ssd", "Label a node for nodeSelector/affinity", "Nodes", "any"]
+    ["kubectl label node <node> disk=ssd", "Label a node for nodeSelector/affinity", "Nodes", "any"],
+    ["ssh <node> sudo df -h; ssh <node> sudo crictl rmi --prune", "A node with DiskPressure: see the disk, then remove unused images", "Nodes", "diskpressure"],
+    ["kubectl delete pods --field-selector=status.phase=Failed", "Clean up Evicted and failed Pods", "Debug", "diskpressure"],
+    ["kubectl describe limitrange <name>", "The defaults a namespace gives containers that set no requests or limits", "Inspect", "limitrange"],
+    ["kubectl describe ns <ns>", "Why a namespace is stuck Terminating: what remains and which finalizers", "Debug", "nsstuck"],
+    ["kubectl patch cronjob <name> -p '{\"spec\":{\"jobTemplate\":{\"spec\":{\"activeDeadlineSeconds\":600}}}}'", "Stop a hung run from blocking a CronJob for ever", "Change", "cronhung"]
   ]
 };
