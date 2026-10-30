@@ -3,9 +3,12 @@
 | File | Shows |
 | --- | --- |
 | [web-deployment.yaml](web-deployment.yaml) | A Deployment and Service with CPU requests, ready for an HPA |
-| [web-hpa.yaml](web-hpa.yaml) | HPA on average CPU, with a scale-down stabilization window |
+| [web-hpa.yaml](web-hpa.yaml) | HPA on average CPU (1 to 3 replicas), with a scale-down stabilization window |
 | [cpu-burner.yaml](cpu-burner.yaml) + [cpu-burner-hpa.yaml](cpu-burner-hpa.yaml) | Scaling out without generating traffic |
-| [web-vpa.yaml](web-vpa.yaml) | VPA in recommendation-only mode |
+| [web-vpa.yaml](web-vpa.yaml) | VPA in recommendation-only mode (reading only) |
+
+Everything here is sized for a laptop: at most 3 Pods per autoscaler, each
+requesting 50m CPU or less.
 
 The hands-on version is [level 13](../../../labs/13-autoscaling/).
 
@@ -43,8 +46,10 @@ kubectl run load --rm -it --restart=Never --image=busybox:1.36 -- \
 Replicas rise while the load runs. After you stop it, they fall again once
 the 5-minute stabilization window has passed.
 
-## 3. Vertical Pod Autoscaler (optional)
+## 3. Vertical Pod Autoscaler (reading only)
 
+Nothing here installs the VPA; to see it in action without installing
+anything, play the **VPA recommendation** scenario in the site's playground.
 The VPA is not part of Kubernetes itself; it lives in the
 [kubernetes/autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler)
 repository, which documents its installation. Once installed:

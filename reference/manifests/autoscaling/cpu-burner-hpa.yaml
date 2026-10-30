@@ -1,5 +1,6 @@
 # Each cpu-burner Pod runs at about 200% of its CPU request, so this HPA
-# scales out until it reaches maxReplicas. Watch it:
+# scales out until it reaches maxReplicas: 3 Pods at 50m each, a small
+# fraction of one laptop core. Watch it:
 #   kubectl get hpa cpu-burner -w
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -11,7 +12,7 @@ spec:
     kind: Deployment
     name: cpu-burner
   minReplicas: 1
-  maxReplicas: 4
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:

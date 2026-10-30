@@ -1,3 +1,6 @@
+# Reading only: this course does not install the VPA. The playground's
+# "VPA recommendation" scenario simulates it in the browser.
+#
 # VerticalPodAutoscaler in recommendation-only mode: it suggests requests
 # for the web Pods from their real usage but never changes them.
 #   kubectl describe vpa web        # see the Recommendation section

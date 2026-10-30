@@ -228,11 +228,11 @@ It is published with GitHub Pages at
 
 | Section | Description |
 | --- | --- |
-| Playground | Eleven simulated incidents to diagnose and fix with kubectl, beside a live cluster map: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, Pending, OOMKilled, a node selector, a failing readiness probe, a Service with no endpoints, a NetworkPolicy, RBAC forbidden and a bad rollout |
+| Playground | Seventeen simulated incidents to diagnose and fix with kubectl, beside a live cluster map: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, Pending, OOMKilled, a liveness probe restart loop, a stuck init container, a node selector, an untolerated taint, a failing readiness probe, a Service with no endpoints, a NetworkPolicy, RBAC forbidden, Pod Security rejection, a bad rollout, an HPA showing `<unknown>` and an ignored VPA recommendation |
 | Path | All levels, with progress saved in the browser |
 | Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
 | YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
-| Pod doctor | Common Pod and Service failure states, their causes and the commands that confirm them |
+| Troubleshoot | A searchable reference of 25 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC, Pod Security, rollouts, HPA and VPA, storage, Jobs, nodes): what each means, the likely causes, the commands that confirm them, and a link to practise the fix. Every entry has its own shareable link |
 | Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
 
 Every page opens with a How to use this panel: what the page is, step-by-step
@@ -248,7 +248,7 @@ cookies. To run it locally: `python3 -m http.server -d site 8000`.
 | --- | --- |
 | New to Kubernetes | Levels 00 to 06 in order, with the quiz after each level |
 | CKA or CKAD preparation | All levels using only imperative commands and `kubectl explain`, followed by the [CKA command reference](https://github.com/SandeepKomal/Imperative-commands-for-CKA) |
-| Joining an on-call rotation | Levels 01, 02, 04, 06, 07 and 14, with the Pod doctor as a reference |
+| Joining an on-call rotation | Levels 01, 02, 04, 06, 07 and 14, with the Troubleshoot page as a reference |
 | Platform or SRE role | Levels 15 to 21, then the [production example](examples/production-app/) |
 | Team onboarding | Assign levels as onboarding tasks; review real workloads with the [production readiness checklist](docs/production-checklist.md) |
 | Running on AWS | Complete the levels, then follow the [EKS quickstart](docs/eks-quickstart.md) |

@@ -9,9 +9,11 @@ require(path.resolve(__dirname, "../site/playground.js"));
 const { SCENARIOS, Cluster, kubectl, tokenize, parseMem } = globalThis.KQSim;
 
 const text = (c, cmd) => kubectl(c, cmd).map(([t]) => t).join("\n");
+// Run a command, then let the cluster settle as the page does: controllers
+// may need a few rounds (a rollout, then an autoscaler acting on it).
 function step(c, cmd) {
   const out = text(c, cmd);
-  c.settle();
+  for (let i = 0; i < 5 && c.dirty; i++) c.settle();
   return out;
 }
 const fresh = (id) => new Cluster(SCENARIOS.find((s) => s.id === id));
@@ -185,10 +187,98 @@ step(c, "kubectl rollout undo deployment/web");
 assert.ok(won(c), "rollout: fixed by undo");
 assert.strictEqual(c.podsOf("web").length, 2, "only the new ReplicaSet's Pods remain");
 
+// Liveness probe on the wrong port: restarts until it checks the right one.
+c = fresh("liveness");
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+CrashLoopBackOff\s+7/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "menu")), /Liveness probe failed: Get "http:\/\/[\d.]+:8080\/"[\s\S]*failed liveness probe, will be restarted/);
+assert.match(step(c, `kubectl logs ${podOf(c, "menu")} --previous`), /SIGTERM/);
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","livenessProbe":{"httpGet":{"port":8081}}}]}}}}'`);
+assert.ok(!won(c), "another wrong port must not fix it");
+assert.match(step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","livenessProbe":null}]}}}}'`), /nobody restarts the app/);
+assert.ok(!won(c), "removing the liveness probe must not count");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","livenessProbe":{"httpGet":{"port":80}}}]}}}}'`);
+assert.ok(won(c), "liveness: fixed by probing port 80");
+
+// Init container waiting for a Service that does not exist.
+c = fresh("init");
+assert.match(step(c, "kubectl get pods"), /orders-\S+\s+0\/1\s+Init:0\/1/);
+assert.match(step(c, `kubectl logs ${podOf(c, "orders")} -c wait-for-menu`), /can't resolve 'menu-svc/);
+assert.match(step(c, `kubectl logs ${podOf(c, "orders")}`), /PodInitializing/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "orders")), /Init Containers:[\s\S]*until nslookup menu-svc/);
+step(c, "kubectl expose deployment menu --port=80");
+assert.ok(!won(c), "a Service with another name must not fix it");
+assert.match(step(c, "kubectl expose deployment menu --name=menu-svc --port=80"), /exposed/);
+assert.ok(won(c), "init: fixed by creating the Service it waits for");
+assert.match(step(c, "kubectl get endpoints menu-svc"), /10\.244/);
+
+// Taint: needs a toleration; removing the taint is not the fix.
+c = fresh("taint");
+assert.match(step(c, "kubectl describe pod " + podOf(c, "trainer")), /1 node\(s\) had untolerated taint \{gpu: true\}, 2 node\(s\) didn't match/);
+assert.match(step(c, "kubectl describe node worker-3"), /Taints:\s+gpu=true:NoSchedule/);
+step(c, "kubectl taint node worker-3 gpu-");
+assert.ok(c.deploymentReady("trainer") && !won(c), "untainting schedules it, but the node is no longer reserved");
+c = fresh("taint");
+step(c, `kubectl patch deployment trainer -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"gpu","operator":"Equal","value":"false","effect":"NoSchedule"}]}}}}'`);
+assert.ok(!won(c), "a toleration with the wrong value must not fix it");
+step(c, `kubectl patch deployment trainer -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"gpu","operator":"Equal","value":"true","effect":"NoSchedule"}]}}}}'`);
+assert.ok(won(c), "taint: fixed by a matching toleration");
+assert.match(step(c, "kubectl get pods -o wide"), /trainer-\S+\s+1\/1\s+Running.*worker-3/);
+
+// HPA <unknown>: needs CPU requests; scaling by hand is not the fix.
+c = fresh("hpa");
+assert.match(step(c, "kubectl get hpa"), /cpu: <unknown>\/70%\s+2\s+6\s+2/);
+assert.match(step(c, "kubectl describe hpa web"), /missing request for cpu/);
+assert.match(step(c, "kubectl top pods"), /web-\S+\s+170m/);
+assert.match(step(c, "kubectl scale deployment/web --replicas=4"), /HorizontalPodAutoscaler manages/);
+assert.ok(!won(c), "manual scaling must not count");
+c = fresh("hpa");
+assert.match(step(c, "kubectl set resources deployment/web --requests=cpu=lots"), /invalid requests cpu/);
+step(c, "kubectl set resources deployment/web --requests=cpu=100m");
+assert.ok(won(c), "hpa: fixed by CPU requests");
+assert.match(step(c, "kubectl get hpa"), /cpu: \d+%\/70%\s+2\s+6\s+5/);
+assert.match(step(c, "kubectl describe hpa web"), /SuccessfulRescale\s+New size: 5/);
+
+// VPA in Off mode: apply its advice by hand, or let it act.
+c = fresh("vpa");
+assert.match(step(c, "kubectl get vpa"), /reports-vpa\s+Off\s+25m\s+450Mi/);
+assert.match(step(c, "kubectl describe vpa reports-vpa"), /Update Mode:\s+Off[\s\S]*Target:\s+memory: 450Mi/);
+assert.match(step(c, `kubectl patch vpa reports-vpa -p '{"spec":{"updatePolicy":{"updateMode":"Sometimes"}}}'`), /Unsupported value/);
+assert.match(step(c, `kubectl patch vpa reports-vpa -p '{"spec":{"updatePolicy":{"updateMode":"Recreate"}}}'`), /will not evict/);
+assert.ok(!won(c), "the updater leaves single-replica workloads alone by default");
+step(c, `kubectl patch vpa reports-vpa -p '{"spec":{"updatePolicy":{"minReplicas":1}}}'`);
+assert.ok(won(c), "vpa: fixed by letting the VPA apply its recommendation");
+assert.match(step(c, "kubectl describe pod " + podOf(c, "reports")), /Limits:\s+memory:\s+900Mi[\s\S]*Requests:\s+memory:\s+450Mi/);
+c = fresh("vpa");
+step(c, "kubectl set resources deployment/reports --requests=memory=450Mi --limits=memory=900Mi");
+assert.ok(won(c), "vpa: also fixed by applying the recommendation by hand");
+
+// Pod Security: no Pod at all; the ReplicaSet holds the reason.
+c = fresh("podsecurity");
+assert.match(step(c, "kubectl get pods"), /No resources found/);
+assert.match(step(c, "kubectl describe deployment menu"), /ReplicaFailure\s+True\s+FailedCreate/);
+const rs = step(c, "kubectl get rs").match(/menu-\S+/)[0];
+assert.match(step(c, "kubectl describe rs " + rs), /violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false/);
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"securityContext":{"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"menu","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}}}'`);
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+CreateContainerConfigError/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "menu")), /runAsNonRoot and image will run as root/);
+assert.ok(!won(c), "runAsNonRoot without a non-root user is not enough for a root image");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":65534}}}}}'`);
+assert.ok(won(c), "podsecurity: fixed by meeting the restricted level");
+c = fresh("podsecurity");
+assert.match(step(c, "kubectl label namespace kitchen pod-security.kubernetes.io/enforce=privileged --overwrite"), /lowering the security level/);
+assert.ok(c.deploymentReady("menu") && !won(c), "lowering the namespace level runs the Pod but does not count");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
 assert.match(text(c, "kubectl get pods -n other"), /No resources found in other namespace/);
 assert.match(text(c, "kubectl scale deployment/orders --replicas=99"), /0 to 6/);
+
+// The troubleshooting reference links only to scenarios that exist.
+global.window = {};
+require(path.resolve(__dirname, "../site/data.js"));
+const ids = new Set(SCENARIOS.map((x) => x.id));
+for (const d of window.QUEST.doctor) for (const id of d.scenarios || []) assert.ok(ids.has(id), `doctor "${d.status}" links to unknown scenario ${id}`);
+assert.strictEqual(new Set(window.QUEST.doctor.map((d) => d.status.toLowerCase().replace(/[^a-z0-9]+/g, "-"))).size, window.QUEST.doctor.length, "doctor links must be unique");
 
 console.log(`playground ok: ${SCENARIOS.length} scenarios`);

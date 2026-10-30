@@ -202,7 +202,31 @@ window.QUEST_QUIZ_BANK = {
         "No old ReplicaSets are kept, so there is no earlier revision to return to",
         "`revisionHistoryLimit` counts Pods, so all the old Pods were deleted"
       ], answer: 2,
-      why: "Each revision is an old ReplicaSet scaled to zero, and `revisionHistoryLimit` (10 by default) says how many to keep. With 0 they are deleted straight away, so rollback has nothing to restore." }
+      why: "Each revision is an old ReplicaSet scaled to zero, and `revisionHistoryLimit` (10 by default) says how many to keep. With 0 they are deleted straight away, so rollback has nothing to restore." },
+    { q: "A Deployment with 2 replicas was updated to an image tag that does not exist. `kubectl get pods` shows two old Pods Running and one new Pod in ImagePullBackOff. Why are the old Pods still there?",
+      options: [
+        "The rolling update only removes old Pods as new ones become Ready; with the default maxUnavailable rounding down to 0, none of the old Pods may go yet",
+        "Kubernetes keeps old Pods for one hour after every update in case of rollback",
+        "The update failed validation, so the Deployment was never changed",
+        "Old Pods are only removed when you run `kubectl rollout restart`"
+      ], answer: 0,
+      why: "With maxSurge 25% and maxUnavailable 25%, a 2-replica Deployment may add 1 extra Pod and remove 0 (25% of 2 rounds down). A new Pod that never becomes Ready blocks the rollout while the old Pods keep serving, which is exactly what makes rolling updates safe." },
+    { q: "Which command returns a Deployment to the Pod template it had before the last change?",
+      options: ["`kubectl rollout restart deployment/web`", "`kubectl rollout undo deployment/web`", "`kubectl delete rs` on the newest ReplicaSet", "`kubectl scale deployment/web --replicas=0` and back"],
+      answer: 1,
+      why: "`rollout undo` scales the previous ReplicaSet back up (add `--to-revision=N` for an older one). `rollout restart` keeps the current, broken template, and deleting the ReplicaSet makes the Deployment create it again from the same template." },
+    { q: "`kubectl rollout status deployment/web` has been waiting for 20 minutes. Which field turns this into a visible failure (condition Progressing=False, reason ProgressDeadlineExceeded)?",
+      options: ["`spec.minReadySeconds`", "`spec.revisionHistoryLimit`", "`spec.progressDeadlineSeconds`", "`spec.strategy.rollingUpdate.maxSurge`"],
+      answer: 2,
+      why: "progressDeadlineSeconds (600 by default) is how long a rollout may make no progress before the Deployment reports it as failed. It does not roll back on its own, but CI and `rollout status` can then fail fast." },
+    { q: "Why does `kubectl get rs` list several ReplicaSets for one Deployment, most of them with 0 replicas?",
+      options: [
+        "Each one is a separate copy of the app in another zone",
+        "They are leftovers from failed rollouts and should be deleted by hand",
+        "Every Pod template change creates a new ReplicaSet; old ones are kept at 0 replicas as rollout history for `rollout undo`, up to revisionHistoryLimit",
+        "The scheduler creates one ReplicaSet per node"
+      ], answer: 2,
+      why: "A Deployment manages ReplicaSets, one per Pod template it has had. The old ones are its revision history; revisionHistoryLimit (10 by default) decides how many are kept." }
   ],
 
   "04": [
@@ -304,7 +328,39 @@ window.QUEST_QUIZ_BANK = {
         "`plainData`",
         "`binaryData`"
       ], answer: 0,
-      why: "`stringData` is a write-only convenience: reading the Secret back shows the values encoded under `data`, and `stringData` wins if a key appears in both. `binaryData` exists on ConfigMaps, not Secrets." }
+      why: "`stringData` is a write-only convenience: reading the Secret back shows the values encoded under `data`, and `stringData` wins if a key appears in both. `binaryData` exists on ConfigMaps, not Secrets." },
+    { q: "A Pod shows `CreateContainerConfigError` and its events say `configmap \"orders-config\" not found`. You create that ConfigMap. What happens next?",
+      options: [
+        "Nothing until you delete the Pod",
+        "The kubelet keeps retrying, and the container is created on the next attempt without any further action",
+        "The Deployment rolls out a new ReplicaSet automatically",
+        "The Pod stays broken because ConfigMaps are only read when the Pod is scheduled"
+      ], answer: 1,
+      why: "The container was never created, so the kubelet retries creating it. Once the ConfigMap exists, the next retry succeeds. That is different from a running container, which keeps the environment it started with." },
+    { q: "An app reads `LOG_LEVEL` from a ConfigMap through `envFrom`. You change the value in the ConfigMap. When do running Pods see the new value?",
+      options: [
+        "Within about a minute, like a mounted volume",
+        "Immediately, because environment variables are read live from the API server",
+        "Only when their containers start again, for example after `kubectl rollout restart deployment/<name>`",
+        "Never; environment variables from ConfigMaps can only be set once"
+      ], answer: 2,
+      why: "Environment variables are fixed when the container starts. Files from a mounted ConfigMap volume are updated in place (except with subPath), which is why apps that reload config at runtime mount it as a volume." },
+    { q: "Two ConfigMaps exist: `order-config` and `orders-config`. A Deployment uses `envFrom: [{configMapRef: {name: orders-config}}]`, but `orders-config` lacks the `MENU_FILE` key the app requires. What do you expect?",
+      options: [
+        "CreateContainerConfigError, because a required key is missing",
+        "The container starts; the app itself exits because MENU_FILE is unset, so CrashLoopBackOff",
+        "Kubernetes merges both ConfigMaps because their names are similar",
+        "The Pod stays Pending until the key is added"
+      ], answer: 1,
+      why: "envFrom imports whatever keys exist; Kubernetes does not know which ones your app needs. The ConfigMap exists, so the container starts, and the app's own check fails. A single env entry with configMapKeyRef, by contrast, does fail with CreateContainerConfigError when its key is missing." },
+    { q: "What does `immutable: true` on a ConfigMap give you?",
+      options: [
+        "Encryption of its values at rest",
+        "Protection from accidental changes, and less load on the API server because kubelets stop watching it; to change it you create a new one",
+        "Automatic restarts of Pods that use it when it changes",
+        "It makes the ConfigMap readable from every namespace"
+      ], answer: 1,
+      why: "Immutable ConfigMaps and Secrets cannot be edited, only deleted and recreated, and kubelets do not need to watch them. A common pattern is a versioned name (app-config-v2), which also rolls the Pods that reference it." }
   ],
 
   "06": [
@@ -355,7 +411,39 @@ window.QUEST_QUIZ_BANK = {
         "About 20 to 30 seconds: three failed checks in a row, ten seconds apart",
         "About 5 minutes"
       ], answer: 2,
-      why: "The kubelet restarts the container after `failureThreshold` consecutive failures, so detection takes roughly `periodSeconds` × `failureThreshold`. `timeoutSeconds` only sets how long each single check waits." }
+      why: "The kubelet restarts the container after `failureThreshold` consecutive failures, so detection takes roughly `periodSeconds` × `failureThreshold`. `timeoutSeconds` only sets how long each single check waits." },
+    { q: "A Pod restarts every 30 seconds. `kubectl logs --previous` shows nginx starting cleanly and then `signal 15 (SIGTERM) received, exiting`. What should you check first?",
+      options: [
+        "The memory limit, because this is an OOM kill",
+        "The image tag, because the image is corrupt",
+        "The liveness probe: the kubelet stops containers whose liveness probe fails, and a clean shutdown means it was told to stop",
+        "The readiness probe, because failing readiness restarts the container"
+      ], answer: 2,
+      why: "An OOM kill is SIGKILL with exit code 137 and no shutdown message. A graceful SIGTERM shutdown followed by a restart is the kubelet acting on a failing liveness probe; describe shows `Liveness probe failed` and `Killing` events." },
+    { q: "What does a failing readiness probe do?",
+      options: [
+        "Restarts the container",
+        "Removes the Pod from the endpoints of its Services, without restarting anything",
+        "Deletes the Pod so the Deployment creates a new one",
+        "Marks the node NotReady"
+      ], answer: 1,
+      why: "Readiness controls traffic, liveness controls restarts. A Pod can be Running yet 0/1 Ready for as long as its readiness probe fails, and Services skip it." },
+    { q: "Why is it a bad idea for a liveness probe to check the database the app uses?",
+      options: [
+        "Liveness probes cannot open TCP connections",
+        "If the database goes down, every replica fails its liveness probe and is restarted, which does not fix the database and adds load when it returns",
+        "Database checks make the probe too slow to schedule",
+        "It is fine; liveness should cover every dependency"
+      ], answer: 1,
+      why: "Liveness should answer \"is this process stuck?\". Dependency checks belong, if anywhere, in readiness, so Pods stop receiving traffic without a restart storm." },
+    { q: "A Java service takes 90 seconds to start, and its liveness probe (period 10s, failureThreshold 3) kills it before it is up. What is the cleanest fix?",
+      options: [
+        "Remove the liveness probe",
+        "Set initialDelaySeconds to 600",
+        "Add a startupProbe with enough failureThreshold × periodSeconds to cover start-up; liveness and readiness only run after it succeeds",
+        "Increase the memory limit"
+      ], answer: 2,
+      why: "A startupProbe gives slow starters time without weakening liveness for the rest of the Pod's life. A huge initialDelaySeconds delays detection of real hangs after every restart." }
   ],
 
   "07": [
@@ -559,7 +647,39 @@ window.QUEST_QUIZ_BANK = {
         "Copy the token from another ServiceAccount's Secret",
         "Set `automountServiceAccountToken: true` on the ServiceAccount"
       ], answer: 1,
-      why: "Since 1.24 Kubernetes no longer creates long-lived token Secrets automatically. `kubectl create token` uses the TokenRequest API to issue a token that expires, which is much safer to give to a script." }
+      why: "Since 1.24 Kubernetes no longer creates long-lived token Secrets automatically. `kubectl create token` uses the TokenRequest API to issue a token that expires, which is much safer to give to a script." },
+    { q: "A Pod's logs say `pods is forbidden: User \"system:serviceaccount:kitchen:reporter\" cannot list resource \"pods\"`. What is the quickest way to confirm what that account may do?",
+      options: [
+        "`kubectl get pods --as=reporter`",
+        "`kubectl auth can-i list pods --as=system:serviceaccount:kitchen:reporter -n kitchen`",
+        "`kubectl describe sa reporter`",
+        "`kubectl logs` on the API server"
+      ], answer: 1,
+      why: "auth can-i asks the API server's authorizer directly, impersonating the ServiceAccount by its full user name. `--list` shows everything it can do." },
+    { q: "A RoleBinding grants Role pod-reader to subject ServiceAccount `reporter-sa`, but the Pod runs as `reporter`. Which command fixes the binding without creating a new object?",
+      options: [
+        "`kubectl set subject rolebinding read-pods --serviceaccount=kitchen:reporter`",
+        "`kubectl create clusterrolebinding read-pods --clusterrole=cluster-admin --serviceaccount=kitchen:reporter`",
+        "`kubectl label sa reporter role=pod-reader`",
+        "`kubectl patch role pod-reader --serviceaccount=reporter`"
+      ], answer: 0,
+      why: "`set subject` adds the subject to the existing binding. Binding cluster-admin would also make the error go away, but gives the reporter control of the whole cluster." },
+    { q: "Forbidden (403) versus Unauthorized (401): what is the difference?",
+      options: [
+        "They mean the same thing",
+        "401: the API server does not know who you are (authentication failed); 403: it knows who you are, and RBAC does not allow the action",
+        "401 is for ServiceAccounts, 403 is for users",
+        "403 means the resource does not exist"
+      ], answer: 1,
+      why: "A 401 points at credentials (expired token, wrong kubeconfig). A 403 means authentication worked, so look at Roles and bindings." },
+    { q: "Can an RBAC rule deny an action?",
+      options: [
+        "Yes, with `verbs: [\"!delete\"]`",
+        "Yes, with a DenyRole object",
+        "No. RBAC is purely additive; if any binding allows an action it is allowed, so you restrict access by not granting it",
+        "Only ClusterRoles can deny"
+      ], answer: 2,
+      why: "There are no deny rules in RBAC. To block something everyone could otherwise do, use admission control (for example a ValidatingAdmissionPolicy) instead." }
   ],
 
   "11": [
@@ -610,7 +730,39 @@ window.QUEST_QUIZ_BANK = {
         "Traffic from every Pod in the policy's own namespace",
         "Traffic from outside the cluster"
       ], answer: 2,
-      why: "A `podSelector` without a `namespaceSelector` is scoped to the policy's namespace, and an empty one matches all Pods there. To allow all Pods in all namespaces, use `namespaceSelector: {}` instead." }
+      why: "A `podSelector` without a `namespaceSelector` is scoped to the policy's namespace, and an empty one matches all Pods there. To allow all Pods in all namespaces, use `namespaceSelector: {}` instead." },
+    { q: "A namespace has a policy with `podSelector: {}` and `policyTypes: [Ingress]` and no ingress rules. What does it do?",
+      options: [
+        "Nothing, because it has no rules",
+        "Allows all ingress traffic to every Pod",
+        "Selects every Pod in the namespace and allows no ingress to them: a default deny",
+        "Blocks traffic leaving the namespace"
+      ], answer: 2,
+      why: "An empty podSelector selects all Pods, and a policy that lists Ingress with no rules allows nothing in. Other policies can then add specific allows, because NetworkPolicies are additive." },
+    { q: "A policy allows ingress to `app=api` from `podSelector: {matchLabels: {app: frontend}}`. The web Pods are labelled `app=web`. `wget http://api-svc:8080` from a web Pod times out. Why a timeout rather than \"connection refused\"?",
+      options: [
+        "The Service has no endpoints",
+        "The NetworkPolicy drops the packets silently, so the client waits until its timeout; refused would mean nothing listens on the port",
+        "DNS failed to resolve api-svc",
+        "The api Pod is restarting"
+      ], answer: 1,
+      why: "Dropped packets produce timeouts. Connection refused comes from a reachable host with nothing on that port (or a Service with no endpoints). The difference tells you where to look." },
+    { q: "Your namespace has a default deny for both ingress and egress. After allowing web to reach api on port 8080, web still cannot reach `api-svc` by name. What is most likely missing?",
+      options: [
+        "A Service for api",
+        "An egress rule allowing DNS (UDP and TCP port 53) to kube-dns",
+        "A ClusterRole for the web Pods",
+        "An ingress rule on the web Pods"
+      ], answer: 1,
+      why: "With egress denied, Pods cannot reach CoreDNS, so names stop resolving. Egress default-deny policies almost always come with an allow rule for port 53." },
+    { q: "In a NetworkPolicy `from` list, what is the difference between one item with both `namespaceSelector` and `podSelector`, and two separate items?",
+      options: [
+        "No difference",
+        "One item means both must match (Pods with that label in those namespaces); two items mean either matches",
+        "Two items are invalid",
+        "One item means either matches; two items mean both"
+      ], answer: 1,
+      why: "Selectors inside one list item are ANDed; separate items are ORed. A stray dash in the YAML can turn \"frontend Pods in prod\" into \"any Pod in prod, or frontend Pods here\"." }
   ],
 
   "12": [
@@ -661,7 +813,39 @@ window.QUEST_QUIZ_BANK = {
         "Everything is ORed",
         "Terms are ANDed, and the expressions inside one term are ORed"
       ], answer: 0,
-      why: "A node qualifies if it satisfies all expressions of at least one term. If the Pod also sets `nodeSelector`, the node must satisfy that too, because `nodeSelector` and node affinity are ANDed." }
+      why: "A node qualifies if it satisfies all expressions of at least one term. If the Pod also sets `nodeSelector`, the node must satisfy that too, because `nodeSelector` and node affinity are ANDed." },
+    { q: "A Pod with `nodeSelector: {disk: ssd}` is Pending with `3 node(s) didn't match Pod's node affinity/selector`, but you know worker-3 has an SSD. What is missing?",
+      options: [
+        "A toleration",
+        "The label: `kubectl label node worker-3 disk=ssd`; nodeSelector only matches node labels, not hardware",
+        "A PersistentVolume on worker-3",
+        "More memory on worker-3"
+      ], answer: 1,
+      why: "The scheduler knows nothing about disks or GPUs beyond what labels (or extended resources) tell it. Once the label exists, the Pending Pod is scheduled on the next attempt." },
+    { q: "worker-3 has taint `gpu=true:NoSchedule`. A Pod has a matching toleration but no nodeSelector or affinity. Where can it run?",
+      options: [
+        "Only on worker-3",
+        "On any node, including worker-3; a toleration allows the tainted node but does not attract the Pod to it",
+        "Nowhere until the taint is removed",
+        "On every node except worker-3"
+      ], answer: 1,
+      why: "Taints repel, tolerations permit, selectors and affinity attract. To dedicate a node you need both: a taint to keep others off, and a selector so the right Pods go there." },
+    { q: "What is the difference between NoSchedule and NoExecute taints?",
+      options: [
+        "There is none",
+        "NoSchedule stops new Pods without a toleration; NoExecute also evicts Pods already running there that do not tolerate it",
+        "NoExecute only applies to DaemonSets",
+        "NoSchedule evicts running Pods; NoExecute only blocks new ones"
+      ], answer: 1,
+      why: "Node problems such as not-ready and unreachable are NoExecute taints, which is how Pods get evicted from failed nodes after tolerationSeconds (300 by default)." },
+    { q: "A Pod is Pending with `0/3 nodes are available: 1 node(s) had untolerated taint {gpu: true}, 2 node(s) didn't match Pod's node affinity/selector`. The team removes the taint from the GPU node to fix it. What is wrong with that?",
+      options: [
+        "Nothing; it is the recommended fix",
+        "The Pod will still not schedule",
+        "It works, but now any Pod can land on the expensive GPU node; the right fix is a toleration on this workload",
+        "Removing taints requires a node reboot"
+      ], answer: 2,
+      why: "The taint was doing its job: keeping general workloads off the GPU node. Add a toleration to the Pods that are meant to run there." }
   ],
 
   "13": [
@@ -707,7 +891,35 @@ window.QUEST_QUIZ_BANK = {
         "The HPA calls the cluster autoscaler directly",
         "It reacts to Pods that cannot be scheduled for lack of resources, and adds a node that would fit their requests"
       ], answer: 3,
-      why: "The node autoscaler looks at unschedulable Pods and their requests, not at usage. That is one more reason requests matter: Pods without them fit anywhere, so they never trigger a scale-up even when nodes are overloaded." }
+      why: "The node autoscaler looks at unschedulable Pods and their requests, not at usage. That is one more reason requests matter: Pods without them fit anywhere, so they never trigger a scale-up even when nodes are overloaded." },
+    { q: "`kubectl get hpa` shows `cpu: <unknown>/70%` and the HPA never scales. metrics-server is running. What is the most common cause?",
+      options: [
+        "The HPA's maxReplicas is too low",
+        "The target containers have no CPU request; utilisation is a percentage of the request, so it cannot be computed",
+        "The Deployment has too many replicas",
+        "HPAs only work with StatefulSets"
+      ], answer: 1,
+      why: "describe hpa shows `missing request for cpu`. Set a CPU request on every container in the Pod; then utilisation = usage ÷ request." },
+    { q: "Web Pods request 100m CPU and use 170m each across 2 replicas. The HPA targets 70%. Roughly how many replicas will it ask for?",
+      options: ["2", "3", "5", "6"],
+      answer: 2,
+      why: "Utilisation is 170%. desiredReplicas = ceil(2 × 170 / 70) = ceil(4.86) = 5. At 5 replicas each Pod uses about 68m, 68%, just under target." },
+    { q: "A VerticalPodAutoscaler with `updateMode: Off` has a memory recommendation of 450Mi for a Pod that keeps getting OOMKilled at 128Mi. Why has nothing changed?",
+      options: [
+        "The recommendation is still being calculated",
+        "Off means recommend only: the VPA never changes Pods. Apply the values yourself, or switch to an update mode such as Recreate",
+        "VPA only changes CPU, never memory",
+        "The Pod must be deleted for the VPA to read it"
+      ], answer: 1,
+      why: "Off is a safe way to start: read the recommendation with `kubectl describe vpa`. Initial applies it only to new Pods; Recreate (and InPlaceOrRecreate) evict Pods to apply it. By default the updater only evicts when the workload has at least 2 replicas." },
+    { q: "Why should you not let an HPA scaling on CPU and a VPA setting CPU requests manage the same Deployment?",
+      options: [
+        "The API server rejects the second autoscaler",
+        "They fight: the VPA changes the request the HPA's percentage is based on, so each one's action changes the other's input",
+        "VPAs and HPAs use different metrics servers",
+        "It is fine and recommended"
+      ], answer: 1,
+      why: "Use HPA on CPU or memory, and VPA only for the resource the HPA does not use (or VPA in Off mode for sizing advice), or have the HPA scale on custom or external metrics instead." }
   ],
 
   "14": [
@@ -860,7 +1072,39 @@ window.QUEST_QUIZ_BANK = {
         "The main containers first, then the sidecars, in the reverse of the order they started",
         "In alphabetical order by name"
       ], answer: 2,
-      why: "Sidecars start before the app and stop after it, so a proxy or log shipper is still available while the app drains. Before native sidecars, every container in `containers` received SIGTERM together, with no ordering." }
+      why: "Sidecars start before the app and stop after it, so a proxy or log shipper is still available while the app drains. Before native sidecars, every container in `containers` received SIGTERM together, with no ordering." },
+    { q: "A Pod has shown `Init:0/1` for 20 minutes. What does that mean?",
+      options: [
+        "One of the app containers is not Ready",
+        "Its only init container has not finished, so the app containers have not started",
+        "The image is still being pulled",
+        "The Pod is waiting for a node"
+      ], answer: 1,
+      why: "Init containers run one at a time, each to completion, before the main containers start. Init:0/1 means 0 of 1 have completed; Init:CrashLoopBackOff would mean one keeps failing." },
+    { q: "How do you read the output of an init container called `wait-for-menu`?",
+      options: [
+        "`kubectl logs <pod>`",
+        "`kubectl logs <pod> -c wait-for-menu`",
+        "`kubectl describe init wait-for-menu`",
+        "Init containers do not keep logs"
+      ], answer: 1,
+      why: "Without -c, kubectl picks the main container, which has not started (PodInitializing). Name the init container to see what it is waiting for." },
+    { q: "An init container runs `until nslookup menu-svc; do sleep 2; done`, and the menu Deployment exists but has no Service. Which command lets the Pod start?",
+      options: [
+        "`kubectl rollout restart deployment/orders`",
+        "`kubectl expose deployment menu --name=menu-svc --port=80`",
+        "`kubectl scale deployment/menu --replicas=3`",
+        "`kubectl delete pod` on the orders Pod"
+      ], answer: 1,
+      why: "The init container waits for the DNS name, which exists only once a Service called menu-svc exists. A restart or a new Pod would wait in exactly the same way." },
+    { q: "What does `restartPolicy: Always` on an init container do (Kubernetes 1.29 and later)?",
+      options: [
+        "Restarts the whole Pod when it exits",
+        "Makes it a native sidecar: it starts before the app containers, keeps running beside them, and stops after them",
+        "It is invalid on init containers",
+        "Runs it again before every request"
+      ], answer: 1,
+      why: "Native sidecars solve old problems with log shippers and proxies: they are ready before the app starts and do not keep Jobs running after the main container finishes." }
   ],
 
   "17": [
@@ -911,7 +1155,39 @@ window.QUEST_QUIZ_BANK = {
         "`privileged: false`",
         "An AppArmor profile instead of seccomp"
       ], answer: 0,
-      why: "`restricted` requires a seccomp profile of type `RuntimeDefault` or `Localhost`, and setting it once at Pod level covers every container. `Unconfined` is exactly what the rule forbids." }
+      why: "`restricted` requires a seccomp profile of type `RuntimeDefault` or `Localhost`, and setting it once at Pod level covers every container. `Unconfined` is exactly what the rule forbids." },
+    { q: "A namespace enforces the restricted Pod Security level. A Deployment shows 0/1 and `kubectl get pods` lists nothing. Where is the error message?",
+      options: [
+        "In the Pod's events",
+        "In the events of the Deployment's newest ReplicaSet (FailedCreate ... violates PodSecurity), because the Pod was never created",
+        "In the kubelet logs on the node",
+        "Nowhere; Pod Security fails silently"
+      ], answer: 1,
+      why: "Admission rejects the Pod before it exists, so there is no Pod to describe. `kubectl describe rs <newest>` (or `get events`) shows each rule the Pod breaks." },
+    { q: "Which settings does the restricted level require that the baseline level does not?",
+      options: [
+        "A memory limit and a CPU request",
+        "runAsNonRoot: true, allowPrivilegeEscalation: false, capabilities drop ALL, and seccompProfile RuntimeDefault (or Localhost)",
+        "A readiness probe",
+        "A NetworkPolicy for the Pod"
+      ], answer: 1,
+      why: "Baseline blocks known privilege escalations such as privileged containers and host namespaces. Restricted also requires these hardening settings. Resources, probes and policies are good practice but not part of Pod Security." },
+    { q: "After adding `runAsNonRoot: true`, the Pod fails with `container has runAsNonRoot and image will run as root`. What is the fix?",
+      options: [
+        "Remove runAsNonRoot",
+        "Set runAsUser to a non-zero UID (for example 65534), or use an image whose default user is not root",
+        "Add the NET_ADMIN capability",
+        "Set privileged: true"
+      ], answer: 1,
+      why: "runAsNonRoot is a check, not a change: the kubelet refuses to start a container that would run as UID 0. runAsUser picks the user; the image must also work as that user (writable paths, ports above 1024)." },
+    { q: "A team relabels their namespace `pod-security.kubernetes.io/enforce=privileged` so their Pods start. What is the better way to roll out a stricter level safely?",
+      options: [
+        "There is none; enforce is all or nothing",
+        "Set the `warn` and `audit` labels to restricted first, fix what they report, then switch `enforce`",
+        "Delete the namespace and recreate it",
+        "Use a NetworkPolicy instead"
+      ], answer: 1,
+      why: "warn shows the violations to whoever applies the workload, and audit records them in the audit log, without blocking anything. Lowering enforce to privileged removes the protection for every workload in the namespace." }
   ],
 
   "18": [
