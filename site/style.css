@@ -26,6 +26,8 @@
   --radius: 18px;
   --radius-sm: 12px;
   --ease: cubic-bezier(.28, .11, .32, 1);
+  --dur-fast: .15s;
+  --dur: .24s;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -337,7 +339,19 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 .filled { color: var(--accent); font-weight: 600; }
 .hole { color: var(--muted); }
 
-.foot { color: var(--muted); font-size: .8rem; border-top: 1px solid var(--hair); padding-top: 20px; padding-bottom: 40px; }
+.foot { margin-top: 96px; background: var(--surface-2); border-top: 1px solid var(--hair); color: var(--muted); font-size: .86rem; }
+.foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 40px; padding-top: 48px; padding-bottom: 36px; }
+.foot-brand .brand { font-size: 1.05rem; gap: 10px; }
+.foot-brand .brand img { width: 28px; height: 28px; }
+.foot-brand p { margin: 14px 0 18px; max-width: 420px; line-height: 1.55; }
+.foot-col { display: flex; flex-direction: column; gap: 10px; }
+.foot-col h2 { margin: 4px 0 4px; font-size: .8rem; font-weight: 600; color: var(--text); letter-spacing: 0; }
+.foot-col a { color: var(--muted); width: fit-content; transition: color var(--dur-fast) var(--ease); }
+.foot-col a:hover { color: var(--text); text-decoration: none; }
+.foot-base { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--hair); padding-top: 18px; padding-bottom: 40px; font-size: .8rem; }
+.foot-base p { margin: 0; }
+.foot-base a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.foot-base .foot-tm { margin-top: 4px; font-size: .74rem; }
 
 @media (max-width: 1000px) {
   .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -531,8 +545,30 @@ kbd {
   .pg-scn { flex: none; scroll-snap-align: start; }
 }
 
+/* Motion: one easing, two durations, and only where it says what changed. */
+@keyframes kq-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes kq-pod-in { from { opacity: 0; transform: scale(.9); } }
+@keyframes kq-pop { 0% { opacity: 0; transform: scale(.4); } 60% { transform: scale(1.25); } 100% { opacity: 1; transform: none; } }
+@keyframes kq-bump { 50% { transform: scale(1.2); } }
+@keyframes kq-nudge { 50% { transform: scale(1.015); } }
+@keyframes kq-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@keyframes kq-heal { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } to { box-shadow: 0 0 0 10px transparent; } }
+.tab.tab-in { animation: kq-in var(--dur) var(--ease) both; }
+.pg-pod.is-new { animation: kq-pod-in .32s var(--ease) both; }
+.pg-pod.is-healed { animation: kq-heal .9s var(--ease); }
+.pg-pod.is-healed .pg-dot { animation: kq-pop .45s var(--ease) both; }
+.pg-goal.done { animation: kq-in var(--dur) var(--ease); }
+.pg-scn.just-solved .pg-scn-done { display: inline-block; animation: kq-pop .5s var(--ease) both; }
+.pg-group-count.bump { display: inline-block; animation: kq-bump .4s var(--ease) .1s; }
+.opt.right { animation: kq-nudge .3s var(--ease); }
+.opt.wrong { animation: kq-shake .36s var(--ease); }
+.feedback.ok, .feedback.bad { animation: kq-in var(--dur) var(--ease) both; }
+.copy, .chip, .pg-scn, .pg-pod { transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease); }
+.copy:active, .chip:active, .pg-scn:active, .pg-pod:active, .gh:active, .kbd-btn:active { transform: scale(.96); }
+.score, .pg-group-count, .doctor-group-count, .arch-step { font-variant-numeric: tabular-nums; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before { transition: none !important; animation: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
 
@@ -590,6 +626,8 @@ kbd {
 .arch-where { color: var(--accent); font-size: .78rem; font-weight: 600; }
 .arch-detail .arch-where { margin: 0 0 2px; }
 @media (max-width: 720px) {
+  .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; padding-top: 36px; }
+  .foot-brand { grid-column: 1 / -1; }
   .cheats li { flex-direction: column; align-items: stretch; gap: 10px; }
   .cheats code { overflow-wrap: break-word; }
   .arch-figure { padding: 12px; }

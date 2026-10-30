@@ -5063,10 +5063,16 @@
     }));
   }
 
-  function podChip(p) {
+  // Pod states at the last render: new Pods fade in, and a Pod that turns
+  // healthy flashes once, so each command shows what it changed.
+  let seen = new Map();
+  function podChip(p, i) {
     const st = cluster.status(p);
     const state = st === "Running" ? (p.ready ? "ok" : "notready") : /ContainerCreating|Terminating/.test(st) ? "wait" : "bad";
-    const chip = el("button", "pg-pod " + state + (p.terminating ? " gone" : ""), null);
+    const was = seen.get(p.name);
+    const motion = was === undefined ? " is-new" : was !== "ok" && state === "ok" ? " is-healed" : "";
+    const chip = el("button", "pg-pod " + state + (p.terminating ? " gone" : "") + motion, null);
+    if (was === undefined) chip.style.animationDelay = `${Math.min(i, 12) * 35}ms`;
     chip.type = "button";
     chip.title = `${p.name}: ${st}${state === "notready" ? ", not Ready" : ""}. Click to use the name.`;
     chip.append(el("span", "pg-dot", state === "ok" ? "✓" : state === "wait" ? "…" : "!"), el("span", null, p.name));
@@ -5080,19 +5086,24 @@
   }
 
   function renderMap() {
+    let n = 0;
     const boxes = NODES.map((node) => {
       const box = el("div", "pg-node", null);
       box.append(el("div", "pg-node-name", node));
-      for (const p of cluster.pods.filter((x) => x.node === node)) box.append(podChip(p));
+      for (const p of cluster.pods.filter((x) => x.node === node)) box.append(podChip(p, n++));
       return box;
     });
     const waiting = cluster.pods.filter((p) => !p.node);
     if (waiting.length) {
       const box = el("div", "pg-node pg-unscheduled", null);
       box.append(el("div", "pg-node-name", "Not scheduled"));
-      waiting.forEach((p) => box.append(podChip(p)));
+      waiting.forEach((p) => box.append(podChip(p, n++)));
       boxes.push(box);
     }
+    seen = new Map(cluster.pods.map((p) => {
+      const st = cluster.status(p);
+      return [p.name, st === "Running" && p.ready ? "ok" : st];
+    }));
     for (const s of cluster.services) {
       const eps = cluster.endpointsOf(s.name).length;
       const box = el("div", "pg-svc " + (eps ? "ok" : "bad"), null);
@@ -5122,6 +5133,7 @@
   function load(id) {
     scenario = SCENARIOS.find((s) => s.id === id) || SCENARIOS[0];
     cluster = new Cluster(scenario);
+    seen = new Map();
     solved = false;
     hintLevel = 0;
     clearTimeout(settleTimer);
@@ -5144,6 +5156,12 @@
       solved = true;
       saved.add(scenario.id);
       renderPicker();
+      // The checkmark and the group's count mark the moment.
+      const b = picker.querySelector('.pg-scn[aria-pressed="true"]');
+      if (b) {
+        b.classList.add("just-solved");
+        b.closest(".pg-group").querySelector(".pg-group-count").classList.add("bump");
+      }
       goal.textContent = "Fixed. " + scenario.done;
       goal.className = "pg-goal done";
       print("");
