@@ -41,6 +41,11 @@ run as a non-root user, listening on **8080**. With a read-only root
 filesystem, nginx still needs somewhere to write its temporary files:
 mount an `emptyDir` at `/tmp`.
 
+A topology spread constraint counts every Pod its `labelSelector` matches,
+including the old ReplicaSet's Pods during a rollout. Add
+`matchLabelKeys: ["pod-template-hash"]` so only Pods of the same revision
+are compared; otherwise all new replicas can land on one node.
+
 Work in small steps and check after each one. A useful order:
 
 1. ServiceAccount, then the Deployment's security settings and `/tmp` volume

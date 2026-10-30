@@ -129,6 +129,19 @@ jobs:
           kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Succeeded pod/allowed --timeout=90s
           kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Failed pod/blocked --timeout=90s
 
+      - name: The scheduling examples run on a fresh cluster
+        run: |
+          kubectl create namespace scheduling-demo
+          kubectl -n scheduling-demo apply -f "Kubernetes/k8's_objects/Scheduling/nodeaffinity.yaml" \
+            -f "Kubernetes/k8's_objects/Scheduling/pod affinity.yaml" \
+            -f "Kubernetes/k8's_objects/Scheduling/podantiaffinity.yaml" \
+            -f "Kubernetes/k8's_objects/Scheduling/taintsandtolerants.yaml"
+          for d in web cache web-spread batch-worker; do
+            kubectl -n scheduling-demo rollout status "deployment/$d" --timeout=180s
+          done
+
       - name: Cluster state on failure
         if: failure()
-        run: kubectl get all,events -n shop-prod || true
+        run: |
+          kubectl get all,events -n shop-prod || true
+          kubectl get all,events -n scheduling-demo || true

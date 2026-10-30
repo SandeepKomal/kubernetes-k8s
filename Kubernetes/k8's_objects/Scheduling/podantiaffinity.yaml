@@ -1,39 +1,50 @@
+# Pod anti-affinity: keep Pods away from other Pods.
+#
+# Replicas of the same app should not share a node: if that node fails, every
+# replica goes with it. The rule below matches the Pod's own label, so each
+# replica avoids nodes that already run one.
+#
+# The soft (preferred) form is used on purpose. With the hard form, a fourth
+# replica on a three-node cluster would stay Pending forever. For spreading
+# evenly across many nodes or zones, topologySpreadConstraints is usually the
+# better tool (see labs/21-boss-production-hardening).
+#
+# Try it:
+#   kubectl apply -f podantiaffinity.yaml
+#   kubectl get pods -l app=web-spread -o wide       # one replica per node, where possible
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: todo-api
+  name: web-spread
+  labels:
+    app: web-spread
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
-      app: todo-api
+      app: web-spread
   template:
     metadata:
-      name: todo-api-pod
       labels:
-        app: todo-api
+        app: web-spread
     spec:
-      containers:
-        - name: todo-api
-          image: pavanelthepu/todo-api:1.0.2
-          ports:
-            - containerPort: 8082
-          env:
-            # Never put connection strings with passwords in a manifest.
-            # Create the Secret first:
-            #   kubectl create secret generic todo-api-secrets --from-literal=mongodb-uri='mongodb+srv://...'
-            - name: "spring.data.mongodb.uri"
-              valueFrom:
-                secretKeyRef:
-                  name: todo-api-secrets
-                  key: mongodb-uri
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - "todo-ui"
-              topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: web-spread
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: web
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
