@@ -32,6 +32,9 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: web-api
+          # Compare only Pods of the same revision, so a rollout cannot pile
+          # the new replicas onto one node next to the old ones.
+          matchLabelKeys: ["pod-template-hash"]
       containers:
         - name: web-api
           # Replace with your own image. Pin a version or digest, never latest.

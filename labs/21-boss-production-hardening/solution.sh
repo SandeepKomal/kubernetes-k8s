@@ -46,6 +46,10 @@ spec:
           labelSelector:
             matchLabels:
               app: checkout-api
+          # Count only Pods of the same revision. Without this, Pods of the
+          # old ReplicaSet still running during a rollout skew the count,
+          # and every new replica can end up on one node.
+          matchLabelKeys: ["pod-template-hash"]
       containers:
         - name: api
           image: nginxinc/nginx-unprivileged:1.27-alpine

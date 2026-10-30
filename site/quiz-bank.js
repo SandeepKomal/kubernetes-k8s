@@ -1068,6 +1068,8 @@ window.QUEST_QUIZ_BANK = {
   ],
 
   "21": [
+    { q: "After a rolling update, both replicas of a Deployment with a `topologySpreadConstraints` rule on `kubernetes.io/hostname` sit on the same node, although another node is free. What is the usual cause and fix?", options: ["The scheduler ignores spread rules during rollouts; use pod anti-affinity instead", "The constraint also counted the old ReplicaSet's Pods while they were still running; add `matchLabelKeys: [\"pod-template-hash\"]`", "`maxSkew` must be 0 to force one Pod per node", "Spread rules only apply to StatefulSets"], answer: 1,
+      why: "The `labelSelector` matches Pods of every revision, so old Pods still running during the rollout make one node look busier. `matchLabelKeys` with `pod-template-hash` restricts the count to the new revision. A `maxSkew` of 0 is invalid; it must be at least 1." },
     { q: "During every rollout a few requests fail with connection errors, even though the app handles SIGTERM correctly. What is a common cause and fix?",
       options: [
         "Endpoint removal and SIGTERM happen at the same time, so proxies briefly keep sending traffic to a Pod that is shutting down; a short `preStop` sleep keeps it serving until they catch up",
