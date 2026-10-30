@@ -124,7 +124,15 @@ window.QUEST_QUIZ_BANK = {
         "Pull secrets from the ServiceAccount are copied into Pods when they are created, so existing Pods need replacing: `kubectl rollout restart`",
         "The kubelet caches failures for 24 hours"
       ], answer: 2,
-      why: "Admission adds the ServiceAccount's imagePullSecrets to new Pods only. A rollout restart creates new Pods that get them." }
+      why: "Admission adds the ServiceAccount's imagePullSecrets to new Pods only. A rollout restart creates new Pods that get them." },
+    { q: "A Deployment in namespace `shop` lists `imagePullSecrets: [{name: regcred}]`, and `regcred` exists in `default`. The pull still fails with 401. Why?",
+      options: [
+        "Pull secrets only work on ServiceAccounts",
+        "A Pod can only use Secrets from its own namespace; create regcred in shop",
+        "regcred must be type Opaque",
+        "The kubelet caches the first failure for a day"
+      ], answer: 1,
+      why: "Secrets are namespaced and a Pod never reads another namespace's. Create the docker-registry Secret in every namespace that pulls from the registry, or have your tooling copy it." }
   ],
 
   "02": [
@@ -373,7 +381,39 @@ window.QUEST_QUIZ_BANK = {
         "The Service has no endpoints",
         "DNS points at the wrong IP"
       ], answer: 1,
-      why: "The controller falls back to its fake certificate whenever it cannot load the Secret named in spec.tls. Its logs say why; `kubectl create secret tls` from the right certificate and key fixes it." }
+      why: "The controller falls back to its fake certificate whenever it cannot load the Secret named in spec.tls. Its logs say why; `kubectl create secret tls` from the right certificate and key fixes it." },
+    { q: "A Service has `targetPort: http`, but the container's port is named `web`. What happens?",
+      options: [
+        "Kubernetes falls back to port 80",
+        "The named port cannot be resolved on those Pods, so they get no usable endpoint and calls fail; the name must match a containerPort name",
+        "The Service picks the first container port",
+        "The API server rejects the Service"
+      ], answer: 1,
+      why: "A named targetPort is looked up per Pod. Named ports let the container port change without editing the Service, as long as the names match." },
+    { q: "Where does a Pod's /etc/resolv.conf get its `nameserver` line?",
+      options: [
+        "From the node's own /etc/resolv.conf, always",
+        "From the kubelet's clusterDNS setting: the ClusterIP of the kube-dns Service, which CoreDNS Pods back",
+        "From the CNI plugin",
+        "From CoreDNS's ConfigMap"
+      ], answer: 1,
+      why: "With the default dnsPolicy ClusterFirst, the kubelet writes the kube-dns Service IP into every Pod. If that Service has no endpoints, every name lookup in the cluster fails while IPs keep working." },
+    { q: "curl to an Ingress host fails with `no alternative certificate subject name matches target host name`. What is wrong?",
+      options: [
+        "The Ingress has no class",
+        "The TLS Secret's certificate is valid but issued for other names; it must list the host in its Subject Alternative Names",
+        "The Service port is wrong",
+        "The certificate expired"
+      ], answer: 1,
+      why: "The controller is serving your certificate, so the Secret works; the certificate just does not cover this host. An expired certificate gives a different error, and a missing Secret gives the controller's fake certificate." },
+    { q: "An Ingress in namespace `shop` sets `tls.secretName: wildcard-tls`, and that Secret lives in `ingress-nginx`. What does the controller serve?",
+      options: [
+        "The wildcard certificate",
+        "Its fake default certificate: an Ingress can only reference a TLS Secret in its own namespace",
+        "Plain HTTP on 443",
+        "An error page"
+      ], answer: 1,
+      why: "Like every Secret reference, spec.tls is namespaced. Copy the Secret into the Ingress's namespace, or configure a default certificate on the controller itself." }
   ],
 
   "05": [
@@ -472,7 +512,31 @@ window.QUEST_QUIZ_BANK = {
         "The Pod lacks RBAC to read Secrets",
         "The value is not base64"
       ], answer: 1,
-      why: "`secret not found` would mean a wrong name. `couldn't find key` means the name is right and the key is not: fix the reference, or store the value under that key." }
+      why: "`secret not found` would mean a wrong name. `couldn't find key` means the name is right and the key is not: fix the reference, or store the value under that key." },
+    { q: "Which way of using a Secret picks up a changed value in a running Pod without a restart?",
+      options: [
+        "env with secretKeyRef",
+        "envFrom with secretRef",
+        "A Secret volume mounted as a directory, after the kubelet's next sync (the app must re-read the file)",
+        "A volume mounted with subPath"
+      ], answer: 2,
+      why: "Environment variables are fixed when the container starts, and subPath mounts never update. Directory mounts are refreshed by the kubelet within about a minute." },
+    { q: "What does `kubectl rollout restart deployment/api` actually change?",
+      options: [
+        "Nothing; it sends SIGHUP to the containers",
+        "It adds a kubectl.kubernetes.io/restartedAt annotation to the Pod template, so a new ReplicaSet rolls out with the usual surge and readiness checks",
+        "It deletes every Pod at once",
+        "It restarts the kubelet on each node"
+      ], answer: 1,
+      why: "Any change to the template starts a rollout; the annotation is a harmless change that does exactly that. Pods are replaced gradually, so the Service keeps serving." },
+    { q: "A container's env has `secretKeyRef: {name: api-keys, key: stripe, optional: true}`, and that key is missing. What happens?",
+      options: [
+        "CreateContainerConfigError",
+        "The container starts without that variable",
+        "The Pod is Pending",
+        "The key is created empty"
+      ], answer: 1,
+      why: "optional: true turns a missing Secret or key from an error into an absent variable. Use it only when the app copes with the variable missing." }
   ],
 
   "06": [
@@ -1310,7 +1374,39 @@ window.QUEST_QUIZ_BANK = {
         "Restarts the Pod",
         "Deletes the node"
       ], answer: 1,
-      why: "Finalizers are a promise that a controller will clean up first. With that controller gone, nobody removes them: `kubectl patch pod <pod> -p '{\"metadata\":{\"finalizers\":null}}'`." }
+      why: "Finalizers are a promise that a controller will clean up first. With that controller gone, nobody removes them: `kubectl patch pod <pod> -p '{\"metadata\":{\"finalizers\":null}}'`." },
+    { q: "kube-scheduler is down. Which new Pods can still start?",
+      options: [
+        "None",
+        "Pods that already name a node in `spec.nodeName`, such as static Pods; everything else waits Pending with no events",
+        "Only DaemonSet Pods",
+        "Pods with a high PriorityClass"
+      ], answer: 1,
+      why: "The scheduler's only job is to set spec.nodeName. A Pod that has it already goes straight to that node's kubelet; DaemonSet Pods also go through the scheduler." },
+    { q: "How does the kubelet know which directory holds static Pod manifests?",
+      options: [
+        "It is hard-coded to /etc/kubernetes/manifests",
+        "From `staticPodPath` in its configuration file, /var/lib/kubelet/config.yaml on kubeadm nodes (default /etc/kubernetes/manifests)",
+        "From a ConfigMap in kube-system",
+        "From the API server"
+      ], answer: 1,
+      why: "On an unfamiliar node, check the kubelet's config before assuming the path. Removing a file there stops that Pod; putting it back starts it fresh." },
+    { q: "After `kubeadm certs renew all`, which client certificate is not part of that renewal because the kubelet rotates it itself?",
+      options: [
+        "admin.conf",
+        "The kubelet's client certificate (kubelet.conf points at /var/lib/kubelet/pki/kubelet-client-current.pem)",
+        "apiserver",
+        "scheduler.conf"
+      ], answer: 1,
+      why: "Kubelet client certificate rotation is on by default in kubeadm clusters, so the kubelet renews its own certificate before it expires. The control-plane and admin certificates are kubeadm's job." },
+    { q: "A namespace has been Terminating for an hour. What is the most useful first check?",
+      options: [
+        "Delete it again with --force",
+        "`kubectl get namespace <ns> -o yaml`: its status conditions name the resources or finalizers still blocking deletion, often from an APIService that is down (`kubectl get apiservice`)",
+        "Restart the API server",
+        "Recreate the namespace"
+      ], answer: 1,
+      why: "The namespace controller cannot finish while it cannot list or delete some resource. Fix the broken APIService, or remove the leftover objects' finalizers, before resorting to editing the namespace finalizer." }
   ],
 
   "15": [

@@ -138,16 +138,32 @@ cd kubernetes-k8s
       <div class="guide-slot" data-guide="xray"></div>
       <div class="seg" id="xray-pick" role="tablist" aria-label="Manifest"></div>
       <div class="xray-paste card" id="xray-paste" hidden>
-        <label for="xray-input" class="xray-paste-label">Paste a manifest</label>
-        <textarea id="xray-input" rows="10" spellcheck="false" autocapitalize="off" placeholder="apiVersion: apps/v1&#10;kind: Deployment&#10;..."></textarea>
-        <div class="xray-paste-actions">
-          <button type="button" class="pill primary small-pill" id="xray-go">Explain</button>
-          <button type="button" class="pill small-pill" id="xray-example">Load an example</button>
-          <span class="note">Explained in your browser. Nothing is uploaded. Do not paste real secrets.</span>
+        <div id="xray-edit">
+          <label for="xray-input" class="xray-paste-label">Paste a manifest</label>
+          <textarea id="xray-input" rows="10" spellcheck="false" autocapitalize="off" placeholder="apiVersion: apps/v1&#10;kind: Deployment&#10;..."></textarea>
+          <p id="xray-error" class="xray-warn" hidden></p>
+          <div class="xray-paste-actions">
+            <button type="button" class="pill primary small-pill" id="xray-go">Explain</button>
+            <button type="button" class="pill small-pill" id="xray-example">Load an example</button>
+            <button type="button" class="pill small-pill" id="xray-clear">Clear</button>
+            <span class="note">Ctrl+Enter explains. Everything stays in your browser; do not paste real secrets.</span>
+          </div>
         </div>
-        <div id="xray-review" aria-live="polite"></div>
+        <div id="xray-result" hidden>
+          <div class="xray-result-bar">
+            <div>
+              <p class="xray-result-title" id="xray-summary"></p>
+              <p class="note">Select any line to see what it does. Lines marked in amber are worth a second look.</p>
+            </div>
+            <div class="xray-result-actions">
+              <button type="button" class="pill small-pill" id="xray-edit-btn">Edit YAML</button>
+              <button type="button" class="pill small-pill" id="xray-clear-2">Clear</button>
+            </div>
+          </div>
+          <div id="xray-review" aria-live="polite"></div>
+        </div>
       </div>
-      <div class="xray">
+      <div class="xray" id="xray-view">
         <ol id="xray-lines" class="code" aria-label="Manifest lines"></ol>
         <aside id="xray-note" class="card" aria-live="polite"><p class="muted">Pick a line on the left.</p></aside>
       </div>
