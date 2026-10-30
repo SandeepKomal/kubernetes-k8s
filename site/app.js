@@ -272,8 +272,25 @@
   // --- YAML X-ray ----------------------------------------------------------
 
   // rows: [{line, note, level, warns}]. Blank lines stay visible but inert.
+  // On narrow screens the note sits under the picked line; elsewhere beside the code.
+  const narrow = () => window.matchMedia("(max-width: 860px)").matches;
+  function placeNote(li) {
+    const note = $("#xray-note");
+    if (li && narrow()) {
+      let slot = $("#xray-lines .note-slot");
+      if (!slot) slot = h("li.note-slot");
+      li.after(slot);
+      slot.append(note);
+    } else if (note.parentElement !== $("#xray-view")) {
+      $("#xray-view").append(note);
+      const slot = $("#xray-lines .note-slot");
+      if (slot) slot.remove();
+    }
+  }
+
   function renderXrayLines(rows) {
     const lines = $("#xray-lines");
+    placeNote(null);
     lines.replaceChildren();
     rows.forEach(({ line, note, level, warns }, i) => {
       if (!note) { lines.append(h("li", null, h("span.line.blank", null, line || " "))); return; }
@@ -283,13 +300,14 @@
         onclick: (e) => {
           lines.querySelectorAll(".line").forEach((b) => b.classList.remove("on"));
           e.currentTarget.classList.add("on");
+          placeNote(e.currentTarget.parentElement);
           $("#xray-note").replaceChildren(h("pre", null, h("code", null, line.trim())), h("p", null, ...rich(note)),
             ...(warns || []).map((w) => h("p.xray-warn", null, w)),
             h("p.muted", null, `Line ${i + 1} of ${rows.length}`));
         }
       }, line)));
     });
-    $("#xray-note").replaceChildren(h("p.muted", null, rows.length ? "Pick a line on the left." : "Paste a manifest and choose Explain."));
+    $("#xray-note").replaceChildren(h("p.muted", null, rows.length ? "Select any line to see what it does." : "Paste a manifest and choose Explain."));
   }
 
   function renderXray(index) {
@@ -297,30 +315,56 @@
     const paste = index === Q.xray.length;
     $("#xray-paste").hidden = !paste;
     if (paste) {
-      $("#xray-review").replaceChildren();
-      renderXrayLines([]);
+      showPasted();
       return;
     }
+    $("#xray-view").hidden = false;
     renderXrayLines(Q.xray[index].lines.map(([line, note]) => ({ line, note })));
   }
 
-  function explainPasted() {
-    const text = $("#xray-input").value;
-    const review = $("#xray-review");
-    if (!text.trim()) { review.replaceChildren(h("p.muted", null, "Paste some YAML first.")); return; }
-    const res = window.KQExplain.explain(text);
-    if (res.error) { review.replaceChildren(h("p.xray-warn", null, res.error)); renderXrayLines([]); return; }
-    const rows = res.lines;
+  // Paste mode has two states: editing the YAML, and reading its explanation.
+  let pasted = null;
+  function showPasted() {
+    $("#xray-edit").hidden = !!pasted;
+    $("#xray-result").hidden = !pasted;
+    $("#xray-view").hidden = !pasted;
+    renderXrayLines(pasted ? pasted.lines : []);
+    if (!pasted) return;
+    const rows = pasted.lines;
     const warned = rows.filter((r) => r.warns && r.warns.length).length;
     const unknown = rows.filter((r) => r.level === "unknown").length;
     const summary = [`${rows.filter((r) => r.note).length} lines explained`];
-    if (warned) summary.push(`${warned} with a warning`);
+    if (warned) summary.push(`${warned} worth a second look`);
     if (unknown) summary.push(`${unknown} not in the dictionary`);
-    review.replaceChildren(h("p.small", null, summary.join(" · ") + "."),
-      ...(res.review.length ? [h("p.small.strong", null, "Worth a look"), h("ul.xray-review", null, res.review.map((n) => h("li", null, n)))] : []));
-    renderXrayLines(rows);
+    $("#xray-summary").textContent = summary.join(" · ");
+    // Missing settings, folded so the code stays near the top.
+    $("#xray-review").replaceChildren(...(pasted.review.length
+      ? [h("details.xray-missing", null, h("summary", null, `${pasted.review.length} missing setting${pasted.review.length === 1 ? "" : "s"} worth a look`),
+        h("ul.xray-review", null, pasted.review.map((n) => h("li", null, n))))] : []));
     const first = $("#xray-lines .line.warn") || $("#xray-lines button.line");
-    if (first) first.click();
+    if (first && !narrow()) first.click();
+  }
+  function explainPasted() {
+    const text = $("#xray-input").value;
+    const error = $("#xray-error");
+    const fail = (msg) => { error.textContent = msg; error.hidden = false; };
+    if (!text.trim()) return fail("Paste a manifest first, or choose Load an example.");
+    const res = window.KQExplain.explain(text);
+    if (res.error) return fail(res.error);
+    error.hidden = true;
+    pasted = res;
+    showPasted();
+    $("#xray-paste").scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  function editPasted() {
+    pasted = null;
+    showPasted();
+    $("#xray-input").focus();
+  }
+  function clearPasted() {
+    $("#xray-input").value = "";
+    $("#xray-error").hidden = true;
+    editPasted();
   }
 
   // --- troubleshooting reference ---------------------------------------------
@@ -449,7 +493,7 @@
   // Open on the inner pages, closed on the busy landing page and on the
   // reference, which people open to look something up; whatever the
   // reader chooses afterwards is remembered per page.
-  const GUIDES_CLOSED_BY_DEFAULT = ["playground", "path", "doctor"];
+  const GUIDES_CLOSED_BY_DEFAULT = ["playground", "path", "doctor", "xray"];
   function renderGuides() {
     const state = store.get("guides", {});
     document.querySelectorAll(".guide-slot").forEach((slot) => {
@@ -478,9 +522,11 @@
   $("#quiz-level").addEventListener("change", renderQuiz);
   $("#quiz-again").addEventListener("click", () => { renderQuiz(); $("#quiz-list").scrollIntoView({ block: "start" }); });
   // Pasting your own manifest comes first; the annotated examples follow.
-  $("#xray-pick").append(h("button", { type: "button", role: "tab", "data-index": Q.xray.length, onclick: () => { renderXray(Q.xray.length); $("#xray-input").focus(); } }, "Paste your YAML"));
+  $("#xray-pick").append(h("button", { type: "button", role: "tab", "data-index": Q.xray.length, onclick: () => { renderXray(Q.xray.length); if (!pasted) $("#xray-input").focus(); } }, "Paste your YAML"));
   Q.xray.forEach((m, i) => $("#xray-pick").append(h("button", { type: "button", role: "tab", "data-index": i, onclick: () => renderXray(i) }, m.name)));
   $("#xray-go").addEventListener("click", explainPasted);
+  $("#xray-edit-btn").addEventListener("click", editPasted);
+  for (const id of ["#xray-clear", "#xray-clear-2"]) $(id).addEventListener("click", clearPasted);
   $("#xray-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) explainPasted(); });
   $("#xray-example").addEventListener("click", () => {
     $("#xray-input").value = Q.xrayExample;
