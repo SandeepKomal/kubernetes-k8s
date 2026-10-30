@@ -153,6 +153,8 @@ main { padding-top: 8px; padding-bottom: 64px; min-height: 70vh; }
 .start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; }
 .start-grid h3 { font-size: 1.3rem; margin: 0 0 4px; }
 .start-grid .muted { margin: 0 0 16px; }
+pre.start { line-height: 1.7; }
+pre.start .cm { color: var(--muted); font-style: normal; }
 .start-note { margin: 14px 0 0; font-size: .86rem; line-height: 1.5; color: var(--muted); }
 .start-note strong { color: var(--text); font-weight: 600; }
 .start-note code { font-size: .82rem; background: var(--code-bg); border-radius: 6px; padding: 1px 6px; }

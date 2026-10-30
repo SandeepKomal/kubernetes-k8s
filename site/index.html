@@ -84,11 +84,22 @@
           <div class="card">
             <h3>On your machine</h3>
             <p class="muted">Needs Docker, kind and kubectl. Free.</p>
-            <pre class="start"><code>git clone https://github.com/SandeepKomal/kubernetes-k8s.git
+            <pre class="start"><code><span class="cm"># 1. Get the course</span>
+git clone https://github.com/SandeepKomal/kubernetes-k8s.git
 cd kubernetes-k8s
+
+<span class="cm"># 2. Check Docker, kind and kubectl</span>
+./quest doctor
+
+<span class="cm"># 3. Create the cluster (1-2 minutes)</span>
 ./quest up
-./quest ui</code></pre>
-            <p class="start-note"><strong>When you finish,</strong> run <code>./quest down</code>. It deletes the practice cluster and frees the memory Docker was using. Your progress is kept, and <code>./quest up</code> brings a fresh cluster back next time.</p>
+
+<span class="cm"># 4. Open the practice dashboard</span>
+./quest ui
+
+<span class="cm"># 5. Done? Delete the cluster to free</span>
+<span class="cm">#    memory. Your progress is kept.</span>
+./quest down</code></pre>
           </div>
           <div class="card">
             <h3>In your browser</h3>
