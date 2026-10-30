@@ -25,7 +25,7 @@ jobs:
       - name: Validate every manifest against the Kubernetes schema
         run: |
           # Kustomize inputs (partial patches) are validated after rendering, below.
-          find Kubernetes labs -type f \( -name '*.yaml' -o -name '*.yml' \) -not -name kind.yaml -not -path '*/app/*' -print0 |
+          find reference labs -type f \( -name '*.yaml' -o -name '*.yml' \) -not -name kind.yaml -not -path '*/app/*' -print0 |
             xargs -0 kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0
 
       - name: Validate rendered Kustomize output
@@ -52,6 +52,9 @@ jobs:
 
       - name: Dashboard server tests
         run: python3 -m unittest discover -s tests -v
+
+      - name: Every internal link resolves
+        run: python3 tests/check_links.py
 
       - name: Site data is complete and well formed
         run: node tests/check_site_data.js
@@ -132,10 +135,10 @@ jobs:
       - name: The scheduling examples run on a fresh cluster
         run: |
           kubectl create namespace scheduling-demo
-          kubectl -n scheduling-demo apply -f "Kubernetes/k8's_objects/Scheduling/nodeaffinity.yaml" \
-            -f "Kubernetes/k8's_objects/Scheduling/pod affinity.yaml" \
-            -f "Kubernetes/k8's_objects/Scheduling/podantiaffinity.yaml" \
-            -f "Kubernetes/k8's_objects/Scheduling/taintsandtolerants.yaml"
+          kubectl -n scheduling-demo apply -f reference/manifests/scheduling/node-affinity.yaml \
+            -f reference/manifests/scheduling/pod-affinity.yaml \
+            -f reference/manifests/scheduling/pod-anti-affinity.yaml \
+            -f reference/manifests/scheduling/taints-and-tolerations.yaml
           for d in web cache web-spread batch-worker; do
             kubectl -n scheduling-demo rollout status "deployment/$d" --timeout=180s
           done
@@ -143,7 +146,7 @@ jobs:
       - name: The DaemonSet examples run on a fresh cluster
         run: |
           kubectl create namespace daemonset-demo
-          kubectl -n daemonset-demo apply -f "Kubernetes/k8's_objects/deamonsets/"
+          kubectl -n daemonset-demo apply -f reference/manifests/daemonsets/
           kubectl -n daemonset-demo rollout status daemonset/node-log-agent --timeout=180s
           # node-heartbeat only runs on nodes labelled monitoring=enabled.
           node=$(kubectl get nodes -o name | tail -n1)
@@ -154,16 +157,38 @@ jobs:
       - name: The StatefulSet example keeps its data across restarts
         run: |
           kubectl create namespace statefulset-demo
-          kubectl -n statefulset-demo apply -f "Kubernetes/k8's_objects/statefulset1/Statefulset.yaml"
+          kubectl -n statefulset-demo apply -f reference/manifests/statefulsets/statefulset.yaml
           kubectl -n statefulset-demo rollout status statefulset/records --timeout=180s
           kubectl -n statefulset-demo delete pod records-0
           kubectl -n statefulset-demo wait --for=condition=Ready pod/records-0 --timeout=120s
           # Two lines: one from the first start, one from the restart.
           test "$(kubectl -n statefulset-demo exec records-0 -- wc -l /data/starts.log | awk '{print $1}')" -ge 2
 
+      - name: The RBAC examples grant exactly what they say
+        run: |
+          kubectl create namespace team-a
+          kubectl apply -f reference/manifests/rbac/
+          sa=system:serviceaccount:team-a:ci-reader
+          test "$(kubectl auth can-i list pods -n team-a --as=$sa)" = yes
+          test "$(kubectl auth can-i get pods --subresource=log -n team-a --as=$sa)" = yes
+          test "$(kubectl auth can-i delete pods -n team-a --as=$sa)" = no
+          test "$(kubectl auth can-i get secrets -n team-a --as=$sa)" = no
+          test "$(kubectl auth can-i delete pods -n team-a --as=someone --as-group=team-a-operators)" = yes
+          test "$(kubectl auth can-i get secrets -n team-a --as=someone --as-group=team-a-operators)" = no
+
+      - name: The Job and autoscaling examples run
+        run: |
+          kubectl create namespace jobs-demo
+          kubectl -n jobs-demo apply -f reference/manifests/jobs/job-hello.yaml -f reference/manifests/jobs/job-parallel.yaml
+          kubectl -n jobs-demo wait --for=condition=Complete job/hello job/process-batches --timeout=180s
+          test "$(kubectl -n jobs-demo get job process-batches -o jsonpath='{.status.succeeded}')" = 6
+          kubectl -n jobs-demo apply -f reference/manifests/autoscaling/web-deployment.yaml
+          kubectl -n jobs-demo rollout status deployment/web --timeout=120s
+
       - name: Cluster state on failure
         if: failure()
         run: |
           kubectl get all,events -n shop-prod || true
+          kubectl get all,events -n jobs-demo || true
           kubectl get all,pvc,events -n statefulset-demo || true
           kubectl get all,events -n scheduling-demo || true

@@ -71,4 +71,4 @@ Your progress is kept in `~/.k8s-quest`.
 | `./quest` says the context is not `kind-k8s-quest` | Run `./quest up`, or `kubectl config use-context kind-k8s-quest` |
 | Image pulls are slow or rate limited | Docker Hub limits anonymous pulls; `docker login` raises the limit |
 
-More detail on kind itself is in [kind.md](../kind.md).
+More detail on kind itself is in [kind-on-ubuntu.md](kind-on-ubuntu.md).

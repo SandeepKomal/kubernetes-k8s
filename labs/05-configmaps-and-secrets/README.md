@@ -55,4 +55,4 @@ echo 'YWJj' | base64 -d     # base64 is an encoding, not encryption
 Never commit real Secret YAML to Git: anyone can decode it. Teams use the
 External Secrets Operator or the Secrets Store CSI driver to pull from AWS
 Secrets Manager, Vault, or similar, or encrypt files in Git with Sealed
-Secrets or SOPS. See `k8s-security.md` for more.
+Secrets or SOPS. See [docs/security.md](../../docs/security.md) for more.

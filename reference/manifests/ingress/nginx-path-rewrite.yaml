@@ -1,0 +1,43 @@
+# Path-based routing with URL rewriting, for an NGINX-based ingress controller.
+#
+#   /nginx/anything  ->  Service nginx, path /anything
+#   /httpd/anything  ->  Service httpd, path /anything
+#
+# The rewrite-target annotation is specific to NGINX controllers; other
+# controllers use their own annotations. The community ingress-nginx
+# project has been retired, so for new work prefer the Gateway API, where
+# path matching and rewriting (URLRewrite filters) are part of the standard.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: k8s-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /nginx(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
+      - path: /httpd(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: httpd
+            port:
+              number: 80
+      - path: /(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80

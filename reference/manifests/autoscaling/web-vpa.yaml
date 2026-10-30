@@ -1,0 +1,16 @@
+# VerticalPodAutoscaler in recommendation-only mode: it suggests requests
+# for the web Pods from their real usage but never changes them.
+#   kubectl describe vpa web        # see the Recommendation section
+# Needs the VPA components installed (see README.md). Do not let a VPA and
+# an HPA both act on CPU for the same Deployment.
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: web
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  updatePolicy:
+    updateMode: "Off"

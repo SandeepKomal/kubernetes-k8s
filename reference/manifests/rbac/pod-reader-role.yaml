@@ -1,0 +1,15 @@
+# A Role grants permissions inside one namespace.
+#
+# This one lets its subjects look at Pods and their logs, and nothing else.
+# Read access is the usual starting point for developers and dashboards.
+# Check what it allows:
+#   kubectl auth can-i --list --as=system:serviceaccount:team-a:ci-reader -n team-a
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: team-a
+rules:
+  - apiGroups: [""]              # "" is the core API group (Pods, Services, ...)
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
