@@ -895,6 +895,80 @@ for (let i = 0; i < 6; i++) step(c, "kubectl get pods");
 assert.match(step(c, "kubectl get sts"), /orders-db\s+3\/3/);
 assert.ok(won(c), "statefulset: all three start in order");
 
+// LimitRange: a default limit the Deployment never mentions.
+c = fresh("limitrange");
+assert.match(step(c, `kubectl describe pod ${podOf(c, "ledger")}`), /limit-ranger: LimitRanger plugin set[\s\S]*OOMKilled[\s\S]*memory:\s+128Mi/);
+assert.match(step(c, "kubectl describe limitrange kitchen-defaults"), /Container\s+memory\s+-\s+-\s+64Mi\s+128Mi/);
+step(c, "kubectl delete limitrange kitchen-defaults");
+step(c, "kubectl rollout restart deployment/ledger");
+assert.ok(!won(c), "deleting the namespace defaults is not the fix");
+c = fresh("limitrange");
+step(c, "kubectl set resources deployment/ledger --requests=memory=256Mi --limits=memory=512Mi");
+assert.ok(won(c), "limitrange: ledger sets its own limits");
+
+// A Secret volume that does not exist: ContainerCreating, no logs.
+c = fresh("secretvolume");
+assert.match(step(c, "kubectl get pods"), /invoice-\S+\s+0\/1\s+ContainerCreating/);
+assert.match(step(c, `kubectl describe pod ${podOf(c, "invoice")}`), /FailedMount[\s\S]*secret "invoice-signing" not found/);
+step(c, "kubectl create configmap invoice-signing --from-literal=signing.pem=x");
+assert.ok(!won(c), "a ConfigMap of the same name is not a Secret");
+step(c, "kubectl create secret generic invoice-signing --from-literal=signing.pem=practice-key");
+assert.ok(won(c), "secretvolume: the kubelet mounts it on the next try");
+
+// Ingress pathType Exact serves one path only.
+c = fresh("pathtype");
+assert.match(step(c, "curl -i http://kitchen.example/api"), /200 OK/);
+assert.match(step(c, "curl -i http://kitchen.example/api/menu"), /404 Not Found/);
+assert.match(step(c, "kubectl get ingress kitchen-api -o yaml"), /pathType: Exact/);
+const exactRule = (path, type) => `kubectl patch ingress kitchen-api -p '{"spec":{"rules":[{"host":"kitchen.example","http":{"paths":[{"path":"${path}","pathType":"${type}","backend":{"service":{"name":"api-svc","port":{"number":80}}}}]}}]}}'`;
+step(c, exactRule("/api/menu", "Exact"));
+assert.ok(!won(c), "one more exact path still misses /api/orders");
+assert.match(step(c, exactRule("/api", "Sometimes")), /Unsupported value/);
+step(c, exactRule("/api", "Prefix"));
+assert.strictEqual(c.viaIngress("kitchen.example", "/apis").code, 404, "Prefix matches whole path elements");
+assert.ok(won(c), "pathtype: Prefix serves every /api path");
+
+// DiskPressure: the kubelet's taint comes back until the disk recovers.
+c = fresh("diskpressure");
+assert.match(step(c, "kubectl get pods"), /web-\S+\s+0\/1\s+Evicted/);
+assert.match(step(c, `kubectl describe pod ${podOf(c, "web")}`), /untolerated taint \{node\.kubernetes\.io\/disk-pressure: \}/);
+assert.match(step(c, "kubectl describe node worker-2"), /DiskPressure=True/);
+step(c, "kubectl taint node worker-2 node.kubernetes.io/disk-pressure:NoSchedule-");
+assert.ok(c.taints["worker-2"].some((t) => t.key === "node.kubernetes.io/disk-pressure") && !won(c), "the kubelet puts its taint back");
+assert.match(step(c, "ssh worker-2 sudo df -h"), /93%/);
+assert.match(step(c, "ssh worker-2 sudo crictl rmi --prune"), /Deleted: localhost:5000\/reports:0\.7/);
+assert.ok(won(c), "diskpressure: pruning images clears the pressure");
+assert.match(step(c, "kubectl delete pods --field-selector=status.phase=Failed"), /deleted/);
+assert.doesNotMatch(step(c, "kubectl get pods"), /Evicted/);
+
+// A namespace stuck Terminating behind an orphaned finalizer.
+c = fresh("nsstuck");
+assert.match(step(c, "kubectl get ns"), /old-shop\s+Terminating/);
+assert.match(step(c, "kubectl create namespace old-shop"), /object is being deleted/);
+step(c, "kubectl delete ns old-shop --force --grace-period=0");
+step(c, "kubectl delete backup nightly -n old-shop");
+assert.ok(!won(c), "deleting again waits on the same finalizer");
+assert.match(step(c, "kubectl describe ns old-shop"), /finalizers remaining: backup\.kitchen\.example\/protect/);
+assert.match(step(c, "kubectl get backups -n old-shop -o yaml"), /deletionTimestamp[\s\S]*finalizers:\n  - backup\.kitchen\.example\/protect/);
+step(c, `kubectl patch backup nightly -n old-shop --type=merge -p '{"metadata":{"finalizers":null}}'`);
+assert.doesNotMatch(step(c, "kubectl get ns"), /old-shop/);
+step(c, "kubectl create namespace old-shop");
+assert.ok(won(c), "nsstuck: the namespace finishes and is created again");
+
+// A hung Job blocks a CronJob with concurrencyPolicy Forbid.
+c = fresh("cronhung");
+assert.match(step(c, "kubectl get cronjobs"), /menu-sync\s+\S+ \S+ \S+ \S+ \S+\s+<none>\s+false\s+1\s+3d/);
+assert.match(step(c, "kubectl describe cronjob menu-sync"), /JobAlreadyActive/);
+step(c, "kubectl delete job menu-sync-29364180");
+assert.ok(!won(c), "without a deadline the next hang blocks it again");
+step(c, `kubectl patch cronjob menu-sync -p '{"spec":{"concurrencyPolicy":"Allow","jobTemplate":{"spec":{"activeDeadlineSeconds":600}}}}'`);
+assert.ok(!won(c), "Allow lets hung runs pile up");
+c = fresh("cronhung");
+step(c, `kubectl patch cronjob menu-sync -p '{"spec":{"jobTemplate":{"spec":{"activeDeadlineSeconds":600}}}}'`);
+assert.ok(!won(c), "the running Job keeps its old template");
+step(c, "kubectl delete job menu-sync-29364180");
+assert.ok(won(c), "cronhung: no hung run, and a deadline for the next");
+
 // Commands the cheat sheet relies on.
 c = fresh("crash");
 assert.match(step(c, "kubectl get all -l app=web"), /pod\/web-\S+[\s\S]*deployment\.apps\/web[\s\S]*replicaset\.apps\/web-/);
@@ -929,6 +1003,10 @@ c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
 assert.match(text(c, "kubectl get pods -n other"), /No resources found in other namespace/);
 assert.match(text(c, "kubectl scale deployment/orders --replicas=99"), /0 to 6/);
+
+// Each scenario names its course level by the level's own title.
+const levelTitles = Object.fromEntries(window.QUEST.levels.map((l) => [l.id, l.title]));
+for (const s of SCENARIOS) assert.strictEqual(s.level.text, `Level ${s.level.id} · ${levelTitles[s.level.id]}`, `${s.id}: level text`);
 
 // The troubleshooting reference links only to scenarios that exist.
 const ids = new Set(SCENARIOS.map((x) => x.id));

@@ -135,9 +135,10 @@
     ["poddisruptionbudgets", "pdb", "policy/v1", "true", "PodDisruptionBudget"],
     ["clusterrolebindings", "", "rbac.authorization.k8s.io/v1", "false", "ClusterRoleBinding"], ["clusterroles", "", "rbac.authorization.k8s.io/v1", "false", "ClusterRole"],
     ["rolebindings", "", "rbac.authorization.k8s.io/v1", "true", "RoleBinding"], ["roles", "", "rbac.authorization.k8s.io/v1", "true", "Role"],
-    ["priorityclasses", "pc", "scheduling.k8s.io/v1", "false", "PriorityClass"], ["storageclasses", "sc", "storage.k8s.io/v1", "false", "StorageClass"],
+    ["limitranges", "limits", "v1", "true", "LimitRange"], ["priorityclasses", "pc", "scheduling.k8s.io/v1", "false", "PriorityClass"], ["storageclasses", "sc", "storage.k8s.io/v1", "false", "StorageClass"],
     ["verticalpodautoscalers", "vpa", "autoscaling.k8s.io/v1", "true", "VerticalPodAutoscaler"]
   ];
+  const DISK_TAINT = { key: "node.kubernetes.io/disk-pressure", value: "", effect: "NoSchedule" };
   // While kubectl get all prints a kind, its names carry the type: pod/web-...
   let typePrefix = "";
 
@@ -174,6 +175,8 @@
     quota: "quotas", resourcequota: "quotas", resourcequotas: "quotas",
     job: "jobs", jobs: "jobs",
     cj: "cronjobs", cronjob: "cronjobs", cronjobs: "cronjobs",
+    limits: "limitranges", limitrange: "limitranges", limitranges: "limitranges",
+    backup: "backups", backups: "backups", "backups.backup.kitchen.example": "backups",
     csr: "csrs", certificatesigningrequest: "csrs", certificatesigningrequests: "csrs",
     gtw: "gateways", gateway: "gateways", gateways: "gateways",
     httproute: "httproutes", httproutes: "httproutes",
@@ -256,7 +259,7 @@
       id: "oom",
       done: "The reports Deployment is Running.",
       title: "OOMKilled",
-      level: { id: "07", text: "Level 07 · Requests, limits and QoS" },
+      level: { id: "07", text: "Level 07 · Stuck in Pending" },
       story: "The nightly report never finishes. Its Pod restarts every few minutes with no error in the logs.",
       goal: "Get the reports Deployment Running.",
       deployments: [web(), api(), { name: "reports", replicas: 1, image: "localhost:5000/reports:1.0", req: 64, lim: 128, age: 40 * MIN, restarts: 4 }],
@@ -309,7 +312,7 @@
       id: "nodeselector",
       title: "Node selector",
       done: "The cache Deployment is Running.",
-      level: { id: "12", text: "Level 12 · Scheduling, taints and tolerations" },
+      level: { id: "12", text: "Level 12 · The GPU node" },
       story: "The new cache must run on SSD nodes. It has been Pending since it was deployed, yet every node has plenty of room.",
       goal: "Get the cache Deployment Running on an SSD node.",
       deployments: [web(), api(), { name: "cache", replicas: 1, image: "nginx:1.27", req: 128, lim: 256, age: 25 * MIN, nodeSelector: { disk: "ssd" } }],
@@ -490,7 +493,7 @@
       id: "vpa",
       title: "VPA recommendation",
       done: "reports runs with the memory the VPA recommended.",
-      level: { id: "13", text: "Level 13 · Autoscaling (VPA in reference/manifests/autoscaling)" },
+      level: { id: "13", text: "Level 13 · Ready for the dinner rush" },
       story: "reports keeps getting OOMKilled. A VerticalPodAutoscaler has watched it for days, yet nothing has changed.",
       goal: "Get reports Running with enough memory.",
       deployments: [web(), { name: "reports", replicas: 1, image: "localhost:5000/reports:1.0", req: 64, lim: 128, age: 3 * HOUR, restarts: 11 }],
@@ -545,7 +548,7 @@
       id: "ingress404",
       title: "Ingress 404",
       done: "menu.kitchen.example answers through the ingress.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "The new menu Ingress was applied an hour ago. Every request to menu.kitchen.example returns 404 from nginx.",
       goal: "Make http://menu.kitchen.example/ return the menu.",
       deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
@@ -565,7 +568,7 @@
       id: "ingress503",
       title: "Ingress 503",
       done: "menu.kitchen.example answers through the ingress.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "The ingress has an address and the menu Pods are Ready, but menu.kitchen.example returns 503.",
       goal: "Make http://menu.kitchen.example/ return the menu.",
       deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
@@ -603,7 +606,7 @@
       id: "quota",
       title: "Quota exceeded",
       done: "orders runs within the namespace's memory budget.",
-      level: { id: "07", text: "Level 07 · Requests, limits and quotas" },
+      level: { id: "07", text: "Level 07 · Stuck in Pending" },
       story: "orders was deployed to the kitchen namespace an hour ago. It shows 0/1 and has no Pod.",
       goal: "Get orders Running without raising or removing the quota.",
       deployments: [web(), api(), { name: "orders", replicas: 1, image: "localhost:5000/orders:2.3", req: 256, lim: 512, age: HOUR, env: { MENU_FILE: "/etc/menu/menu.json" } }],
@@ -640,7 +643,7 @@
       id: "drain",
       title: "Drain blocked",
       done: "worker-2 is drained, and the web budget held throughout.",
-      level: { id: "13", text: "Level 13 · PodDisruptionBudgets" },
+      level: { id: "13", text: "Level 13 · Ready for the dinner rush" },
       story: "worker-2 needs a kernel update. The drain hangs on a web Pod.",
       goal: "Drain worker-2 without breaking the web PodDisruptionBudget.",
       deployments: [web(), api()],
@@ -659,7 +662,7 @@
       id: "helm",
       title: "Helm failed upgrade",
       done: "The menu release is deployed, healthy, and matches what Helm recorded.",
-      level: { id: "18", text: "Level 18 · One app, many environments (packaging)" },
+      level: { id: "18", text: "Level 18 · One app, many environments" },
       story: "Last night's helm upgrade of the menu release failed. Half the menu Pods are stuck.",
       goal: "Get the menu release deployed and healthy through Helm.",
       deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 5 * HOUR }, api()],
@@ -687,7 +690,7 @@
       id: "gateway",
       title: "Gateway API route",
       done: "The menu HTTPRoute is attached and menu.kitchen.example answers.",
-      level: { id: "04", text: "Level 04 · Services (Gateway API in docs/coverage.md)" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "The platform team moved from Ingress to the Gateway API. The new menu HTTPRoute is applied, but menu.kitchen.example returns 404.",
       goal: "Make http://menu.kitchen.example/ return the menu through the Gateway.",
       deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
@@ -765,7 +768,7 @@
       id: "nodenotready",
       title: "Node NotReady",
       done: "worker-3 is Ready, and its kubelet starts on boot.",
-      level: { id: "14", text: "Level 14 · The Friday night incident" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "worker-3 was rebooted for a kernel update and never came back. It shows NotReady.",
       goal: "Bring worker-3 back, and make sure it survives the next reboot.",
       deployments: [web(), api()],
@@ -784,7 +787,7 @@
       id: "etcd",
       title: "etcd backup",
       done: "A verified etcd snapshot is saved in /opt/backup.",
-      level: { id: "14", text: "Level 14 · Incident response (etcd in docs/coverage.md)" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "Tonight's control-plane upgrade needs a fresh etcd backup first. You are on the control-plane node.",
       goal: "Save an etcd snapshot under /opt/backup and verify it.",
       deployments: [web(), api()],
@@ -801,7 +804,7 @@
       id: "svcport",
       title: "Wrong targetPort",
       done: "web reaches menu through menu-svc on port 80.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "menu was moved from a custom image to plain nginx this morning. Its Pods are Running and Ready, its Service has endpoints, and still every call from web to menu-svc is refused.",
       goal: "Make http://menu-svc (port 80) answer from inside the cluster again.",
       deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
@@ -820,7 +823,7 @@
       id: "coredns",
       title: "CoreDNS down",
       done: "CoreDNS runs two replicas and Service names resolve again.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "Someone tidied up kube-system last night to save resources. Since then every app that calls another Service by name fails. Calling the Service's IP still works.",
       goal: "Make Service names resolve again, and keep DNS able to survive one node going down.",
       deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
@@ -840,7 +843,7 @@
       id: "pullsecret",
       title: "Private registry",
       done: "menu pulls its image from the private registry with a pull secret.",
-      level: { id: "01", text: "Level 01 · CrashLoopBackOff" },
+      level: { id: "01", text: "Level 01 · Pods that will not start" },
       story: "menu now uses the company's private registry, registry.kitchen.example. Its Pods never start. The registry's robot account for pulls is described in /opt/registry.",
       goal: "Let menu pull registry.kitchen.example/nginx:1.27, without switching to a public image.",
       deployments: [web(), { name: "menu", replicas: 2, image: "registry.kitchen.example/nginx:1.27", req: 64, lim: 128, age: 25 * MIN }],
@@ -892,7 +895,7 @@
       id: "scheduler",
       title: "Scheduler down",
       done: "kube-scheduler runs again and menu's Pods are placed and Running.",
-      level: { id: "14", text: "Level 14 · Incident response" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "After this morning's control-plane maintenance, Pods that were already running are fine. Every new Pod stays Pending, and its events are empty.",
       goal: "Find out why nothing gets scheduled, and fix it on the control-plane node.",
       deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 10 * MIN }],
@@ -933,7 +936,7 @@
       id: "ingresstls",
       title: "Ingress TLS",
       done: "https://menu.kitchen.example serves the company certificate for its name.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "menu.kitchen.example moved to HTTPS. Browsers now warn that the connection is not private and curl refuses it. Plain HTTP still works.",
       goal: "Make https://menu.kitchen.example serve a valid certificate for its name.",
       deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }, api()],
@@ -962,7 +965,7 @@
       id: "finalizer",
       title: "Stuck Terminating",
       done: "The stuck report-runner Pod is gone.",
-      level: { id: "14", text: "Level 14 · Incident response" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "report-runner was deleted two hours ago and still shows Terminating, although its container stopped long ago. The archiver that used to clean up after it was uninstalled last week.",
       goal: "Get rid of the report-runner Pod for good.",
       deployments: [web()],
@@ -981,7 +984,7 @@
       id: "certs",
       title: "Certificates expired",
       done: "kubectl works again: the certificates are renewed and the control plane runs on them.",
-      level: { id: "14", text: "Level 14 · Incident response" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "Monday morning, a year to the day after this cluster was built with kubeadm. kubectl refuses to connect, while the apps keep serving traffic. You are on the control-plane node.",
       goal: "Renew the expired certificates, restart the control plane on them, and get kubectl working again.",
       deployments: [web(), api()],
@@ -1154,7 +1157,7 @@
       id: "antiaffinity",
       title: "Anti-affinity blocks scaling",
       done: "cache runs 4 replicas, still spread across the nodes as much as possible.",
-      level: { id: "12", text: "Level 12 · Scheduling, taints and tolerations" },
+      level: { id: "12", text: "Level 12 · The GPU node" },
       story: "For the sale, cache was scaled from 3 to 4 replicas. The fourth has been Pending for an hour. The cluster has plenty of free memory.",
       goal: "Run 4 cache replicas, keeping them spread over the nodes as far as possible.",
       deployments: [{ name: "cache", replicas: 4, image: "nginx:1.27", req: 128, lim: 256, age: 3 * HOUR, antiAffinity: "required" }, api()],
@@ -1172,7 +1175,7 @@
       id: "lbpending",
       title: "LoadBalancer pending",
       done: "shop is a NodePort Service and answers from your machine.",
-      level: { id: "04", text: "Level 04 · Services and DNS" },
+      level: { id: "04", text: "Level 04 · Connection refused" },
       story: "The shop team copied their cloud manifests to this kind cluster. Their Service has shown EXTERNAL-IP <pending> since yesterday, and they are waiting for an address that will never come.",
       goal: "Reach shop from your machine, and stop its Service waiting for a load balancer this cluster does not have.",
       deployments: [{ name: "shop", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 26 * HOUR }, api()],
@@ -1212,7 +1215,7 @@
       id: "priority",
       title: "Critical Pod can't schedule",
       done: "oven runs with a PriorityClass that lets it preempt the batch reports.",
-      level: { id: "07", text: "Level 07 · Requests, limits and quotas" },
+      level: { id: "07", text: "Level 07 · Stuck in Pending" },
       story: "The nightly reports batch fills every node. The oven controller, which the whole kitchen depends on, was redeployed and now cannot find room.",
       goal: "Get oven Running by giving it priority over the batch work. Do not scale the batch down; it should run whenever there is room.",
       deployments: [
@@ -1236,7 +1239,7 @@
       id: "statefulset",
       title: "StatefulSet stuck at 0",
       done: "All three orders-db Pods run, started in order.",
-      level: { id: "15", text: "Level 15 · StatefulSets" },
+      level: { id: "15", text: "Level 15 · Every replica is the same, except it is not" },
       story: "orders-db was moved to a StatefulSet with three replicas. Only orders-db-0 exists, and it never starts. There is no sign of orders-db-1 or orders-db-2.",
       goal: "Get all three orders-db Pods Running.",
       deployments: [web()],
@@ -1252,10 +1255,139 @@
       tries: ["kubectl get sts", "kubectl get pods"]
     },
     {
+      id: "limitrange",
+      title: "OOMKilled, no limit set",
+      done: "ledger runs with memory limits of its own, and the namespace keeps its defaults.",
+      level: { id: "07", text: "Level 07 · Stuck in Pending" },
+      story: "ledger was moved into the shared kitchen namespace this morning and now restarts every minute with OOMKilled. Its Deployment sets no memory limit at all, so the team is baffled.",
+      goal: "Get ledger Running. The platform team's namespace defaults stay as they are.",
+      deployments: [web(), { name: "ledger", replicas: 1, image: "localhost:5000/ledger:4.2", req: null, lim: null, age: 40 * MIN, restarts: 12 }],
+      limitRanges: [{ name: "kitchen-defaults", lim: 128, req: 64 }],
+      won: (c) => c.deploymentReady("ledger") && c.limitRanges.length > 0,
+      check: (c) => ({ label: "ledger", ok: c.deploymentReady("ledger"), text: c.deploymentReady("ledger") ? "Running" : "OOMKilled" }),
+      hints: [
+        "kubectl describe pod on the ledger Pod: Last State OOMKilled, with Limits memory 128Mi. Now kubectl get deploy ledger -o yaml: no limits there. So where did 128Mi come from?",
+        "The Pod's annotation kubernetes.io/limit-ranger says LimitRanger set it. kubectl get limitrange, then kubectl describe limitrange kitchen-defaults: every container without limits gets 128Mi.",
+        "Give ledger its own: kubectl set resources deployment/ledger --requests=memory=256Mi --limits=memory=512Mi"
+      ],
+      lesson: "A LimitRange gives every container that sets no requests or limits the namespace's defaults, at admission. An app that needs more is OOMKilled although its manifest says nothing about memory. Set requests and limits on every workload; the defaults are a safety net, not a size.",
+      tries: ["kubectl get pods", "kubectl describe deploy ledger"]
+    },
+    {
+      id: "secretvolume",
+      title: "Secret volume not found",
+      done: "invoice mounts its signing key and runs.",
+      level: { id: "05", text: "Level 05 · Missing configuration" },
+      story: "invoice was deployed to production for the first time. Both Pods have been in ContainerCreating for twenty minutes; there are no logs, and no crash to look at.",
+      goal: "Get invoice Running. It reads its signing key from a Secret named invoice-signing.",
+      deployments: [web(), { name: "invoice", replicas: 2, image: "localhost:5000/invoice:2.0", req: 64, lim: 128, age: 20 * MIN,
+        secretVol: { name: "signing-key", secret: "invoice-signing", path: "/etc/invoice/keys" } }],
+      won: (c) => c.deploymentReady("invoice"),
+      check: (c) => ({ label: "invoice", ok: c.deploymentReady("invoice"), text: `${c.podsOf("invoice").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "ContainerCreating for minutes is not a crash: the container never started. kubectl logs has nothing; kubectl describe pod has the answer in Events.",
+        "FailedMount: secret \"invoice-signing\" not found. The kubelet mounts volumes before it starts containers, and keeps retrying. kubectl get secrets: it was only ever created in staging.",
+        "Create it here: kubectl create secret generic invoice-signing --from-literal=signing.pem=practice-key. The kubelet retries the mount by itself."
+      ],
+      lesson: "A Pod whose volume cannot be mounted stays in ContainerCreating with FailedMount events, and has no logs because nothing ran. Secrets and ConfigMaps are namespaced: one created in staging does not exist in production.",
+      tries: ["kubectl get pods", "kubectl get secrets"]
+    },
+    {
+      id: "pathtype",
+      title: "Ingress path too exact",
+      done: "Every /api route answers through the Ingress.",
+      level: { id: "04", text: "Level 04 · Connection refused" },
+      story: "The new Ingress went live and the health check on /api is green. The mobile app is not: every call to /api/menu or /api/orders gets a 404 from nginx.",
+      goal: "Serve every path under /api through the Ingress.",
+      deployments: [web(), api()],
+      services: [{ name: "api-svc", selector: { app: "api" }, ip: "10.96.20.30", age: 2 * HOUR }],
+      ingresses: [{ name: "kitchen-api", class: "nginx", host: "kitchen.example", path: "/api", pathType: "Exact", svc: "api-svc", port: 80 }],
+      won: (c) => ["/api", "/api/menu", "/api/orders"].every((x) => c.viaIngress("kitchen.example", x).ok),
+      check: (c) => { const ok = c.viaIngress("kitchen.example", "/api/menu").ok; return { label: "kitchen.example/api/menu", ok, text: ok ? "200" : "404" }; },
+      hints: [
+        "curl -i http://kitchen.example/api works; curl -i http://kitchen.example/api/menu returns 404. Same host, same Service, so the Ingress rule decides.",
+        "kubectl describe ingress kitchen-api shows the path but not how it matches. kubectl get ingress kitchen-api -o yaml: pathType Exact matches /api and nothing else.",
+        `kubectl patch ingress kitchen-api -p '{"spec":{"rules":[{"host":"kitchen.example","http":{"paths":[{"path":"/api","pathType":"Prefix","backend":{"service":{"name":"api-svc","port":{"number":80}}}}]}}]}}'`
+      ],
+      lesson: "pathType Exact matches one path exactly; Prefix matches whole path elements, so /api serves /api/menu but not /apis. For an API under a path, use Prefix.",
+      tries: ["curl -i http://kitchen.example/api", "curl -i http://kitchen.example/api/menu"]
+    },
+    {
+      id: "diskpressure",
+      title: "Node DiskPressure",
+      done: "worker-2 has disk to spare again, and web runs there.",
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
+      story: "web needs the SSD node, worker-2. An hour ago its Pods were Evicted, and the new ones are Pending. kubectl get pods is filling up with Evicted entries.",
+      goal: "Get web Running on worker-2 again, by fixing what the kubelet is complaining about.",
+      nodeLabels: { "worker-2": { disk: "ssd" } },
+      deployments: [web({ nodeSelector: { disk: "ssd" } }), api()],
+      diskPressure: { node: "worker-2", images: ["localhost:5000/reports:0.7", "localhost:5000/reports:0.8", "localhost:5000/reports:0.9", "localhost:5000/ledger:3.9", "localhost:5000/ledger:4.0", "localhost:5000/ledger:4.1"] },
+      evicted: [{ app: "web", count: 3, node: "worker-2", age: 55 * MIN, message: "The node was low on resource: ephemeral-storage. Threshold quantity: 2Gi, available: 1452Mi." }],
+      setup: (c) => c.extraEvents.push(
+        ["Normal", "NodeHasDiskPressure", "node/worker-2", "Node worker-2 status is now: NodeHasDiskPressure"],
+        ["Warning", "EvictionThresholdMet", "node/worker-2", "Attempting to reclaim ephemeral-storage"]),
+      won: (c) => !c.disk.pressure && c.deploymentReady("web"),
+      check: (c) => ({ label: "worker-2", ok: !c.disk.pressure, text: c.disk.pressure ? "DiskPressure" : "disk OK" }),
+      hints: [
+        "kubectl describe pod on an Evicted Pod: the node was low on ephemeral-storage. On a Pending one: 1 node(s) had untolerated taint {node.kubernetes.io/disk-pressure: }.",
+        "kubectl describe node worker-2: DiskPressure=True. The kubelet set that taint, and puts it back if you remove it. Look at the disk: ssh worker-2 sudo df -h, then ssh worker-2 sudo crictl images.",
+        "Old image versions fill the disk. Remove the unused ones: ssh worker-2 sudo crictl rmi --prune. Then kubectl delete pods --field-selector=status.phase=Failed cleans up the Evicted entries."
+      ],
+      lesson: "When a node's disk crosses the eviction threshold, the kubelet evicts Pods, taints the node with disk-pressure and keeps it there until the disk recovers. Fix the disk, not the taint: prune unused images, and tune the kubelet's image garbage collection so it does not happen again.",
+      tries: ["kubectl get pods -o wide", "kubectl describe node worker-2"]
+    },
+    {
+      id: "nsstuck",
+      title: "Namespace stuck Terminating",
+      done: "old-shop finished deleting, and a fresh one was created.",
+      level: { id: "00", text: "Level 00 · Hello, cluster" },
+      story: "The shop team deleted their old-shop namespace three days ago to start over. It still says Terminating, and they cannot create a new one with the same name.",
+      goal: "Let old-shop finish deleting, then create it again for the team.",
+      deployments: [web()],
+      oldNs: { name: "old-shop", item: "nightly", finalizer: "backup.kitchen.example/protect" },
+      won: (c) => c.oldNs.recreated,
+      check: (c) => ({ label: "namespace old-shop", ok: c.oldNs.gone, text: c.oldNs.recreated ? "Active" : c.oldNs.gone ? "deleted" : "Terminating" }),
+      hints: [
+        "kubectl get ns shows old-shop Terminating, and kubectl create namespace old-shop is refused. Deleting it again changes nothing. kubectl describe ns old-shop says what it is waiting for.",
+        "One Backup still has the finalizer backup.kitchen.example/protect: kubectl get backups -n old-shop -o yaml. The operator that would run that cleanup was uninstalled first, so nobody ever removes it.",
+        `With the operator gone there is nothing left to clean up. Remove the finalizer: kubectl patch backup nightly -n old-shop --type=merge -p '{"metadata":{"finalizers":null}}'. Then kubectl create namespace old-shop.`
+      ],
+      lesson: "A namespace finishes deleting only when everything in it is gone, and an object with a finalizer waits for the controller that owns it. Uninstalling an operator before its objects leaves them stuck. Remove the finalizer by hand only once what it guarded is dealt with, and never force the namespace through its /finalize API: that leaves orphans in etcd.",
+      tries: ["kubectl get ns", "kubectl describe ns old-shop"]
+    },
+    {
+      id: "cronhung",
+      title: "CronJob blocked by a hung Job",
+      done: "menu-sync runs on schedule again, and a hung run can no longer block it.",
+      level: { id: "09", text: "Level 09 · The cleanup that never ran" },
+      story: "menu-sync copies the menu from the old till system every 15 minutes. Prices in the shop have not changed for three days, although head office updated them twice. Nothing is failing.",
+      goal: "Get menu-sync running on schedule again, and make sure one stuck run cannot block it like this again.",
+      deployments: [web()],
+      cronjobs: [{ name: "menu-sync", schedule: "*/15 * * * *", suspend: false, concurrency: "Forbid", deadline: null, url: "http://legacy-pos.kitchen.example/export", last: "3d" }],
+      setup: (c) => {
+        const name = "menu-sync-29364180";
+        const pod = `${name}-${c.rand(5)}`;
+        c.jobs.push({ name, from: "menu-sync", status: "Running", created: c.now() - 72 * HOUR, pods: [pod], events: [["Normal", "SuccessfulCreate", "job-controller", `Created pod: ${pod}`]] });
+        c.pods.push({ name: pod, owner: null, job: name, hash: null, labels: { "job-name": name }, created: c.now() - 72 * HOUR, restarts: 0, node: "worker-1", creating: false, ready: true, state: "Running", last: null,
+          spec: { image: "busybox:1.36", env: {}, req: 0, lim: 0, envFrom: null, probe: null, nodeSelector: {}, sa: "default", cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}, pvc: null },
+          logs: ["Connecting to legacy-pos.kitchen.example (10.96.140.7:80)"],
+          events: [["Normal", "Scheduled", "default-scheduler", `Successfully assigned ${NS}/${pod} to worker-1`], ["Normal", "Started", "kubelet", "Started container menu-sync"]] });
+      },
+      won: (c) => { const x = c.cronjobs[0]; return !c.activeJobs(x).length && x.deadline > 0 && x.concurrency !== "Allow"; },
+      check: (c) => { const x = c.cronjobs[0]; const busy = c.activeJobs(x).length; return { label: "menu-sync", ok: !busy && x.deadline > 0, text: busy ? "blocked by a running Job" : x.deadline > 0 ? "on schedule" : "no deadline yet" }; },
+      hints: [
+        "kubectl get cronjob menu-sync: ACTIVE 1, LAST SCHEDULE 3d. kubectl get jobs: one has been Running for three days.",
+        "kubectl describe cronjob menu-sync: JobAlreadyActive, concurrency policy Forbid. kubectl logs job/menu-sync-29364180: it is still waiting on the old till, with no timeout.",
+        `Stop the hung run: kubectl delete job menu-sync-29364180. Then give every run a deadline: kubectl patch cronjob menu-sync -p '{"spec":{"jobTemplate":{"spec":{"activeDeadlineSeconds":600}}}}'`
+      ],
+      lesson: "With concurrencyPolicy Forbid, a CronJob skips every run while the previous one is active, so one hung Job blocks it for ever, silently. Give Jobs an activeDeadlineSeconds (and a timeout in the command) so a stuck run fails and the schedule carries on.",
+      tries: ["kubectl get cronjobs", "kubectl get jobs"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
-      level: { id: "14", text: "Level 14 · Incident response (etcd in docs/coverage.md)" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "At 03:10 a cleanup script ran kubectl delete against the wrong cluster. The menu Deployment and its Service are gone. The nightly etcd snapshot from 03:00 is in /opt/backup.",
       goal: "Restore etcd from /opt/backup/etcd-0300.db so that menu comes back.",
       deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 5 * HOUR }],
@@ -1281,7 +1413,7 @@
       id: "kubeadm",
       title: "kubeadm upgrade",
       done: "The control plane and its kubelet run v1.34.1, the node is back in service and the packages are held.",
-      level: { id: "14", text: "Level 14 · Incident response (kubeadm in docs/coverage.md)" },
+      level: { id: "14", text: "Level 14 · Boss level: the Friday night incident" },
       story: "The kitchen cluster runs Kubernetes v1.33.5. Tonight the control-plane node goes to v1.34.1; the workers follow next week. You are logged in on the control-plane node.",
       goal: "Upgrade the control-plane node to v1.34.1 the kubeadm way, with the node drained while its kubelet restarts.",
       deployments: [web(), api()],
@@ -1305,7 +1437,7 @@
       id: "audit",
       title: "Audit log",
       done: "You found who deleted the Secret, and that user can no longer delete Secrets.",
-      level: { id: "21", text: "Level 21 · Production hardening (audit logs in docs/coverage.md)" },
+      level: { id: "21", text: "Level 21 · Final boss: ready for production" },
       story: "Last night the payments-api Secret disappeared and checkout failed until ops-lead recreated it in the morning. Nobody remembers deleting it. The API server keeps an audit log.",
       goal: "Find who deleted the Secret, then take away that user's right to delete Secrets without locking them, or ops-lead, out.",
       deployments: [web(), api()],
@@ -1340,7 +1472,7 @@
       id: "encryption",
       title: "Encryption at rest",
       done: "The API server encrypts Secrets with aescbc, and every existing Secret is stored encrypted.",
-      level: { id: "21", text: "Level 21 · Production hardening (encryption in docs/coverage.md)" },
+      level: { id: "21", text: "Level 21 · Final boss: ready for production" },
       story: "An auditor read a database password straight out of an etcd backup. Secrets are only base64 at the API and plain text in etcd. The security team left an encryption config in /etc/kubernetes/pki.",
       goal: "Turn on encryption at rest for Secrets, and make sure the Secrets that already exist are encrypted too.",
       deployments: [web(), api()],
@@ -1365,7 +1497,7 @@
       id: "registry",
       title: "Untrusted registry",
       done: "menu runs from the company registry, and the admission policy still guards every team.",
-      level: { id: "21", text: "Level 21 · Production hardening" },
+      level: { id: "21", text: "Level 21 · Final boss: ready for production" },
       story: "This morning the platform team switched on a ValidatingAdmissionPolicy: images must come from registry.kitchen.example. Since then the menu Deployment has no Pods at all.",
       goal: "Get menu running without weakening the policy.",
       deployments: [web({ image: "registry.kitchen.example/nginx:1.27" }), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 20 * MIN }],
@@ -1384,7 +1516,7 @@
       id: "trivy",
       title: "Vulnerable image",
       done: "Every Deployment runs an image with no CRITICAL vulnerability.",
-      level: { id: "21", text: "Level 21 · Production hardening" },
+      level: { id: "21", text: "Level 21 · Final boss: ready for production" },
       story: "The weekly scan report says one image in kitchen has a CRITICAL vulnerability. The rule: nothing CRITICAL in production by Friday.",
       goal: "Find the image with the CRITICAL vulnerability and move its Deployment to a version without one.",
       deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.25", req: 64, lim: 128, age: 40 * HOUR }, api()],
@@ -1402,7 +1534,7 @@
       id: "apparmor",
       title: "AppArmor profile",
       done: "Every menu Pod runs, confined by the k8s-deny-write profile.",
-      level: { id: "17", text: "Level 17 · Pod Security" },
+      level: { id: "17", text: "Level 17 · Rejected at the door" },
       story: "Security asked for menu to run under the AppArmor profile k8s-deny-write, which blocks file writes. Someone loaded the profile on worker-1 by hand and called it done.",
       goal: "Get every menu Pod running, still confined by k8s-deny-write.",
       deployments: [{ name: "menu", replicas: 3, image: "nginx:1.27", req: 64, lim: 128, age: 15 * MIN, apparmor: "k8s-deny-write" }],
@@ -1421,12 +1553,12 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey"]],
-    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "statefulset"]],
-    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "ingresstls", "gateway", "netpol"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "cmdtypo", "startup", "arch", "ratelimit", "pullsecret", "cmreload", "secretkey", "secretvolume", "limitrange"]],
+    ["Scheduling and storage", ["pending", "nodeselector", "taint", "antiaffinity", "priority", "daemonset", "pvc", "multiattach", "statefulset", "diskpressure"]],
+    ["Networking", ["probe", "service", "canary", "svcport", "lbpending", "dns", "coredns", "ingress404", "ingress503", "pathtype", "ingresstls", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
-    ["Operations and delivery", ["job", "cronjob", "rollout", "paused", "helm", "drain", "finalizer"]],
-    ["Cluster administration", ["context", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
+    ["Operations and delivery", ["job", "cronjob", "cronhung", "rollout", "paused", "helm", "drain", "finalizer"]],
+    ["Cluster administration", ["context", "nsstuck", "nodenotready", "scheduler", "certs", "etcd", "etcdrestore", "kubeadm"]],
     ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
     ["Autoscaling", ["hpa", "vpa"]]
   ];
@@ -1508,6 +1640,12 @@
       this.apparmor = Object.fromEntries(NODES.map((n) => [n, [...((scenario.apparmor || {})[n] || [])]]));
       this.kubelet = scenario.kubelet ? { ...scenario.kubelet } : null; // { node, running, enabled }
       this.helm = scenario.helm ? JSON.parse(JSON.stringify(scenario.helm)) : null;
+      this.limitRanges = JSON.parse(JSON.stringify(scenario.limitRanges || [])); // namespace defaults: { name, lim, req }
+      // A node whose image disk is nearly full: the kubelet taints it and evicts Pods.
+      this.disk = scenario.diskPressure ? { ...scenario.diskPressure, pressure: true } : null;
+      if (this.disk) this.taints[this.disk.node].push(DISK_TAINT);
+      // A namespace stuck Terminating behind one object whose finalizer nobody removes.
+      this.oldNs = scenario.oldNs ? { ...scenario.oldNs, gone: false, recreated: false } : null;
       this.bindPvcs();
       for (const d of scenario.deployments || []) {
         const dep = {
@@ -1519,7 +1657,8 @@
             init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }, pvc: d.pvc || null, apparmor: d.apparmor || null,
             secretEnv: d.secretEnv ? { ...d.secretEnv } : null, command: d.command ? [...d.command] : null,
             livenessCfg: d.livenessCfg ? { ...d.livenessCfg } : null, startup: d.startup ? { ...d.startup } : null,
-            antiAffinity: d.antiAffinity || null, priorityClassName: d.priorityClassName || null
+            antiAffinity: d.antiAffinity || null, priorityClassName: d.priorityClassName || null,
+            secretVol: d.secretVol ? { ...d.secretVol } : null
           },
           labels: { ...(d.labels || {}) }, strategy: d.strategy || "RollingUpdate", paused: false, pendingSpec: null,
           hash: this.rand(10)
@@ -1538,6 +1677,17 @@
         if (bare) { bare.finalizers = [...(p.finalizers || [])]; bare.stuck = !!p.stuck; }
       }
       for (const j of scenario.jobs || []) this.runJob({ ...j, created: this.now() - (j.age || 0) });
+      // Pods the kubelet evicted: kept as Failed records until someone deletes them.
+      for (const e of scenario.evicted || []) {
+        const d = this.deployments.find((x) => x.name === e.app);
+        for (let i = 0; i < e.count; i++) {
+          this.pods.push({
+            name: `${e.app}-${d.hash}-${this.rand(5)}`, owner: null, hash: null, labels: { app: e.app }, evicted: e.message,
+            spec: { ...d.spec, req: 0 }, created: this.now() - e.age, restarts: 0, node: e.node, creating: false, ready: false, state: "Evicted",
+            events: [["Warning", "Evicted", "kubelet", e.message], ["Normal", "Killing", "kubelet", `Stopping container ${e.app}`]]
+          });
+        }
+      }
       this.syncDaemonSets(true);
       this.syncStatefulSets(true);
       if (scenario.setup) scenario.setup(this);
@@ -1562,6 +1712,10 @@
 
     addPod(dep, opts) {
       const spec = dep ? JSON.parse(JSON.stringify(dep.spec)) : opts.spec;
+      // LimitRanger fills in what a container leaves out.
+      const lr = this.limitRanges[0];
+      if (lr && !spec.lim) { spec.lim = lr.lim; spec.limFrom = lr.name; }
+      if (lr && !spec.req) { spec.req = lr.req; spec.reqFrom = lr.name; }
       const fromSa = this.saPullSecrets[spec.sa] || [];
       if (fromSa.length) spec.pullSecrets = [...new Set([...(spec.pullSecrets || []), ...fromSa])];
       const denied = this.admissionErrors(spec);
@@ -1906,6 +2060,12 @@
           ["Warning", "FailedMount", "kubelet", `Unable to attach or mount volumes: unmounted volumes=[data], unattached volumes=[data]: timed out waiting for the condition`]];
         return;
       }
+      const sv = pod.spec.secretVol;
+      if (sv && !this.secrets.some((x) => x.name === sv.secret)) {
+        pod.state = "ContainerCreating";
+        pod.events = [scheduled, ["Warning", "FailedMount", "kubelet", `MountVolume.SetUp failed for volume "${sv.name}" : secret "${sv.secret}" not found`]];
+        return;
+      }
       if (this.scenario.hubRateLimit && !/^[\w-]+(\.[\w-]+)+(:\d+)?\/|^localhost[:/]/.test(img) || this.scenario.hubRateLimit && /^docker\.io\//.test(img)) {
         const ref = /^docker\.io\//.test(img) ? img : `docker.io/library/${img}`;
         pod.state = "ImagePullBackOff";
@@ -2038,7 +2198,10 @@
 
     // An HTTP request through the ingress controller, by host name.
     viaIngress(host, path) {
-      const rule = this.ingresses.find((x) => x.host === host && this.ingressClasses.includes(x.class) && (path || "/").startsWith(x.path));
+      const p = path || "/";
+      // Exact matches one path; Prefix matches whole path elements, so /api serves /api/menu but not /apis.
+      const fits = (x) => (x.pathType === "Exact" ? p === x.path : x.path === "/" || p === x.path || p.startsWith(x.path.replace(/\/$/, "") + "/"));
+      const rule = this.ingresses.find((x) => x.host === host && this.ingressClasses.includes(x.class) && fits(x));
       if (!rule) return errorPage(404, "Not Found");
       const svc = this.resolve(rule.svc);
       if (!svc || svc.port !== rule.port || !this.endpointsOf(svc.name).length) return errorPage(503, "Service Temporarily Unavailable");
@@ -2108,6 +2271,7 @@
     // Finish every transition in flight: what happens a few seconds later.
     settle() {
       this.retry = false;
+      if (this.disk && this.disk.pressure && !this.taints[this.disk.node].some((t) => t.key === DISK_TAINT.key)) this.taints[this.disk.node].push(DISK_TAINT);
       this.bindPvcs();
       this.syncDaemonSets(false);
       this.syncStatefulSets(false);
@@ -2228,6 +2392,8 @@
       this.jobs = this.jobs.filter((x) => x.name !== job.name).concat([job]);
     }
 
+    activeJobs(cj) { return this.jobs.filter((j) => j.from === cj.name && j.status === "Running"); }
+
     // PodDisruptionBudget: how many matching Pods may be evicted right now.
     allowedDisruptions(b) {
       const ready = this.pods.filter((p) => p.ready && !p.terminating && selects(b.selector, p.labels)).length;
@@ -2287,7 +2453,7 @@
     "kubectl get gateway | httproute | cronjob | csr      kubectl certificate approve <csr>",
     "kubectl config get-contexts | set-context --current --namespace=<ns>",
     "helm list | status | history | get values | rollback | upgrade <release>",
-    "etcdctl snapshot save | status ...      ssh <node> sudo systemctl | journalctl | crictl ...",
+    "etcdctl snapshot save | status ...      ssh <node> sudo systemctl | journalctl | crictl ps | images | rmi --prune | df -h",
     "ls <dir>   cat | grep | tail <file>     sed -i 's#old#new#' <file>   (files on the control-plane node)",
     "etcdutl snapshot restore <file> --data-dir <dir>      etcdctl get <key> ...   (with the etcd certificates)",
     "kubeadm certs check-expiration | renew all     openssl x509 -in <crt> -noout -enddate     mv | cp <files> <dest>     export KUBECONFIG=<file>",
@@ -2555,7 +2721,28 @@
         if (rest[1] !== APPARMOR_FILE) return say(`cat: ${rest[1]}: No such file or directory`, "warn");
         return APPARMOR_PROFILE.forEach((l) => say(l));
       }
-      return say(`This playground runs systemctl, journalctl, crictl, aa-status and apparmor_parser on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
+      const full = c.disk && c.disk.node === node && c.disk.pressure;
+      if (rest[0] === "df") {
+        table3(say, [["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"], full ? ["/dev/nvme0n1p1", "20G", "18.6G", "1.4G", "93%", "/"] : ["/dev/nvme0n1p1", "20G", "7.9G", "12G", "40%", "/"]]);
+        if (full) say("(/var/lib/containerd, where images live, is on this disk)", "dim");
+        return;
+      }
+      if (rest[0] === "crictl" && rest[1] === "images") {
+        const old = full ? c.disk.images : [];
+        table3(say, [["IMAGE", "TAG", "SIZE"], ...old.map((x) => [x.slice(0, x.lastIndexOf(":")), x.slice(x.lastIndexOf(":") + 1), "1.2GB"]), ["docker.io/library/nginx", "1.27", "72.1MB"], ["registry.k8s.io/kube-proxy", "v1.34.0", "30.4MB"]]);
+        return;
+      }
+      if (rest[0] === "crictl" && rest[1] === "rmi" && rest.includes("--prune")) {
+        if (full) {
+          c.disk.images.forEach((x) => say(`Deleted: ${x}`));
+          c.disk.pressure = false;
+          c.taints[node] = c.taints[node].filter((t) => t.key !== DISK_TAINT.key);
+          c.extraEvents.push(["Normal", "NodeHasNoDiskPressure", `node/${node}`, `Node ${node} status is now: NodeHasNoDiskPressure`]);
+          c.retry = true;
+        }
+        return;
+      }
+      return say(`This playground runs systemctl, journalctl, crictl, df, aa-status and apparmor_parser on nodes, for example: ssh ${node} sudo journalctl -u kubelet`, "dim");
     }
     if (cmd === "helm") return helm(c, words, say, opt);
     return say(`${cmd}: command not found. This playground understands kubectl, helm, curl, docker buildx imagetools, etcdctl, etcdutl, kubeadm, apt-get, trivy, openssl, ssh, ls, cat, grep, sed, mv and cp; type 'help'.`, "warn");
@@ -3005,6 +3192,74 @@
     return lines.filter((l) => re.test(l) !== invert);
   }
 
+  // Commands about the namespace stuck Terminating, and the leftover object in it.
+  // Returns true when it answered.
+  function oldNamespace(c, args, flags, ns, say) {
+    const o = c.oldNs;
+    const verb = args[0];
+    const isNs = ["ns", "namespace", "namespaces"].includes(args[1]) && args[2] === o.name;
+    const kind = KINDS[(args[1] || "").split("/")[0]];
+    const item = (args[1] || "").includes("/") ? args[1].split("/")[1] : args[2];
+    const res = "backups.backup.kitchen.example";
+    if (verb === "create" && isNs) {
+      if (!o.gone) return say(`Error from server (AlreadyExists): object is being deleted: namespaces "${o.name}" already exists`, "warn"), true;
+      o.recreated = true;
+      return say(`namespace/${o.name} created`), true;
+    }
+    if (o.gone) return false;
+    if (verb === "delete" && isNs) {
+      say(`namespace "${o.name}" deleted`);
+      if (flags.force) say("Warning: Immediate deletion does not wait for confirmation that the running resource has been terminated. The resource may continue to run on the cluster indefinitely.", "warn");
+      return say("(kubectl would wait here: the namespace was already being deleted, and still is. Press Ctrl+C.)", "dim"), true;
+    }
+    if ((verb === "describe" && isNs) || (verb === "get" && isNs && flags.o === "yaml")) {
+      if (verb === "get") {
+        ["apiVersion: v1", "kind: Namespace", "metadata:", "  deletionTimestamp: \"2026-10-27T09:14:02Z\"", `  name: ${o.name}`, "spec:", "  finalizers:", "  - kubernetes", "status:", "  conditions:",
+          "  - message: 'Some resources are remaining: backups.backup.kitchen.example has 1 resource instances'", "    reason: SomeResourcesRemain", "    status: \"True\"", "    type: NamespaceContentRemaining",
+          `  - message: 'Some content in the namespace has finalizers remaining: ${o.finalizer} in 1 resource instances'`, "    reason: SomeFinalizersRemain", "    status: \"True\"", "    type: NamespaceFinalizersRemaining",
+          "  phase: Terminating"].forEach((l) => say(l));
+        return true;
+      }
+      say(`Name:         ${o.name}`);
+      say(`Labels:       kubernetes.io/metadata.name=${o.name}`);
+      say("Status:       Terminating", "warn");
+      say("Conditions:");
+      table3(say, [["  Type", "Status", "Reason", "Message"],
+        ["  NamespaceDeletionContentFailure", "False", "ContentDeleted", "All content successfully deleted, may be waiting on finalization"],
+        ["  NamespaceContentRemaining", "True", "SomeResourcesRemain", "Some resources are remaining: backups.backup.kitchen.example has 1 resource instances"],
+        ["  NamespaceFinalizersRemaining", "True", "SomeFinalizersRemain", `Some content in the namespace has finalizers remaining: ${o.finalizer} in 1 resource instances`]]);
+      return true;
+    }
+    if (kind !== "backups" && ns !== o.name) return false;
+    if (kind !== "backups") return verb === "get" ? (say(`No resources found in ${o.name} namespace.`), true) : false;
+    if (ns !== o.name && !flags["all-namespaces"]) return say(`No resources found in ${ns} namespace.`), true;
+    if (item && item !== o.item) return say(`Error from server (NotFound): ${res} "${item}" not found`, "warn"), true;
+    if (verb === "get" && flags.o === "yaml") {
+      ["apiVersion: backup.kitchen.example/v1", "kind: Backup", "metadata:", "  deletionTimestamp: \"2026-10-27T09:14:03Z\"", "  finalizers:", `  - ${o.finalizer}`,
+        `  name: ${o.item}`, `  namespace: ${o.name}`, "spec:", "  schedule: \"0 3 * * *\"", "status:", "  phase: Deleting   # nothing left to run this: its operator was uninstalled"].forEach((l) => say(l));
+      return true;
+    }
+    if (verb === "get") {
+      const head = flags["all-namespaces"] ? ["NAMESPACE", "NAME", "AGE"] : ["NAME", "AGE"];
+      table3(say, [head, flags["all-namespaces"] ? [o.name, o.item, "40d"] : [o.item, "40d"]]);
+      return true;
+    }
+    if (verb === "delete") {
+      say(`${res} "${o.item}" deleted`);
+      return say(`(kubectl would wait here: it was already being deleted, and its finalizer ${o.finalizer} is still there. Press Ctrl+C.)`, "dim"), true;
+    }
+    if (verb === "patch") {
+      let patch;
+      try { patch = JSON.parse(flags.p || ""); } catch { return say(`error: unable to parse "${flags.p || ""}"`, "warn"), true; }
+      if (!patch || !patch.metadata || !("finalizers" in patch.metadata)) return say(`This playground patches its finalizers: -p '{"metadata":{"finalizers":null}}'`, "dim"), true;
+      if ((patch.metadata.finalizers || []).length) return say(`${res}/${o.item} patched (no change)`, "dim"), true;
+      o.gone = true;
+      say(`${res}/${o.item} patched`);
+      return say(`(with no finalizer left, the Backup is deleted, and with it the last thing holding namespace ${o.name})`, "dim"), true;
+    }
+    return false;
+  }
+
   function kubeSystem(c, args, verb, say, flags) {
     const dns = ["coredns-668d6bf9bc-4xk2p", "coredns-668d6bf9bc-q8w7m", "coredns-668d6bf9bc-z7t2k", "coredns-668d6bf9bc-h5n8c", "coredns-668d6bf9bc-r2w9d"].slice(0, c.coredns);
     const sched = c.schedulerError();
@@ -3155,6 +3410,11 @@
     const ns = flags.n || c.currentNs;
     const verb = args[0];
     const nowMs = c.now();
+
+    if (c.oldNs && /^kubectl\b/.test(line.trim())) {
+      const r = oldNamespace(c, args, flags, ns, say);
+      if (r) return out;
+    }
 
     // "pod/x", "pod x", or just "x" for verbs that default to Pods.
     function target(defaultKind) {
@@ -3437,7 +3697,12 @@
       if (kind === "cronjobs") {
         if (!c.cronjobs.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "SCHEDULE", "TIMEZONE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE"],
-          ...c.cronjobs.map((x) => [x.name, x.schedule, "<none>", String(x.suspend), 0, x.suspend ? "8d" : "8d", "30d"])]);
+          ...c.cronjobs.map((x) => [x.name, x.schedule, "<none>", String(x.suspend), c.activeJobs(x).length, x.last || "8d", "30d"])]);
+        return out;
+      }
+      if (kind === "limitranges") {
+        if (!c.limitRanges.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "CREATED AT"], ...c.limitRanges.map((x) => [x.name, "2026-09-02T08:00:00Z"])]);
         return out;
       }
       if (kind === "csrs") {
@@ -3484,6 +3749,14 @@
       if (kind === "ingresses") {
         const list = c.ingresses.filter((x) => !name || x.name === name);
         if (name && !list.length) return notFound("ingresses.networking.k8s.io", name), out;
+        if (name && flags.o === "yaml") {
+          const x = list[0];
+          ["apiVersion: networking.k8s.io/v1", "kind: Ingress", "metadata:", `  name: ${x.name}`, `  namespace: ${NS}`, "spec:",
+            ...(x.class ? [`  ingressClassName: ${x.class}`] : []), "  rules:", `  - host: ${x.host}`, "    http:", "      paths:",
+            "      - backend:", "          service:", `            name: ${x.svc}`, "            port:", `              number: ${x.port}`,
+            `        path: ${x.path}`, `        pathType: ${x.pathType || "Prefix"}`].forEach((l) => say(l));
+          return out;
+        }
         if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "CLASS", "HOSTS", "ADDRESS", "PORTS", "AGE"],
           ...list.map((x) => [x.name, x.class || "<none>", x.host, c.ingressClasses.includes(x.class) ? "localhost" : "", x.tls ? "80, 443" : "80", "2h"])]);
@@ -3503,7 +3776,7 @@
         if (name && !list.length) return notFound("jobs.batch", name), out;
         if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "STATUS", "COMPLETIONS", "DURATION", "AGE"],
-          ...list.map((x) => [x.name, x.status, x.status === "Complete" ? "1/1" : "0/1", x.status === "Complete" ? "4s" : "71s", age(nowMs - x.created)])]);
+          ...list.map((x) => [x.name, x.status, x.status === "Complete" ? "1/1" : "0/1", x.status === "Complete" ? "4s" : x.status === "Running" ? age(nowMs - x.created) : "71s", age(nowMs - x.created)])]);
         return out;
       }
       if (kind === "secrets") {
@@ -3576,7 +3849,9 @@
       if (kind === "namespaces") {
         const head = ["NAME", "STATUS", "AGE"];
         if (flags["show-labels"]) head.push("LABELS");
-        const rows = [["default", "Active", "12d"], ["kube-system", "Active", "12d"], [NS, "Active", "12d"]].filter((r) => !name || r[0] === name);
+        const old = c.oldNs && !(c.oldNs.gone && !c.oldNs.recreated) ? [[c.oldNs.name, c.oldNs.gone ? "Active" : "Terminating", c.oldNs.gone ? "0s" : "3d"]] : [];
+        const rows = [["default", "Active", "12d"], ["kube-system", "Active", "12d"], [NS, "Active", "12d"], ...old].filter((r) => !name || r[0] === name);
+        if (name && !rows.length) return say(`Error from server (NotFound): namespaces "${name}" not found`, "warn"), out;
         table([head, ...rows.map((r) => (flags["show-labels"] ? [...r, r[0] === NS ? sel(c.nsLabels) : `kubernetes.io/metadata.name=${r[0]}`] : r))]);
         return out;
       }
@@ -3611,13 +3886,19 @@
       if (kind === "pods") {
         const p = podByName(name);
         if (!p) return notFound("pods", name), out;
-        const cname = p.owner || p.name;
+        const cname = p.owner || (p.evicted && p.labels.app) || p.name;
         const st = c.status(p);
         say(`Name:             ${p.name}`);
         say(`Namespace:        ${NS}`);
         say(`Node:             ${p.node ? p.node + "/172.18.0." + (NODES.indexOf(p.node) + 2) : "<none>"}`);
         say(`Labels:           ${labelsOf(p).split(",").join("\n                  ")}`);
-        say(`Status:           ${p.stuck ? "Terminating (lasts 2h)" : st === "Running" || st === "CrashLoopBackOff" ? "Running" : "Pending"}`, p.stuck ? "warn" : "");
+        const ranger = [p.spec.reqFrom && `memory request for container ${cname}`, p.spec.limFrom && `memory limit for container ${cname}`].filter(Boolean);
+        if (ranger.length) say(`Annotations:      kubernetes.io/limit-ranger: LimitRanger plugin set: ${ranger.join("; ")}`);
+        if (p.evicted) {
+          say("Status:           Failed", "warn");
+          say("Reason:           Evicted", "warn");
+          say(`Message:          ${p.evicted}`);
+        } else say(`Status:           ${p.stuck ? "Terminating (lasts 2h)" : st === "Running" || st === "CrashLoopBackOff" ? "Running" : "Pending"}`, p.stuck ? "warn" : "");
         if (p.stuck) say("Termination Grace Period:  30s");
         if (p.owner) say(`Controlled By:    ReplicaSet/${p.owner}-${p.hash}`);
         say(`Service Account:  ${p.spec.sa}`);
@@ -3652,6 +3933,8 @@
         say("    Environment:" + (env.length ? "" : "    <none>"));
         for (const [k, v] of env) say(`      ${k}:  ${v}`);
         if (p.spec.secretEnv) say(`      ${p.spec.secretEnv.env}:  <set to the key '${p.spec.secretEnv.key}' in secret '${p.spec.secretEnv.secret}'>  Optional: false`);
+        const vol = p.spec.secretVol;
+        if (vol) say(`    Mounts:\n      ${vol.path} from ${vol.name} (ro)\nVolumes:\n  ${vol.name}:\n    Type:        Secret (a volume populated by a Secret)\n    SecretName:  ${vol.secret}\n    Optional:    false`);
         if (p.spec.tolerations.length) say(`Tolerations:      ${p.spec.tolerations.map((t) => `${t.key}${t.operator === "Exists" ? "" : "=" + t.value}:${t.effect}`).join(", ")}`);
         say("Events:" + (p.events.length ? "" : "           <none>"));
         if (p.events.length) {
@@ -3721,13 +4004,14 @@
         const taints = [...c.taints[name].map((t) => `${t.key}${t.value ? "=" + t.value : ""}:${t.effect}`),
           ...(c.nodeReady(name) ? [] : ["node.kubernetes.io/unreachable:NoExecute", "node.kubernetes.io/unreachable:NoSchedule"])];
         say(`Taints:             ${taints.join(", ") || "<none>"}`, taints.length ? "warn" : "");
-        if (c.nodeReady(name)) say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
+        if (c.disk && c.disk.node === name && c.disk.pressure) say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=True (KubeletHasDiskPressure: kubelet has disk pressure)", "warn");
+        else if (c.nodeReady(name)) say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
         else say("Conditions:         Ready=Unknown  NodeStatusUnknown  Kubelet stopped posting node status.", "warn");
         say("Allocatable:");
         say("  cpu:              4");
         say(`  memory:           ${fmtMem(NODE_MEMORY)}`);
         say("Non-terminated Pods:");
-        for (const p of c.pods.filter((x) => x.node === name)) say(`  ${NS.padEnd(10)}${p.name.padEnd(28)}memory request ${fmtMem(p.spec.req || 0)}`);
+        for (const p of c.pods.filter((x) => x.node === name && !x.evicted)) say(`  ${NS.padEnd(10)}${p.name.padEnd(28)}memory request ${fmtMem(p.spec.req || 0)}`);
         say("Allocated resources:");
         say(`  memory requests:  ${fmtMem(used)} (${Math.round((used / NODE_MEMORY) * 100)}%)`);
         return out;
@@ -3749,14 +4033,29 @@
       if (kind === "cronjobs") {
         const x = c.cronjobs.find((y) => y.name === name);
         if (!x) return notFound("cronjobs.batch", name), out;
+        const active = c.activeJobs(x);
         say(`Name:                          ${x.name}`);
         say(`Schedule:                      ${x.schedule}`);
-        say("Concurrency Policy:            Forbid");
+        say(`Concurrency Policy:            ${x.concurrency || "Forbid"}`);
         say(`Suspend:                       ${x.suspend ? "True" : "False"}`, x.suspend ? "warn" : "");
         say("Successful Job History Limit:  3");
-        say(`Job Template:\n  Command: wget -qO- ${x.url}`);
-        say(`Last Schedule Time:            ${x.suspend ? "8 days ago" : "8 days ago"}`);
-        say("Events:                        <none>");
+        say(`Job Template:\n  Active Deadline Seconds: ${x.deadline ? x.deadline + "s" : "<unset>"}\n  Command: wget -qO- ${x.url}`);
+        say(`Last Schedule Time:            ${x.last ? x.last + " ago" : "8 days ago"}`);
+        if (active.length) say(`Active Jobs:                   ${active.map((j) => j.name).join(", ")}`, "warn");
+        if (active.length && (x.concurrency || "Forbid") === "Forbid") {
+          say("Events:");
+          say("  Type     Reason            Age                  From                Message", "head");
+          say("  Warning  JobAlreadyActive  2m (x288 over 3d)    cronjob-controller  Not starting job because prior execution is running and concurrency policy is Forbid", "warn row");
+        } else say("Events:                        <none>");
+        return out;
+      }
+      if (kind === "limitranges") {
+        const x = c.limitRanges.find((y) => y.name === name);
+        if (!x) return notFound("limitranges", name), out;
+        say(`Name:       ${x.name}`);
+        say(`Namespace:  ${NS}`);
+        table([["Type", "Resource", "Min", "Max", "Default Request", "Default Limit", "Max Limit/Request Ratio"], ["----", "--------", "---", "---", "---------------", "-------------", "-----------------------"],
+          ["Container", "memory", "-", "-", fmtMem(x.req), fmtMem(x.lim), "-"]]);
         return out;
       }
       if (kind === "csrs") {
@@ -4336,6 +4635,20 @@
         say(`${kind.replace(/s$/, "")}.rbac.authorization.k8s.io "${name}" deleted`);
         return out;
       }
+      if (kind === "limitranges") {
+        if (!c.limitRanges.some((x) => x.name === name)) return notFound("limitranges", name), out;
+        c.limitRanges = c.limitRanges.filter((x) => x.name !== name);
+        say(`limitrange "${name}" deleted`);
+        say("(that removes the defaults for every team in the namespace; existing Pods keep the limits they started with)", "warn");
+        return out;
+      }
+      if (kind === "pods" && !name && /^status\.phase=Failed$/.test(flags["field-selector"] || "")) {
+        const failed = c.pods.filter((x) => x.evicted || (x.job && x.state === "Error"));
+        if (!failed.length) return say(`No resources found in ${NS} namespace.`), out;
+        failed.forEach((x) => say(`pod "${x.name}" deleted`));
+        c.pods = c.pods.filter((x) => !failed.includes(x));
+        return out;
+      }
       if (kind !== "pods" || !name) return say("This playground deletes pods, configmaps, networkpolicies and rolebindings.", "dim"), out;
       const p = podByName(name);
       if (!p) return notFound("pods", name), out;
@@ -4360,6 +4673,8 @@
           fresh.hash = p.hash;
           say(`(the ReplicaSet creates a replacement from the same template: ${fresh.name})`, "dim");
         }
+      } else if (p.evicted) {
+        c.pods = c.pods.filter((x) => x !== p);
       } else if (p.sts) {
         c.pods = c.pods.filter((x) => x !== p);
         c.retry = true;
@@ -4779,9 +5094,15 @@
       if (kind === "cronjobs") {
         const x = c.cronjobs.find((y) => y.name === name);
         if (!x) return notFound("cronjobs.batch", name), out;
-        if (spec.suspend === undefined) return say("(this playground patches spec.suspend)", "dim"), out;
-        x.suspend = spec.suspend === true || spec.suspend === "true";
+        const deadline = (((spec.jobTemplate || {}).spec) || {}).activeDeadlineSeconds;
+        if (spec.suspend === undefined && spec.concurrencyPolicy === undefined && deadline === undefined) return say("(this playground patches spec.suspend, spec.concurrencyPolicy and spec.jobTemplate.spec.activeDeadlineSeconds)", "dim"), out;
+        if (spec.concurrencyPolicy !== undefined && !/^(Allow|Forbid|Replace)$/.test(spec.concurrencyPolicy)) return say(`The CronJob "${name}" is invalid: spec.concurrencyPolicy: Unsupported value: "${spec.concurrencyPolicy}": supported values: "Allow", "Forbid", "Replace"`, "warn"), out;
+        if (spec.suspend !== undefined) x.suspend = spec.suspend === true || spec.suspend === "true";
+        if (spec.concurrencyPolicy !== undefined) x.concurrency = spec.concurrencyPolicy;
+        if (deadline !== undefined) x.deadline = deadline === null ? null : Number(deadline);
         say(`cronjob.batch/${name} patched`);
+        if (spec.concurrencyPolicy === "Allow" && c.activeJobs(x).length) say("(new runs will start now, and each one can hang like the last)", "warn");
+        if (deadline !== undefined) say("(new Jobs get the deadline; a Job already running keeps the template it started with)", "dim");
         return out;
       }
       if (kind === "httproutes") {
@@ -4824,6 +5145,10 @@
           const path = (((rule.http || {}).paths) || [])[0];
           if (path) {
             if (path.path) x.path = path.path;
+            if (path.pathType !== undefined) {
+              if (!/^(Exact|Prefix|ImplementationSpecific)$/.test(path.pathType)) return say(`The Ingress "${name}" is invalid: spec.rules[0].http.paths[0].pathType: Unsupported value: "${path.pathType}": supported values: "Exact", "ImplementationSpecific", "Prefix"`, "warn"), out;
+              x.pathType = path.pathType === "ImplementationSpecific" ? "Prefix" : path.pathType;
+            }
             const bs = (path.backend || {}).service || {};
             if (bs.name) x.svc = bs.name;
             if (bs.port && bs.port.number) x.port = Number(bs.port.number);
@@ -4979,12 +5304,12 @@
     const svc = c.services.find((x) => !x.static) || c.services[0];
     const dep = c.deployments[0];
     const file = (ext) => Object.keys(c.files).find((f) => f.endsWith(ext) && !f.includes("staging"));
-    const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0] };
+    const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0], limitrange: c.limitRanges[0], cronjob: c.cronjobs[0] };
     const v = {
-      ctx: "kind-k8s-quest", ns: c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
+      ctx: "kind-k8s-quest", ns: c.oldNs && !c.oldNs.gone ? c.oldNs.name : c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
       container: pod && (pod.owner || pod.name), svc: svc && svc.name, "node-ip": "172.18.0.2", nodePort: svc && svc.nodePort,
       cj: c.cronjobs[0] && c.cronjobs[0].name, image: pod && pod.spec.image, n: 1, revision: 1, release: c.helm && c.helm.name,
-      chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
+      chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : c.disk ? c.disk.node : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
       registry: "registry.kitchen.example", user: "ci", token: "practice-token", sa: "default", "1.x.y": "1.34.1", snapshot: "etcd-0300",
       "file.crt": file(".crt"), "file.key": file(".key")
     };
