@@ -739,6 +739,95 @@ step(c, "export KUBECONFIG=/etc/kubernetes/admin.conf");
 assert.match(step(c, "kubectl get nodes"), /worker-1\s+Ready/);
 assert.ok(!won(c), "etcd, the scheduler and the controller manager still run on the old certificates");
 
+// Wrong command: StartError, exit 128, empty logs.
+c = fresh("cmdtypo");
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+CrashLoopBackOff/);
+assert.match(step(c, "kubectl logs deployment/menu"), /never started/);
+const cmdPod = step(c, "kubectl describe pod " + podOf(c, "menu"));
+assert.match(cmdPod, /Reason:\s+StartError[\s\S]*Exit Code:\s+128/);
+assert.match(cmdPod, /exec: "ngnix": executable file not found in \$PATH/);
+step(c, "kubectl rollout restart deployment/menu");
+assert.ok(!won(c), "a restart runs the same command");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","command":["nginx","-g","daemon off;"]}]}}}}'`);
+assert.ok(won(c), "cmdtypo: fixed command");
+c = fresh("cmdtypo");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","command":null}]}}}}'`);
+assert.ok(won(c), "cmdtypo: the image's own command works too");
+
+// Slow start: liveness kills it before it has loaded.
+c = fresh("startup");
+assert.match(step(c, "kubectl get pods"), /ledger-\S+\s+0\/1\s+CrashLoopBackOff/);
+assert.match(step(c, "kubectl logs deployment/ledger --previous"), /SIGTERM while loading/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "ledger")), /Liveness probe failed[\s\S]*failed liveness probe, will be restarted/);
+step(c, `kubectl patch deployment ledger -p '{"spec":{"template":{"spec":{"containers":[{"name":"ledger","livenessProbe":{"failureThreshold":5}}]}}}}'`);
+assert.ok(!won(c), "10s + 5 x 10s is still shorter than 90s");
+step(c, `kubectl patch deployment ledger -p '{"spec":{"template":{"spec":{"containers":[{"name":"ledger","livenessProbe":null}]}}}}'`);
+assert.ok(c.deploymentReady("ledger") && !won(c), "dropping liveness starts it, but does not count");
+c = fresh("startup");
+step(c, `kubectl patch deployment ledger -p '{"spec":{"template":{"spec":{"containers":[{"name":"ledger","startupProbe":{"httpGet":{"path":"/healthz","port":8080},"periodSeconds":10,"failureThreshold":30}}]}}}}'`);
+assert.match(step(c, "kubectl get deploy ledger -o yaml"), /startupProbe:[\s\S]*failureThreshold: 30/);
+assert.ok(won(c), "startup: a startupProbe gives it time");
+c = fresh("startup");
+step(c, `kubectl patch deployment ledger -p '{"spec":{"template":{"spec":{"containers":[{"name":"ledger","livenessProbe":{"initialDelaySeconds":120}}]}}}}'`);
+assert.ok(won(c), "startup: a long initialDelaySeconds also works");
+
+// Wrong architecture: exec format error.
+c = fresh("arch");
+assert.match(step(c, "kubectl logs deployment/invoice"), /exec format error/);
+assert.match(step(c, "kubectl get nodes -L kubernetes.io/arch"), /worker-1.*amd64/);
+assert.match(step(c, "docker buildx imagetools inspect localhost:5000/invoice:2.0-arm64"), /linux\/arm64\s+\(a single-architecture image\)/);
+assert.match(step(c, "curl http://localhost:5000/v2/invoice/tags/list"), /"2.0"/);
+assert.match(step(c, "docker buildx imagetools inspect localhost:5000/invoice:2.0"), /linux\/amd64[\s\S]*linux\/arm64/);
+step(c, `kubectl patch deployment invoice -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/arch":"arm64"}}}}}'`);
+assert.ok(!won(c), "there are no arm64 nodes");
+c = fresh("arch");
+step(c, "kubectl set image deployment/invoice invoice=localhost:5000/invoice:2.0");
+assert.ok(won(c), "arch: multi-arch tag");
+
+// Multi-Attach: RWO volume and a rolling update.
+c = fresh("multiattach");
+const ma = step(c, "kubectl get pods -o wide");
+assert.match(ma, /uploads-\S+\s+1\/1\s+Running/);
+assert.match(ma, /uploads-\S+\s+0\/1\s+ContainerCreating/);
+const newUp = c.podsOf("uploads").find((p) => !p.old);
+assert.match(step(c, "kubectl describe pod " + newUp.name), /Multi-Attach error for volume/);
+step(c, `kubectl delete pod ${newUp.name}`);
+assert.ok(!won(c), "a new Pod hits the same volume");
+assert.match(step(c, `kubectl patch deployment uploads -p '{"spec":{"strategy":{"type":"Recreate"}}}'`), /may not be specified/);
+step(c, `kubectl patch deployment uploads -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}'`);
+assert.match(step(c, "kubectl describe deployment uploads"), /StrategyType:\s+Recreate/);
+assert.ok(won(c), "multiattach: Recreate lets the volume move");
+
+// Canary leaking: a Service selects every Pod with its labels.
+c = fresh("canary");
+const calls = [1, 2, 3].map(() => step(c, "kubectl exec deploy/api -- wget -qO- -T 2 http://menu-svc")).join("\n");
+assert.match(calls, /Welcome to nginx/);
+assert.match(calls, /Connection refused/);
+assert.match(step(c, "kubectl get pods --show-labels"), /menu-beta-\S+.*app=menu,track=beta/);
+step(c, "kubectl scale deployment/menu-beta --replicas=0");
+assert.ok(!won(c), "stopping the beta is not the fix");
+c = fresh("canary");
+step(c, "kubectl set selector service menu-svc app=menu,track=stable");
+assert.match(step(c, "kubectl describe svc menu-svc"), /Selector:\s+app=menu,track=stable/);
+assert.ok([1, 2, 3, 4].every(() => /Welcome to nginx/.test(step(c, "kubectl exec deploy/api -- wget -qO- -T 2 http://menu-svc"))));
+assert.match(step(c, "kubectl exec deploy/api -- wget -qO- -T 2 http://menu-beta-svc"), /menu \(beta\)/);
+assert.ok(won(c), "canary: the stable Service selects the stable track");
+
+// DaemonSet missing a node: DESIRED already excludes the tainted node.
+c = fresh("daemonset");
+assert.match(step(c, "kubectl get ds"), /log-agent\s+2\s+2\s+2/);
+assert.doesNotMatch(step(c, "kubectl get pods -o wide"), /log-agent-\S+.*worker-3/);
+step(c, "kubectl taint node worker-3 dedicated-");
+assert.match(step(c, "kubectl get pods -o wide"), /log-agent-\S+.*worker-3/);
+assert.ok(!won(c), "removing the taint opens the GPU node to everything");
+c = fresh("daemonset");
+const agent = c.pods.find((p) => p.ds === "log-agent");
+assert.match(step(c, `kubectl delete pod ${agent.name}`), /creates a replacement/);
+assert.strictEqual(c.pods.filter((p) => p.ds === "log-agent").length, 2);
+step(c, `kubectl patch ds log-agent -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"dedicated","operator":"Exists","effect":"NoSchedule"}]}}}}'`);
+assert.match(step(c, "kubectl get ds"), /log-agent\s+3\s+3\s+3/);
+assert.ok(won(c), "daemonset: tolerates the GPU taint");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
