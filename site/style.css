@@ -550,6 +550,7 @@ kbd {
 @keyframes kq-pod-in { from { opacity: 0; transform: scale(.9); } }
 @keyframes kq-pop { 0% { opacity: 0; transform: scale(.4); } 60% { transform: scale(1.25); } 100% { opacity: 1; transform: none; } }
 @keyframes kq-bump { 50% { transform: scale(1.2); } }
+@keyframes kq-nudge { 50% { transform: scale(1.015); } }
 @keyframes kq-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
 @keyframes kq-heal { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } to { box-shadow: 0 0 0 10px transparent; } }
 .tab.tab-in { animation: kq-in var(--dur) var(--ease) both; }
@@ -559,7 +560,7 @@ kbd {
 .pg-goal.done { animation: kq-in var(--dur) var(--ease); }
 .pg-scn.just-solved .pg-scn-done { display: inline-block; animation: kq-pop .5s var(--ease) both; }
 .pg-group-count.bump { display: inline-block; animation: kq-bump .4s var(--ease) .1s; }
-.opt.right { animation: kq-bump .3s var(--ease); }
+.opt.right { animation: kq-nudge .3s var(--ease); }
 .opt.wrong { animation: kq-shake .36s var(--ease); }
 .feedback.ok, .feedback.bad { animation: kq-in var(--dur) var(--ease) both; }
 .copy, .chip, .pg-scn, .pg-pod { transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease); }
