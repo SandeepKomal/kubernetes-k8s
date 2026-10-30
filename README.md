@@ -106,6 +106,19 @@ This creates a kind cluster named `k8s-quest` (one control-plane node and
 two workers) and switches your kubectl context to `kind-k8s-quest`. It
 takes one to two minutes the first time.
 
+### When you finish
+
+```bash
+./quest down
+```
+
+The cluster runs as Docker containers and keeps using memory and CPU until
+you delete it. `./quest down` deletes it. Your progress is stored on disk,
+not in the cluster, so it is kept; `./quest up` creates a fresh cluster
+next time. The kind node image stays cached so the next `./quest up` is
+fast; to reclaim its disk space too, list it with `docker images kindest/node`
+and remove it with `docker image rm kindest/node:<tag>`.
+
 ## Your first level
 
 ```bash
