@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-  <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 22 hands-on levels, quizzes, a YAML X-ray, a Pod doctor and a searchable kubectl cheat sheet.">
+  <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 22 hands-on levels, quizzes, a YAML X-ray, a troubleshooting reference and a searchable kubectl cheat sheet.">
   <title>Kubernetes Quest</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
@@ -21,7 +21,7 @@
         <a href="#path" data-tab="path">Path</a>
         <a href="#quiz" data-tab="quiz">Quiz</a>
         <a href="#xray" data-tab="xray">YAML X-ray</a>
-        <a href="#doctor" data-tab="doctor">Pod doctor</a>
+        <a href="#doctor" data-tab="doctor">Troubleshoot</a>
         <a href="#cheats" data-tab="cheats">Cheat sheet</a>
       </nav>
       <button type="button" class="kbd-btn" id="palette-open" aria-label="Search the site (Ctrl+K)"><span>Search</span><kbd id="palette-key">Ctrl K</kbd></button>
@@ -46,7 +46,7 @@
         <div class="pg-head">
           <div>
             <h2 id="pg-title" class="section-title">Fix a broken cluster. Right here.</h2>
-            <p class="section-sub">Eleven real incidents, real kubectl commands. No install, no account.</p>
+            <p class="section-sub">Seventeen real incidents, real kubectl commands. No install, no account.</p>
           </div>
           <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
         </div>
@@ -141,9 +141,12 @@ cd kubernetes-k8s
     </section>
 
     <section id="tab-doctor" class="tab" hidden>
-      <h2>Pod doctor</h2>
-      <p class="lede">What does <code>kubectl get pods</code> say? Pick the symptom for likely causes, the commands to confirm them, and the level that teaches it.</p>
+      <h2>Troubleshooting reference</h2>
+      <p class="lede">What does <code>kubectl get pods</code> say, or what error do you see? Pick the symptom for what it means, the likely causes, the commands that confirm which one it is, and where to practise the fix.</p>
       <div class="guide-slot" data-guide="doctor"></div>
+      <label class="field">Search symptoms and errors
+        <input id="doctor-q" type="search" placeholder="Pending, 403, OOMKilled, taint, hpa..." autocomplete="off">
+      </label>
       <div id="doctor-list" class="chips"></div>
       <div id="doctor-out"></div>
     </section>

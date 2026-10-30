@@ -19,8 +19,8 @@ spec:
           command: ["sh", "-c", "while true; do :; done"]
           resources:
             requests:
-              cpu: 100m
-              memory: 16Mi
+              cpu: 25m
+              memory: 8Mi
             limits:
-              cpu: 200m          # each Pod runs at 200% of its request
-              memory: 32Mi
+              cpu: 50m           # each Pod runs at 200% of its request, a twentieth of a core
+              memory: 16Mi

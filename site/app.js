@@ -47,8 +47,12 @@
   const tabs = ["path", "quiz", "xray", "doctor", "cheats"];
   let current = null;
   function show() {
-    const want = location.hash.slice(1);
+    const [want, sub] = location.hash.slice(1).split("/");
     const tab = tabs.includes(want) ? want : "path";
+    if (tab === "doctor" && sub) {
+      const i = Q.doctor.findIndex((d) => slug(d.status) === sub);
+      if (i >= 0) renderDoctor(i, true);
+    }
     current = tab;
     if (tab !== "path" && flowTimer) stopFlow();
     for (const t of tabs) $("#tab-" + t).hidden = t !== tab;
@@ -319,12 +323,31 @@
     if (first) first.click();
   }
 
-  // --- Pod doctor ----------------------------------------------------------
+  // --- troubleshooting reference ---------------------------------------------
 
-  function renderDoctor(index) {
+  const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  // Filter the symptoms by any word in their text, causes or commands.
+  function renderDoctorList() {
+    const words = $("#doctor-q").value.toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    document.querySelectorAll("#doctor-list button").forEach((b, i) => {
+      const d = Q.doctor[i];
+      const text = [d.status, d.meaning, ...d.causes, ...d.commands].join(" ").toLowerCase();
+      b.hidden = !words.every((w) => text.includes(w));
+      if (!b.hidden) shown++;
+    });
+    $("#doctor-none").hidden = shown > 0;
+  }
+
+  function renderDoctor(index, fromHash) {
     const d = Q.doctor[index];
     document.querySelectorAll("#doctor-list button").forEach((b, i) => b.setAttribute("aria-pressed", String(i === index)));
     const lv = Q.levels.find((l) => l.id === d.level);
+    // Each symptom has its own link, so it can be shared or bookmarked.
+    if (!fromHash) history.replaceState(null, "", "#doctor/" + slug(d.status));
+    const titles = Object.fromEntries((window.KQPlayground ? window.KQPlayground.scenarios : []).map((x) => [x.id, x.title]));
+    const practise = (d.scenarios || []).filter((id) => titles[id]);
     $("#doctor-out").replaceChildren(h("div.card", null,
       h("h3", null, d.status),
       h("p", null, d.meaning),
@@ -332,7 +355,11 @@
       h("ul", null, d.causes.map((c) => h("li", null, c))),
       h("h4", null, "Confirm with"),
       h("pre", null, h("code", null, d.commands.join("\n"))),
-      h("p.note", null, "Practise it: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))
+      practise.length ? h("div.doctor-practise", null, h("span.muted.small", null, "Try the fix in the playground:"),
+        practise.map((id) => h("button.chip", {
+          type: "button", onclick: () => { location.hash = "path"; show(); window.KQPlayground.load(id); }
+        }, titles[id]))) : null,
+      h("p.note", null, "Practise it on a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))
     ));
   }
 
@@ -362,7 +389,7 @@
   ];
   const fills = store.get("fill", {});
   // Commands the playground can run.
-  const RUNNABLE = /^kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events|networkpolicy|configmaps?|rs)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|history|restart|undo) |scale |set (image|env|resources|selector) |auth can-i (?!--list)|label node )/;
+  const RUNNABLE = /^kubectl (get (pods|po|deploy|deployments|svc|services|endpoints|nodes|events|networkpolicy|configmaps?|rs|hpa|vpa)\b|describe |logs (?!.*(-f\b|-l\b))|top pod|rollout (status|history|restart|undo) |scale |set (image|env|resources|selector) |auth can-i (?!--list)|label node )/;
 
   // Split a command into text and placeholder parts, filling in what we know.
   function fillParts(cmd) {
@@ -419,9 +446,10 @@
   // --- page guides -------------------------------------------------------------
 
   // Each page explains itself: what it is, how to use it, what it is for.
-  // Open on the inner pages, closed on the busy landing page; whatever the
+  // Open on the inner pages, closed on the busy landing page and on the
+  // reference, which people open to look something up; whatever the
   // reader chooses afterwards is remembered per page.
-  const GUIDES_CLOSED_BY_DEFAULT = ["playground", "path"];
+  const GUIDES_CLOSED_BY_DEFAULT = ["playground", "path", "doctor"];
   function renderGuides() {
     const state = store.get("guides", {});
     document.querySelectorAll(".guide-slot").forEach((slot) => {
@@ -458,6 +486,8 @@
     explainPasted();
   });
   Q.doctor.forEach((d, i) => $("#doctor-list").append(h("button.chip", { type: "button", onclick: () => renderDoctor(i) }, d.status)));
+  $("#doctor-list").after(h("p.muted", { id: "doctor-none", hidden: true }, "No symptom matches. Try a status (Pending), an error word (forbidden, refused) or an object (hpa, pvc)."));
+  $("#doctor-q").addEventListener("input", renderDoctorList);
   $("#cheat-q").addEventListener("input", renderCheats);
   renderFill();
   // Open on wide screens, or whenever names are already filled in.
@@ -482,11 +512,11 @@
     { label: "Your path", kind: "Section", run: () => goTab("path", () => $("#path-title").scrollIntoView()) },
     { label: "Exam: random questions from every level", kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = "exam"; renderQuiz(); }) },
     { label: "YAML X-ray", kind: "Section", run: () => goTab("xray") },
-    { label: "Pod doctor", kind: "Section", run: () => goTab("doctor") },
+    { label: "Troubleshooting reference", kind: "Section", run: () => goTab("doctor") },
     { label: "Cheat sheet", kind: "Section", run: () => goTab("cheats", () => $("#cheat-q").focus()) },
     ...Q.levels.map((lv) => ({ label: `${lv.id} · ${lv.title}`, hint: lv.topic, kind: "Level", run: () => window.open(levelUrl(lv), "_blank", "noopener") })),
     ...Q.levels.map((lv) => ({ label: `Quiz: ${lv.id} · ${lv.topic}`, kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = lv.id; renderQuiz(); }) })),
-    ...Q.doctor.map((d, i) => ({ label: `Pod status: ${d.status}`, kind: "Doctor", run: () => goTab("doctor", () => renderDoctor(i)) }))
+    ...Q.doctor.map((d, i) => ({ label: `Troubleshoot: ${d.status}`, kind: "Reference", run: () => goTab("doctor", () => renderDoctor(i)) }))
   ];
 
   function renderPalette() {
@@ -555,5 +585,8 @@
   renderXray(0);
   show();
   // The Try buttons need the playground, which loads after this script.
-  window.addEventListener("DOMContentLoaded", renderCheats);
+  window.addEventListener("DOMContentLoaded", () => {
+    renderCheats();
+    if (current === "doctor") show(); // the Practise buttons need the playground
+  });
 })();

@@ -16,13 +16,13 @@
   // what an HTTP request to the app returns.
   const APPS = {
     nginx: {
-      mem: 24, port: 80, health: ["/", "/index.html"], body: "<h1>Welcome to nginx!</h1>",
+      mem: 24, port: 80, root: true, health: ["/", "/index.html"], body: "<h1>Welcome to nginx!</h1>",
       logs: (x) => ["/docker-entrypoint.sh: Configuration complete; ready for start up",
         ...(x.pod.spec.probe && !APPS.nginx.health.includes(x.pod.spec.probe)
           ? [`10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`, `10.244.2.1 - - "GET ${x.pod.spec.probe} HTTP/1.1" 404 153 "-" "kube-probe/1.34"`]
           : ['10.244.1.1 - - "GET / HTTP/1.1" 200 615'])]
     },
-    busybox: { mem: 4, port: 8080, health: ["/healthz"], body: "api: ok", logs: ["api: listening on :8080"] },
+    busybox: { mem: 4, port: 8080, root: true, health: ["/healthz"], body: "api: ok", logs: ["api: listening on :8080"] },
     reporter: {
       mem: 30, port: 8080, health: ["/healthz"], body: "reporter: ok",
       logs: (x) => x.c.canI(`system:serviceaccount:${NS}:${x.pod.spec.sa}`, "list", "pods")
@@ -106,8 +106,17 @@
     clusterrolebinding: "clusterrolebindings", clusterrolebindings: "clusterrolebindings",
     clusterrole: "clusterroles", clusterroles: "clusterroles",
     sa: "serviceaccounts", serviceaccount: "serviceaccounts", serviceaccounts: "serviceaccounts",
-    rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets"
+    rs: "replicasets", replicaset: "replicasets", replicasets: "replicasets",
+    hpa: "hpas", horizontalpodautoscaler: "hpas", horizontalpodautoscalers: "hpas",
+    vpa: "vpas", verticalpodautoscaler: "vpas", verticalpodautoscalers: "vpas",
+    ns: "namespaces", namespace: "namespaces", namespaces: "namespaces"
   };
+  // CPU quantities in millicores: 100m, 0.5, 1.
+  function parseCpu(q) {
+    const m = /^(\d+(?:\.\d+)?)(m)?$/.exec(q || "");
+    if (!m) return null;
+    return m[2] ? parseFloat(m[1]) : parseFloat(m[1]) * 1000;
+  }
   const sel = (o) => Object.entries(o || {}).map(([k, v]) => `${k}=${v}`).join(",");
   const selects = (selector, labels) => Object.entries(selector || {}).every(([k, v]) => labels[k] === v);
 
@@ -330,11 +339,122 @@
       ],
       lesson: "A rolling update never removes working Pods before new ones are Ready, and rollout undo returns to the last good template.",
       tries: ["kubectl rollout status deployment/web", "kubectl get pods"]
+    },
+    {
+      id: "liveness",
+      title: "Liveness probe",
+      done: "The menu Pods stay up, with a liveness probe that checks the right port.",
+      level: { id: "06", text: "Level 06 · Never ready, always restarting" },
+      story: "The menu Pods restart every half minute. The logs show nginx starting fine, then shutting down.",
+      goal: "Stop the restarts, keeping a liveness probe.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 20 * MIN, liveness: 8080, restarts: 7 }],
+      won: (c) => c.deploymentReady("menu") && !!c.deployments.find((d) => d.name === "menu").spec.liveness,
+      hints: [
+        "kubectl logs --previous on a menu Pod: nginx was told to stop. Who sent the signal?",
+        "kubectl describe a menu Pod: Liveness probe failed ... connection refused, then Killing. Which port does the probe check, and which does nginx listen on?",
+        `nginx listens on 80. Fix the probe: kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"containers":[{"name":"menu","livenessProbe":{"httpGet":{"port":80}}}]}}}}'`
+      ],
+      lesson: "A liveness probe that fails restarts a healthy app forever. Check the probe before blaming the code.",
+      tries: ["kubectl get pods", "kubectl describe deployment menu"]
+    },
+    {
+      id: "init",
+      title: "Init container",
+      done: "The orders Pod got past its init container and is Running.",
+      level: { id: "16", text: "Level 16 · The menu never loads" },
+      story: "The new orders Pod has said Init:0/1 for twenty minutes.",
+      goal: "Get the orders Deployment Running.",
+      deployments: [{ name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR },
+        { name: "orders", replicas: 1, image: "localhost:5000/orders:2.3", req: 64, lim: 256, age: 20 * MIN, env: { MENU_FILE: "/etc/menu/menu.json" }, init: { name: "wait-for-menu", waitFor: "menu-svc" } }],
+      won: (c) => c.deploymentReady("orders"),
+      hints: [
+        "Init:0/1 means the first init container has not finished. kubectl describe the orders Pod and read Init Containers.",
+        "Read its output: kubectl logs <orders-pod> -c wait-for-menu. What is it waiting for? Then kubectl get svc.",
+        "It waits for a Service called menu-svc, which does not exist. Create it: kubectl expose deployment menu --name=menu-svc --port=80"
+      ],
+      lesson: "Init containers run to completion before the app starts. When one waits forever, its logs say what for.",
+      tries: ["kubectl get pods", "kubectl get svc"]
+    },
+    {
+      id: "taint",
+      title: "Untolerated taint",
+      done: "The trainer runs on the GPU node, and the node is still reserved.",
+      level: { id: "12", text: "Level 12 · The GPU node" },
+      story: "The trainer must run on the GPU node, worker-3. It is Pending, though worker-3 is empty.",
+      goal: "Run the trainer on worker-3, keeping the node reserved for GPU work.",
+      deployments: [web(), { name: "trainer", replicas: 1, image: "busybox:1.36", req: 256, lim: 512, age: 15 * MIN, nodeSelector: { gpu: "true" } }],
+      nodeLabels: { "worker-3": { gpu: "true" } },
+      taints: { "worker-3": [{ key: "gpu", value: "true", effect: "NoSchedule" }] },
+      won: (c) => c.deploymentReady("trainer") && c.taints["worker-3"].some((t) => t.key === "gpu"),
+      hints: [
+        "kubectl describe the trainer Pod. The scheduler gives a reason for every node.",
+        "One node has a taint the Pod does not tolerate: kubectl describe node worker-3 and read Taints. The Pod needs a matching toleration.",
+        `Add the toleration: kubectl patch deployment trainer -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"gpu","operator":"Equal","value":"true","effect":"NoSchedule"}]}}}}'`
+      ],
+      lesson: "A taint keeps Pods off a node unless they tolerate it; the selector then pulls the right Pods onto it. You need both.",
+      tries: ["kubectl get pods -o wide", "kubectl describe node worker-3"]
+    },
+    {
+      id: "hpa",
+      title: "HPA <unknown>",
+      done: "The HPA reads CPU and has scaled web out.",
+      level: { id: "13", text: "Level 13 · Ready for the dinner rush" },
+      story: "Dinner rush. web is slow, CPU is high, but the autoscaler has not added a single Pod.",
+      goal: "Make the HPA scale web out under load.",
+      deployments: [{ name: "web", replicas: 2, image: "nginx:1.27", req: 128, lim: 256, age: 5 * HOUR }, api()],
+      hpas: [{ name: "web", target: "web", min: 2, max: 6, cpu: 70 }],
+      load: { web: 340 },
+      won: (c) => c.hpaStatus(c.hpas[0]).known && c.deployments.find((d) => d.name === "web").replicas > 2 && c.deploymentReady("web"),
+      check: (c) => { const st = c.hpaStatus(c.hpas[0]); return { label: `HPA web: cpu ${st.known ? st.util + "%" : "<unknown>"}/70%, ${st.d.replicas} replicas`, ok: st.known, text: st.known ? "scaling" : "no metrics" }; },
+      hints: [
+        "kubectl get hpa. TARGETS says <unknown>. kubectl describe hpa web says why.",
+        "Utilisation is a percentage of the CPU request, and the web containers have no CPU request. kubectl top pods shows the real use.",
+        "Give them one: kubectl set resources deployment/web --requests=cpu=100m"
+      ],
+      lesson: "An HPA measures CPU as a percentage of the request. No request, no percentage, no scaling.",
+      tries: ["kubectl get hpa", "kubectl top pods"]
+    },
+    {
+      id: "vpa",
+      title: "VPA recommendation",
+      done: "reports runs with the memory the VPA recommended.",
+      level: { id: "13", text: "Level 13 · Autoscaling (VPA in reference/manifests/autoscaling)" },
+      story: "reports keeps getting OOMKilled. A VerticalPodAutoscaler has watched it for days, yet nothing has changed.",
+      goal: "Get reports Running with enough memory.",
+      deployments: [web(), { name: "reports", replicas: 1, image: "localhost:5000/reports:1.0", req: 64, lim: 128, age: 3 * HOUR, restarts: 11 }],
+      vpas: [{ name: "reports-vpa", target: "reports", mode: "Off", rec: 450 }],
+      won: (c) => c.deploymentReady("reports"),
+      hints: [
+        "kubectl describe the reports Pod: OOMKilled, exit code 137. Then kubectl get vpa.",
+        "kubectl describe vpa reports-vpa. It has a recommendation, but Update Mode is Off: it only recommends.",
+        `Apply it yourself (kubectl set resources deployment/reports --requests=memory=450Mi --limits=memory=900Mi) or let the VPA do it. With a single replica it also needs minReplicas: kubectl patch vpa reports-vpa -p '{"spec":{"updatePolicy":{"updateMode":"Recreate","minReplicas":1}}}'`
+      ],
+      lesson: "A VPA in Off mode is a free sizing report. Recreate lets it apply its own advice, but by default only to workloads with two or more replicas.",
+      tries: ["kubectl get vpa", "kubectl describe vpa reports-vpa"]
+    },
+    {
+      id: "podsecurity",
+      title: "Pod Security",
+      done: "menu runs and passes the restricted Pod Security level.",
+      level: { id: "17", text: "Level 17 · Rejected at the door" },
+      story: "The namespace now enforces the restricted Pod Security level. The menu Deployment says 0/1 and there is no Pod at all.",
+      goal: "Get menu Running, keeping the namespace at restricted.",
+      nsLabels: { "pod-security.kubernetes.io/enforce": "restricted" },
+      deployments: [{ name: "menu", replicas: 1, image: "busybox:1.36", req: 64, lim: 128, age: 30 * MIN }],
+      won: (c) => c.deploymentReady("menu") && c.nsLabels["pod-security.kubernetes.io/enforce"] === "restricted",
+      hints: [
+        "No Pod means it was never created. kubectl describe deployment menu, then kubectl get rs and kubectl describe rs on the new one.",
+        "The ReplicaSet's events list every rule the Pod breaks. kubectl get ns kitchen --show-labels shows the level.",
+        `Meet the rules: kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"menu","securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}}}'`
+      ],
+      lesson: "Pod Security rejects Pods before they exist, so the error is on the ReplicaSet, not a Pod. runAsNonRoot also needs a non-root user.",
+      tries: ["kubectl get deploy,rs", "kubectl describe deployment menu"]
     }
   ];
 
   // Easiest first: one object, then config, scheduling, networking, security.
-  const ORDER = ["image", "crash", "configmap", "pending", "oom", "nodeselector", "probe", "service", "netpol", "rbac", "rollout"];
+  const ORDER = ["image", "crash", "configmap", "pending", "oom", "liveness", "init", "nodeselector", "taint", "probe", "service",
+    "netpol", "rbac", "podsecurity", "rollout", "hpa", "vpa"];
   SCENARIOS.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
 
   // --- the simulated cluster ---------------------------------------------------
@@ -359,12 +479,20 @@
       this.bindings = JSON.parse(JSON.stringify(scenario.bindings || []));
       this.clusterBindings = [];
       this.policies = JSON.parse(JSON.stringify(scenario.policies || []));
+      this.taints = Object.fromEntries(NODES.map((n) => [n, JSON.parse(JSON.stringify((scenario.taints || {})[n] || []))]));
+      this.nsLabels = { "kubernetes.io/metadata.name": NS, ...(scenario.nsLabels || {}) };
+      this.hpas = JSON.parse(JSON.stringify(scenario.hpas || []));
+      this.vpas = JSON.parse(JSON.stringify(scenario.vpas || []));
+      this.load = { ...(scenario.load || {}) }; // total CPU use per Deployment, in millicores
+      this.rsEvents = [];
       for (const d of scenario.deployments || []) {
         const dep = {
           name: d.name, replicas: d.replicas, created: this.now() - d.age, history: [],
           spec: {
-            image: d.image, env: {}, req: d.req, lim: d.lim, envFrom: d.envFrom || null, probe: d.probe || null,
-            nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default"
+            image: d.image, env: { ...(d.env || {}) }, req: d.req, lim: d.lim, envFrom: d.envFrom || null, probe: d.probe || null,
+            nodeSelector: { ...(d.nodeSelector || {}) }, sa: d.sa || "default", cpuReq: d.cpu || 0,
+            tolerations: JSON.parse(JSON.stringify(d.tolerations || [])), liveness: d.liveness || null,
+            init: d.init ? { ...d.init } : null, sec: { ...(d.sec || {}) }
           },
           hash: this.rand(10)
         };
@@ -374,10 +502,14 @@
       for (const p of scenario.pods || []) {
         this.addPod(null, {
           name: p.name, age: p.age, settled: true, node: p.node,
-          spec: { image: p.image, env: {}, req: p.req, lim: p.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default" }
+          spec: {
+            image: p.image, env: {}, req: p.req, lim: p.lim, envFrom: null, probe: null, nodeSelector: {}, sa: "default",
+            cpuReq: 0, tolerations: [], liveness: null, init: null, sec: {}
+          }
         });
       }
       if (scenario.setup) scenario.setup(this);
+      this.reconcileHpas();
     }
 
     rand(n) {
@@ -390,10 +522,22 @@
       return s;
     }
 
-    get dirty() { return this.retry || this.pods.some((p) => p.creating || p.terminating || p.old); }
+    get dirty() {
+      return this.retry || this.pods.some((p) => p.creating || p.terminating || p.old) ||
+        this.deployments.some((d) => !this.podsOf(d.name).some((p) => p.old) &&
+          this.podsOf(d.name).filter((p) => p.hash === d.hash).length < d.replicas && !this.admissionErrors(d.spec).length);
+    }
 
     addPod(dep, opts) {
       const spec = dep ? JSON.parse(JSON.stringify(dep.spec)) : opts.spec;
+      const denied = this.admissionErrors(spec);
+      if (dep && denied.length) {
+        const name = `${dep.name}-${dep.hash}-${this.rand(5)}`;
+        const msg = `Error creating: pods "${name}" is forbidden: violates PodSecurity "restricted:latest": ${denied.join(", ")}`;
+        this.rsEvents = this.rsEvents.filter((e) => e.rs !== `${dep.name}-${dep.hash}`);
+        this.rsEvents.push({ rs: `${dep.name}-${dep.hash}`, type: "Warning", reason: "FailedCreate", msg });
+        return null;
+      }
       const pod = {
         name: opts.name || `${dep.name}-${dep.hash}-${this.rand(5)}`,
         owner: dep ? dep.name : null, hash: dep ? dep.hash : null,
@@ -407,6 +551,23 @@
       return pod;
     }
 
+    // Pod Security admission at the "restricted" level, if the namespace enforces it.
+    admissionErrors(spec) {
+      if (this.nsLabels["pod-security.kubernetes.io/enforce"] !== "restricted") return [];
+      const sec = spec.sec || {};
+      const errors = [];
+      if (sec.allowPrivilegeEscalation !== false) errors.push('allowPrivilegeEscalation != false (container must set securityContext.allowPrivilegeEscalation=false)');
+      if (!(sec.drop || []).includes("ALL")) errors.push('unrestricted capabilities (container must set securityContext.capabilities.drop=["ALL"])');
+      if (sec.runAsNonRoot !== true) errors.push("runAsNonRoot != true (pod or container must set securityContext.runAsNonRoot=true)");
+      if (!/^(RuntimeDefault|Localhost)$/.test(sec.seccomp || "")) errors.push('seccompProfile (pod or container must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")');
+      return errors;
+    }
+
+    tolerates(pod, node) {
+      return this.taints[node].every((t) => t.effect !== "NoSchedule" || (pod.spec.tolerations || []).some((tol) =>
+        tol.key === t.key && (tol.operator === "Exists" || tol.value === t.value) && (!tol.effect || tol.effect === t.effect)));
+    }
+
     freeOn(node) {
       return NODE_MEMORY - this.pods.filter((p) => p.node === node && !p.terminating).reduce((t, p) => t + (p.spec.req || 0), 0);
     }
@@ -414,7 +575,7 @@
     nodesFor(pod) { return NODES.filter((n) => selects(pod.spec.nodeSelector, this.nodeLabels[n])); }
 
     place(pod) {
-      const fits = this.nodesFor(pod).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
+      const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n)).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
       if (!fits.length) return null;
       fits.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
       return fits[0][0];
@@ -430,7 +591,15 @@
       pod.ready = false;
       if (!pod.node) {
         const n = NODES.length;
-        const why = this.nodesFor(pod).length ? `${n} Insufficient memory` : `${n} node(s) didn't match Pod's node affinity/selector`;
+        // One reason per node, counted the way the scheduler reports them.
+        const reasons = {};
+        for (const node of NODES) {
+          let r = `Insufficient memory`;
+          if (!selects(pod.spec.nodeSelector, this.nodeLabels[node])) r = "node(s) didn't match Pod's node affinity/selector";
+          else if (!this.tolerates(pod, node)) r = `node(s) had untolerated taint {${this.taints[node].map((t) => `${t.key}: ${t.value}`).join(", ")}}`;
+          reasons[r] = (reasons[r] || 0) + 1;
+        }
+        const why = Object.entries(reasons).map(([r, k]) => `${k} ${r}`).sort().join(", ");
         pod.state = "Pending";
         pod.events = [["Warning", "FailedScheduling", "default-scheduler",
           `0/${n} nodes are available: ${why}. preemption: 0/${n} nodes are available: ${n} Preemption is not helpful for scheduling.`]];
@@ -447,6 +616,21 @@
           ["Warning", "Failed", "kubelet", "Error: ImagePullBackOff"]];
         return;
       }
+      if (pod.spec.init && !this.services.some((x) => x.name === pod.spec.init.waitFor)) {
+        pod.state = "Init:0/1";
+        pod.events = [scheduled,
+          ["Normal", "Pulled", "kubelet", 'Container image "busybox:1.36" already present on machine'],
+          ["Normal", "Created", "kubelet", `Created container: ${pod.spec.init.name}`],
+          ["Normal", "Started", "kubelet", `Started container ${pod.spec.init.name}`]];
+        return;
+      }
+      if (pod.spec.sec && pod.spec.sec.runAsNonRoot && !pod.spec.sec.runAsUser && app.root) {
+        pod.state = "CreateContainerConfigError";
+        pod.events = [scheduled,
+          ["Normal", "Pulled", "kubelet", `Container image "${img}" already present on machine`],
+          ["Warning", "Failed", "kubelet", `Error: container has runAsNonRoot and image will run as root (pod: "${pod.name}_${NS}", container: ${c})`]];
+        return;
+      }
       if (pod.spec.envFrom && !this.configMaps[pod.spec.envFrom]) {
         pod.state = "CreateContainerConfigError";
         pod.events = [scheduled,
@@ -461,10 +645,15 @@
         ["Normal", "Started", "kubelet", `Started container ${c}`]];
       if (app.needsEnv && !pod.env[app.needsEnv]) pod.last = { reason: "Error", code: 1 };
       else if (pod.spec.lim && app.mem > pod.spec.lim) pod.last = { reason: "OOMKilled", code: 137 };
+      else if (pod.spec.liveness && pod.spec.liveness !== app.port) pod.last = { reason: "Completed", code: 0, liveness: true };
       if (pod.last) {
         pod.state = "CrashLoopBackOff";
         pod.restarts = Math.max(pod.restarts, 1);
-        pod.events = [...started, ["Warning", "BackOff", "kubelet", `Back-off restarting failed container ${c} in pod ${pod.name}`]];
+        const ip = `10.244.${NODES.indexOf(pod.node) + 1}.${10 + this.pods.indexOf(pod)}`;
+        const killed = pod.last.liveness ? [
+          ["Warning", "Unhealthy", "kubelet", `Liveness probe failed: Get "http://${ip}:${pod.spec.liveness}/": dial tcp ${ip}:${pod.spec.liveness}: connect: connection refused`],
+          ["Normal", "Killing", "kubelet", `Container ${c} failed liveness probe, will be restarted`]] : [];
+        pod.events = [...started, ...killed, ["Warning", "BackOff", "kubelet", `Back-off restarting failed container ${c} in pod ${pod.name}`]];
       } else {
         pod.state = "Running";
         pod.ready = !pod.spec.probe || app.health.includes(pod.spec.probe);
@@ -518,7 +707,7 @@
       this.retry = false;
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
-      const retrying = (x) => !x.node || x.state === "CreateContainerConfigError" || x.state === "CrashLoopBackOff";
+      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CrashLoopBackOff|Init:)/.test(x.state || "");
       for (const p of this.pods.filter((x) => !x.creating && !x.terminating && retrying(x))) {
         if (!p.node) p.node = this.place(p);
         if (p.node) this.evaluate(p, true);
@@ -534,6 +723,44 @@
         // A rollout replaces old Pods only once new ones are Running; broken
         // old Pods go straight away.
         this.pods = this.pods.filter((p) => !(p.owner === d.name && p.old && (allUp || !p.ready)));
+        // The ReplicaSet keeps trying to create the Pods it is missing (outside a
+        // rollout, where maxSurge limits how many new Pods may exist).
+        if (!this.podsOf(d.name).some((p) => p.old)) {
+          const have = this.podsOf(d.name).filter((p) => p.hash === d.hash && !p.terminating).length;
+          for (let i = have; i < d.replicas; i++) if (!this.addPod(d, {})) break;
+        }
+      }
+      this.reconcileHpas();
+    }
+
+    // HorizontalPodAutoscaler: CPU use as a percentage of the CPU request.
+    hpaStatus(h) {
+      const d = this.deployments.find((x) => x.name === h.target);
+      const pods = this.podsOf(d.name).filter((p) => p.ready && !p.terminating);
+      if (!d.spec.cpuReq || !pods.length) return { known: false, d, pods };
+      const util = Math.round(((this.load[d.name] || 0) / pods.length / d.spec.cpuReq) * 100);
+      return { known: true, util, d, pods };
+    }
+    reconcileHpas() {
+      for (const h of this.hpas) {
+        const st = this.hpaStatus(h);
+        if (!st.known) {
+          const pod = (st.pods[0] || this.podsOf(h.target)[0] || {}).name || h.target;
+          const why = `missing request for cpu in container ${h.target} of Pod ${pod}`;
+          h.events = [
+            ["Warning", "FailedGetResourceMetric", "horizontal-pod-autoscaler", `failed to get cpu utilization: unable to get metrics for resource cpu: ${why}`],
+            ["Warning", "FailedComputeMetricsReplicas", "horizontal-pod-autoscaler", `invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: ${why}`]];
+          continue;
+        }
+        const want = Math.min(h.max, Math.max(h.min, Math.ceil(st.pods.length * st.util / h.cpu)));
+        if (want !== st.d.replicas && st.pods.length === st.d.replicas) {
+          h.events = [...(h.events || []).filter((e) => e[1] === "SuccessfulRescale"),
+            ["Normal", "SuccessfulRescale", "horizontal-pod-autoscaler", `New size: ${want}; reason: cpu resource utilization (percentage of request) ${want > st.d.replicas ? "above" : "below"} target`]];
+          st.d.replicas = want;
+          for (let i = st.pods.length; i < want; i++) this.addPod(st.d, {});
+        } else if (!(h.events || []).some((e) => e[1] === "SuccessfulRescale")) {
+          h.events = [];
+        }
       }
     }
 
@@ -557,7 +784,7 @@
     status(p) {
       if (p.terminating) return "Terminating";
       if (!p.node) return "Pending";
-      if (p.creating) return "ContainerCreating";
+      if (p.creating) return p.spec.init ? "Init:0/1" : "ContainerCreating";
       return p.state;
     }
 
@@ -585,13 +812,24 @@
     "kubectl set image | env | resources | selector | subject ...",
     "kubectl patch deployment|service|networkpolicy <name> -p '{...}'",
     "kubectl create configmap | rolebinding | clusterrolebinding ...",
-    "kubectl label node <name> key=value      kubectl auth can-i <verb> <resource> --as=...",
+    "kubectl label node|namespace <name> key=value      kubectl taint node <name> key=value:NoSchedule",
+    "kubectl auth can-i <verb> <resource> --as=...      kubectl expose deployment <name> --port=N [--name=svc]",
+    "kubectl get hpa | vpa | ns       kubectl logs <pod> -c <init-container>",
     "kubectl exec <pod> -- wget -qO- -T 2 http://<service>:<port>   (also curl, env)",
     "kubectl rollout status | history | restart | undo deployment/<name>",
     "kubectl scale deployment/<name> --replicas=N",
     "kubectl delete pod | configmap | networkpolicy | rolebinding <name>",
     "hint, reset, clear, help        ('k' works as kubectl, Tab completes names)"
   ];
+
+  // securityContext fields from a patch, container or Pod level.
+  function mergeSec(sec, sc) {
+    if (sc.allowPrivilegeEscalation !== undefined) sec.allowPrivilegeEscalation = sc.allowPrivilegeEscalation;
+    if (sc.runAsNonRoot !== undefined) sec.runAsNonRoot = sc.runAsNonRoot;
+    if (sc.runAsUser !== undefined) sec.runAsUser = sc.runAsUser;
+    if (sc.capabilities && sc.capabilities.drop) sec.drop = sc.capabilities.drop;
+    if (sc.seccompProfile && sc.seccompProfile.type) sec.seccomp = sc.seccompProfile.type;
+  }
 
   // Runs one command line against a cluster. Returns [text, class] lines.
   function kubectl(c, line) {
@@ -679,6 +917,16 @@
       const pods = c.podsOf(name).filter((p) => !p.terminating);
       return pods.find((p) => p.state !== "Running") || pods[0];
     };
+
+    if (verb === "get" && /^[a-z]+(,[a-z]+)+$/.test(args[1] || "")) {
+      const rest = line.split(args[1]);
+      for (const k of args[1].split(",")) {
+        out.push(...kubectl(c, rest[0] + k + rest.slice(1).join(args[1])));
+        out.push(["", ""]);
+      }
+      out.pop();
+      return out;
+    }
 
     if (verb === "get") {
       const { kind, name } = target(null);
@@ -800,10 +1048,30 @@
         table([["NAME", "ROLE", "AGE"], ...list.map((b) => [b.name, `${b.kind}/${b.role}`, age(b.age || 0)])]);
         return out;
       }
+      if (kind === "hpas") {
+        if (!c.hpas.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "REFERENCE", "TARGETS", "MINPODS", "MAXPODS", "REPLICAS", "AGE"], ...c.hpas.map((x) => {
+          const st = c.hpaStatus(x);
+          return [x.name, `Deployment/${x.target}`, `cpu: ${st.known ? st.util + "%" : "<unknown>"}/${x.cpu}%`, x.min, x.max, st.d.replicas, "40m"];
+        })]);
+        return out;
+      }
+      if (kind === "vpas") {
+        if (!c.vpas.length) return say(`No resources found in ${NS} namespace.`), out;
+        table([["NAME", "MODE", "CPU", "MEM", "PROVIDED", "AGE"], ...c.vpas.map((v) => [v.name, v.mode, "25m", fmtMem(v.rec), "True", "3d"])]);
+        return out;
+      }
+      if (kind === "namespaces") {
+        const head = ["NAME", "STATUS", "AGE"];
+        if (flags["show-labels"]) head.push("LABELS");
+        const rows = [["default", "Active", "12d"], ["kube-system", "Active", "12d"], [NS, "Active", "12d"]].filter((r) => !name || r[0] === name);
+        table([head, ...rows.map((r) => (flags["show-labels"] ? [...r, r[0] === NS ? sel(c.nsLabels) : `kubernetes.io/metadata.name=${r[0]}`] : r))]);
+        return out;
+      }
       if (kind === "replicasets") {
         const rows = [];
         for (const d of c.deployments) {
-          const hashes = [...new Set(c.podsOf(d.name).map((p) => p.hash))];
+          const hashes = [...new Set([...c.podsOf(d.name).map((p) => p.hash), d.hash])];
           for (const hsh of hashes) {
             const pods = c.podsOf(d.name).filter((p) => p.hash === hsh && !p.terminating);
             rows.push([`${d.name}-${hsh}`, hsh === d.hash ? d.replicas : pods.length, pods.length, pods.filter((p) => p.ready).length, "-"]);
@@ -815,6 +1083,8 @@
       if (kind === "events") {
         const rows = [];
         for (const p of c.pods) for (const e of p.events) rows.push([e[0], e[1], `pod/${p.name}`, e[3]]);
+        for (const e of c.rsEvents) rows.push([e.type, e.reason, `replicaset/${e.rs}`, e.msg]);
+        for (const x of c.hpas) for (const e of x.events || []) rows.push([e[0], e[1], `horizontalpodautoscaler/${x.name}`, e[3]]);
         if (!rows.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["TYPE", "REASON", "OBJECT", "MESSAGE"], ...rows]);
         return out;
@@ -838,6 +1108,14 @@
         if (p.owner) say(`Controlled By:    ReplicaSet/${p.owner}-${p.hash}`);
         say(`Service Account:  ${p.spec.sa}`);
         if (Object.keys(p.spec.nodeSelector).length) say(`Node-Selectors:   ${sel(p.spec.nodeSelector)}`);
+        if (p.spec.init) {
+          const waiting = c.status(p).startsWith("Init:");
+          say("Init Containers:");
+          say(`  ${p.spec.init.name}:`);
+          say("    Image:          busybox:1.36");
+          say(`    Command:        sh -c until nslookup ${p.spec.init.waitFor}; do echo waiting for ${p.spec.init.waitFor}; sleep 2; done`);
+          say(`    State:          ${waiting ? "Running" : "Terminated\n      Reason:       Completed\n      Exit Code:    0"}`, waiting ? "warn" : "");
+        }
         say("Containers:");
         say(`  ${cname}:`);
         say(`    Image:          ${p.spec.image}`);
@@ -849,11 +1127,13 @@
         say(`    Restart Count:  ${p.restarts}`);
         if (p.spec.lim) say(`    Limits:\n      memory:       ${fmtMem(p.spec.lim)}`);
         if (p.spec.req) say(`    Requests:\n      memory:       ${fmtMem(p.spec.req)}`);
+        if (p.spec.liveness) say(`    Liveness:       http-get http://:${p.spec.liveness}/ delay=0s timeout=1s period=10s #success=1 #failure=3`);
         if (p.spec.probe) say(`    Readiness:      http-get http://:${APPS[appOf(p.spec.image)]?.port || 80}${p.spec.probe} delay=0s timeout=1s period=10s #success=1 #failure=3`);
         if (p.spec.envFrom) say(`    Environment Variables from:\n      ${p.spec.envFrom}  ConfigMap  Optional: false`);
         const env = Object.entries(p.spec.env);
         say("    Environment:" + (env.length ? "" : "    <none>"));
         for (const [k, v] of env) say(`      ${k}:  ${v}`);
+        if (p.spec.tolerations.length) say(`Tolerations:      ${p.spec.tolerations.map((t) => `${t.key}${t.operator === "Exists" ? "" : "=" + t.value}:${t.effect}`).join(", ")}`);
         say("Events:" + (p.events.length ? "" : "           <none>"));
         if (p.events.length) {
           say("  Type     Reason            From               Message", "head");
@@ -884,7 +1164,14 @@
         const env = Object.entries(d.spec.env);
         say("    Environment:" + (env.length ? "" : "  <none>"));
         for (const [k, v] of env) say(`      ${k}:  ${v}`);
-        say(`NewReplicaSet:      ${d.name}-${d.hash} (${d.replicas}/${d.replicas} replicas created)`);
+        if (d.spec.liveness) say(`    Liveness:   http-get http://:${d.spec.liveness}/`);
+        if (d.spec.cpuReq) say(`    Requests:   cpu: ${d.spec.cpuReq}m`);
+        if (d.spec.tolerations.length) say(`  Tolerations:  ${d.spec.tolerations.map((t) => `${t.key}=${t.value}:${t.effect}`).join(", ")}`);
+        if (d.spec.init) say(`  Init Containers:\n   ${d.spec.init.name}:  waits for ${d.spec.init.waitFor}`);
+        const created = c.podsOf(d.name).filter((p) => p.hash === d.hash).length;
+        const failed = c.rsEvents.find((e) => e.rs === `${d.name}-${d.hash}`);
+        if (failed) say("Conditions:\n  Type             Status  Reason\n  ----             ------  ------\n  ReplicaFailure   True    FailedCreate", "warn");
+        say(`NewReplicaSet:      ${d.name}-${d.hash} (${created}/${d.replicas} replicas created)`);
         return out;
       }
       if (kind === "services") {
@@ -908,6 +1195,7 @@
         say(`Name:               ${name}`);
         say("Roles:              <none>");
         say(`Labels:             ${sel(c.nodeLabels[name]).split(",").join("\n                    ")}`);
+        say(`Taints:             ${c.taints[name].map((t) => `${t.key}${t.value ? "=" + t.value : ""}:${t.effect}`).join(", ") || "<none>"}`, c.taints[name].length ? "warn" : "");
         say("Conditions:         Ready=True, MemoryPressure=False, DiskPressure=False");
         say("Allocatable:");
         say("  cpu:              4");
@@ -916,6 +1204,60 @@
         for (const p of c.pods.filter((x) => x.node === name)) say(`  ${NS.padEnd(10)}${p.name.padEnd(28)}memory request ${fmtMem(p.spec.req || 0)}`);
         say("Allocated resources:");
         say(`  memory requests:  ${fmtMem(used)} (${Math.round((used / NODE_MEMORY) * 100)}%)`);
+        return out;
+      }
+      if (kind === "replicasets") {
+        const d = c.deployments.find((x) => name.startsWith(x.name + "-"));
+        const hsh = d && name.slice(d.name.length + 1);
+        const pods = d ? c.podsOf(d.name).filter((p) => p.hash === hsh) : [];
+        if (!d || (!pods.length && hsh !== d.hash)) return notFound("replicasets.apps", name), out;
+        say(`Name:           ${name}`);
+        say(`Namespace:      ${NS}`);
+        say(`Controlled By:  Deployment/${d.name}`);
+        say(`Replicas:       ${pods.length} current / ${hsh === d.hash ? d.replicas : pods.length} desired`);
+        const evs = c.rsEvents.filter((e) => e.rs === name);
+        say("Events:" + (evs.length ? "" : "         <none>"));
+        for (const e of evs) say(`  ${e.type}  ${e.reason}  replicaset-controller  ${e.msg}`, "warn");
+        return out;
+      }
+      if (kind === "hpas") {
+        const x = c.hpas.find((y) => y.name === name);
+        if (!x) return notFound("horizontalpodautoscalers.autoscaling", name), out;
+        const st = c.hpaStatus(x);
+        say(`Name:                                                  ${x.name}`);
+        say(`Reference:                                             Deployment/${x.target}`);
+        say(`Metrics:                                               ( current / target )`);
+        say(`  resource cpu on pods  (as a percentage of request):  ${st.known ? st.util + "%" : "<unknown>"} / ${x.cpu}%`, st.known ? "" : "warn");
+        say(`Min replicas:                                          ${x.min}`);
+        say(`Max replicas:                                          ${x.max}`);
+        say(`Deployment pods:                                       ${st.d.replicas} current / ${st.d.replicas} desired`);
+        say("Events:" + ((x.events || []).length ? "" : " <none>"));
+        for (const e of x.events || []) say(`  ${e[0].padEnd(9)}${e[1].padEnd(30)}${e[3]}`, e[0] === "Warning" ? "warn row" : "row");
+        return out;
+      }
+      if (kind === "vpas") {
+        const v = c.vpas.find((y) => y.name === name);
+        if (!v) return notFound("verticalpodautoscalers.autoscaling.k8s.io", name), out;
+        say(`Name:         ${v.name}`);
+        say("Spec:");
+        say(`  Target Ref:  Deployment/${v.target}`);
+        say("  Update Policy:");
+        say(`    Update Mode:  ${v.mode}`, v.mode === "Off" ? "warn" : "");
+        if (v.minReplicas) say(`    Min Replicas: ${v.minReplicas}`);
+        say("Status:");
+        say("  Recommendation:");
+        say("    Container Recommendations:");
+        say(`      Container Name:  ${v.target}`);
+        say(`      Lower Bound:     memory: ${fmtMem(Math.round(v.rec * 0.9))}`);
+        say(`      Target:          memory: ${fmtMem(v.rec)}`);
+        say(`      Upper Bound:     memory: ${fmtMem(Math.round(v.rec * 1.4))}`);
+        return out;
+      }
+      if (kind === "namespaces") {
+        if (name !== NS) return say(`Error from server (NotFound): namespaces "${name}" not found`, "warn"), out;
+        say(`Name:         ${NS}`);
+        say(`Labels:       ${sel(c.nsLabels).split(",").join("\n              ")}`);
+        say("Status:       Active");
         return out;
       }
       if (kind === "configmaps") {
@@ -985,6 +1327,20 @@
       const cname = p.owner || p.name;
       const app = APPS[appOf(p.spec.image)];
       const st = c.status(p);
+      if (p.spec.init && flags.c === p.spec.init.name) {
+        const done = !st.startsWith("Init:") && st !== "Pending";
+        say(`waiting for ${p.spec.init.waitFor}`);
+        say(done ? `${p.spec.init.waitFor} resolved; continuing` : `nslookup: can't resolve '${p.spec.init.waitFor}.${NS}.svc.cluster.local'`);
+        if (!done) say(`waiting for ${p.spec.init.waitFor}`);
+        return out;
+      }
+      if (flags.c && flags.c !== cname) return say(`error: container ${flags.c} is not valid for pod ${p.name}`, "warn"), out;
+      if (st.startsWith("Init:")) return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: PodInitializing`, "warn"), out;
+      const runLogs = () => (typeof app.logs === "function" ? app.logs({ env: c.envOf(p), c, pod: p }) : app.logs);
+      if ((flags.previous || st === "CrashLoopBackOff") && p.last && p.last.liveness) {
+        [...runLogs(), "2026/10/30 10:41:07 [notice] 1#1: signal 15 (SIGTERM) received, exiting", "2026/10/30 10:41:07 [notice] 1#1: exit"].forEach((l) => say(l));
+        return out;
+      }
       if (flags.previous) {
         if (!p.last) return say(`Error from server (BadRequest): previous terminated container "${cname}" in pod "${p.name}" not found`, "warn"), out;
         (app.crashLogs || []).forEach((l) => say(l));
@@ -1003,7 +1359,12 @@
       if (!/^(pods?|po)$/.test(args[1] || "")) return say("This playground simulates kubectl top pods only.", "dim"), out;
       const running = c.pods.filter((p) => c.status(p) === "Running");
       if (!running.length) return say("error: metrics not available yet", "warn"), out;
-      table([["NAME", "CPU(cores)", "MEMORY(bytes)"], ...running.map((p) => [p.name, "2m", fmtMem(APPS[appOf(p.spec.image)].mem)])]);
+      const cpuOf = (p) => {
+        const total = p.owner ? c.load[p.owner] : 0;
+        const n = c.podsOf(p.owner || p.name).filter((x) => c.status(x) === "Running").length || 1;
+        return total ? Math.round(total / n) + "m" : "2m";
+      };
+      table([["NAME", "CPU(cores)", "MEMORY(bytes)"], ...running.map((p) => [p.name, cpuOf(p), fmtMem(APPS[appOf(p.spec.image)].mem)])]);
       return out;
     }
 
@@ -1071,7 +1432,11 @@
         const read = (v) => Object.fromEntries(String(v || "").split(",").filter(Boolean).map((x) => x.split("=")));
         const req = read(flags.requests);
         const lim = read(flags.limits);
-        if (!req.memory && !lim.memory) return say("error: give --requests=memory=<size> and/or --limits=memory=<size>", "warn"), out;
+        if (!req.memory && !lim.memory && !req.cpu && !lim.cpu) return say("error: give --requests=cpu=<m>,memory=<size> and/or --limits=...", "warn"), out;
+        for (const [label, v] of [["requests", req.cpu], ["limits", lim.cpu]]) {
+          if (v !== undefined && parseCpu(v) === null) return say(`error: invalid ${label} cpu quantity "${v}"; use units like 100m or 0.5`, "warn"), out;
+        }
+        if (req.cpu) spec.cpuReq = parseCpu(req.cpu);
         for (const [label, v] of [["requests", req.memory], ["limits", lim.memory]]) {
           if (v !== undefined && parseMem(v) === null) return say(`error: invalid ${label} memory quantity "${v}"; use units like 256Mi or 1Gi`, "warn"), out;
         }
@@ -1130,6 +1495,7 @@
       const n = parseInt(flags.replicas, 10);
       if (!(n >= 0 && n <= 6)) return say("error: use --replicas=N with N from 0 to 6 in this playground", "warn"), out;
       const current = c.podsOf(d.name).filter((p) => p.hash === d.hash && !p.terminating);
+      if (c.hpas.some((x) => x.target === d.name)) say(`(an HorizontalPodAutoscaler manages deployment/${d.name}; it will set the replica count again on its next check)`, "warn");
       d.replicas = n;
       for (let i = current.length; i < n; i++) c.addPod(d, {});
       for (const p of current.slice(n)) p.terminating = true;
@@ -1169,8 +1535,10 @@
         p.terminating = true;
         const d = depByName(p.owner);
         const fresh = c.addPod(d, {});
-        fresh.hash = p.hash;
-        say(`(the ReplicaSet creates a replacement from the same template: ${fresh.name})`, "dim");
+        if (fresh) {
+          fresh.hash = p.hash;
+          say(`(the ReplicaSet creates a replacement from the same template: ${fresh.name})`, "dim");
+        }
       } else {
         c.pods = c.pods.filter((x) => x !== p);
         say("(a bare Pod has no controller, so nothing brings it back; type 'reset' to start again)", "dim");
@@ -1180,6 +1548,21 @@
 
     if (verb === "label") {
       const { kind, name } = target(null);
+      if (kind === "namespaces") {
+        if (name !== NS) return say(`Error from server (NotFound): namespaces "${name}" not found`, "warn"), out;
+        for (const x of args.slice(2).filter((y) => /=|-$/.test(y) && y !== name)) {
+          if (x.endsWith("-") && !x.includes("=")) { delete c.nsLabels[x.slice(0, -1)]; continue; }
+          const [k, v] = x.split("=");
+          if (c.nsLabels[k] !== undefined && c.nsLabels[k] !== v && !flags.overwrite) return say(`error: '${k}' already has a value (${c.nsLabels[k]}), and --overwrite is false`, "warn"), out;
+          c.nsLabels[k] = v;
+        }
+        c.retry = true;
+        say(`namespace/${NS} labeled`);
+        if (c.nsLabels["pod-security.kubernetes.io/enforce"] && c.nsLabels["pod-security.kubernetes.io/enforce"] !== "restricted") {
+          say("(that lets the Pods in, by lowering the security level for every workload in the namespace)", "warn");
+        }
+        return out;
+      }
       if (kind !== "nodes") return say("Relabelling Pods works only until the controller replaces them, and Pods that lose their Deployment's labels get orphaned. Fix the selector on the other side instead.", "dim"), out;
       if (!NODES.includes(name)) return say(`Error from server (NotFound): nodes "${name}" not found`, "warn"), out;
       const pairs = args.slice(kind && args[1] && !args[1].includes("/") ? 3 : 2).filter((x) => /=|-$/.test(x));
@@ -1194,6 +1577,43 @@
       }
       c.retry = true;
       say(`node/${name} labeled`);
+      return out;
+    }
+
+    if (verb === "taint") {
+      const { kind, name } = target("nodes");
+      if (kind !== "nodes" || !NODES.includes(name)) return say(`error: use the form  kubectl taint node <node> key=value:NoSchedule`, "warn"), out;
+      const specs = args.slice(args[1].includes("/") ? 2 : 3);
+      if (!specs.length) return say("error: give a taint, for example gpu=true:NoSchedule (end with - to remove)", "warn"), out;
+      for (const t of specs) {
+        if (t.endsWith("-")) {
+          const key = t.slice(0, -1).split(/[=:]/)[0];
+          if (!c.taints[name].some((x) => x.key === key)) return say(`error: taint "${t.slice(0, -1)}" not found`, "warn"), out;
+          c.taints[name] = c.taints[name].filter((x) => x.key !== key);
+          say(`node/${name} untainted`);
+        } else {
+          const m = /^([\w./-]+)(?:=([\w.-]*))?:(NoSchedule|PreferNoSchedule|NoExecute)$/.exec(t);
+          if (!m) return say(`error: invalid taint spec: ${t}`, "warn"), out;
+          c.taints[name] = c.taints[name].filter((x) => x.key !== m[1]).concat([{ key: m[1], value: m[2] || "", effect: m[3] }]);
+          say(`node/${name} tainted`);
+        }
+      }
+      c.retry = true;
+      return out;
+    }
+
+    if (verb === "expose") {
+      const { kind, name } = target("deployments");
+      if (kind !== "deployments") return say("This playground exposes Deployments: kubectl expose deployment <name> --port=<port>", "dim"), out;
+      const d = requireDeployment(name);
+      if (!d) return out;
+      const port = parseInt(flags.port, 10);
+      if (!port) return say("error: couldn't find port via --port flag or introspection", "warn"), out;
+      const svcName = flags.name || d.name;
+      if (svcByName(svcName)) return say(`Error from server (AlreadyExists): services "${svcName}" already exists`, "warn"), out;
+      c.services.push({ name: svcName, selector: { app: d.name }, ip: `10.96.${20 + c.services.length}.${30 + c.services.length}`, port, created: c.now() });
+      c.retry = true;
+      say(`service/${svcName} exposed`);
       return out;
     }
 
@@ -1280,17 +1700,53 @@
           else if (ctr.readinessProbe && ctr.readinessProbe.httpGet && ctr.readinessProbe.httpGet.path) next.probe = ctr.readinessProbe.httpGet.path;
           if (ctr.envFrom === null) next.envFrom = null;
           else if (Array.isArray(ctr.envFrom)) next.envFrom = ((ctr.envFrom[0] || {}).configMapRef || {}).name || null;
+          if (ctr.livenessProbe === null) next.liveness = null;
+          else if (ctr.livenessProbe) {
+            const hp = ctr.livenessProbe.httpGet || ctr.livenessProbe.tcpSocket || {};
+            if (hp.port !== undefined) next.liveness = Number(hp.port) || (hp.port === "http" ? 80 : hp.port);
+          }
+          if (ctr.securityContext) mergeSec(next.sec, ctr.securityContext);
         }
+        if (tpl.securityContext) mergeSec(next.sec, tpl.securityContext);
+        if (tpl.tolerations === null) next.tolerations = [];
+        else if (Array.isArray(tpl.tolerations)) next.tolerations = tpl.tolerations.map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
         if (tpl.nodeSelector === null) next.nodeSelector = {};
         else if (tpl.nodeSelector) next.nodeSelector = { ...tpl.nodeSelector };
         if (spec.replicas !== undefined) return say("Use kubectl scale for replicas here.", "dim"), out;
         if (JSON.stringify(next) === JSON.stringify(d.spec)) return say(`deployment.apps/${name} patched (no change)`, "dim"), out;
         if (d.spec.probe && !next.probe) say("(removing the probe makes Pods Ready, but nothing then checks they really are)", "warn");
+        if (d.spec.liveness && !next.liveness) say("(without a liveness probe nobody restarts the app if it hangs; point the probe at the right port instead)", "warn");
         c.rollout(d, next);
         say(`deployment.apps/${name} patched`);
         return out;
       }
-      return say("This playground patches deployments, services and networkpolicies.", "dim"), out;
+      if (kind === "vpas") {
+        const v = c.vpas.find((x) => x.name === name);
+        if (!v) return notFound("verticalpodautoscalers.autoscaling.k8s.io", name), out;
+        const policy = spec.updatePolicy || {};
+        if (policy.minReplicas !== undefined) v.minReplicas = Number(policy.minReplicas);
+        const mode = policy.updateMode || (policy.minReplicas !== undefined ? v.mode : null);
+        if (!mode) return say("(nothing to change: this playground patches spec.updatePolicy.updateMode and minReplicas)", "dim"), out;
+        if (!/^(Off|Initial|Recreate|InPlaceOrRecreate|Auto)$/.test(mode)) return say(`The VerticalPodAutoscaler "${name}" is invalid: spec.updatePolicy.updateMode: Unsupported value: "${mode}"`, "warn"), out;
+        v.mode = mode;
+        say(`verticalpodautoscaler.autoscaling.k8s.io/${name} patched`);
+        const d0 = depByName(v.target);
+        if (mode !== "Off" && mode !== "Initial" && d0.replicas < (v.minReplicas || 2)) {
+          say(`(the VPA updater will not evict: deployment/${v.target} has ${d0.replicas} replica and the updater keeps at least minReplicas=${v.minReplicas || 2}. Set spec.updatePolicy.minReplicas to 1, or apply the recommendation yourself.)`, "warn");
+        } else if (mode !== "Off" && mode !== "Initial") {
+          // The updater evicts Pods; the admission controller gives the new ones
+          // the recommended request, keeping the limit-to-request ratio.
+          const d = depByName(v.target);
+          const next = JSON.parse(JSON.stringify(d.spec));
+          const ratio = d.spec.lim && d.spec.req ? d.spec.lim / d.spec.req : 0;
+          next.req = v.rec;
+          if (ratio) next.lim = Math.round(v.rec * ratio);
+          c.rollout(d, next);
+          say(`(the VPA updater evicts the ${v.target} Pods; replacements start with memory ${fmtMem(next.req)} request and ${fmtMem(next.lim)} limit)`, "dim");
+        }
+        return out;
+      }
+      return say("This playground patches deployments, services, networkpolicies and verticalpodautoscalers.", "dim"), out;
     }
 
     if (verb === "exec") {
@@ -1423,7 +1879,7 @@
     if (scenario.check) {
       const r = scenario.check(cluster);
       const box = el("div", "pg-svc " + (r.ok ? "ok" : "bad"), null);
-      box.append(el("span", "pg-svc-name", r.label), el("span", "pg-svc-eps", r.ok ? "allowed" : "blocked"));
+      box.append(el("span", "pg-svc-name", r.label), el("span", "pg-svc-eps", r.text || (r.ok ? "allowed" : "blocked")));
       boxes.push(box);
     }
     map.replaceChildren(...boxes);
@@ -1491,12 +1947,20 @@
     if (words[0] !== "kubectl") return print(`${words[0]}: command not found. This playground understands kubectl; type 'help'.`, "warn");
     for (const [text, cls] of kubectl(cluster, cmd)) print(text, cls);
     renderMap();
-    if (cluster.dirty) {
-      clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => { cluster.settle(); renderMap(); check(); }, reduceMotion ? 0 : 1400);
-    } else {
+    if (cluster.dirty) settleSoon(4);
+    else check();
+  }
+
+  // Controllers act a moment later, sometimes in rounds (a rollout, then an
+  // autoscaler acting on it); show each round on the map.
+  function settleSoon(rounds) {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      cluster.settle();
+      renderMap();
       check();
-    }
+      if (cluster.dirty && rounds > 1) settleSoon(rounds - 1);
+    }, reduceMotion ? 0 : 1400);
   }
 
   // Tab completes object names and kubectl words.
@@ -1513,11 +1977,13 @@
       pods: cluster.pods.map((p) => p.name), deployments: cluster.deployments.map((d) => d.name),
       services: cluster.services.map((s) => s.name), endpoints: cluster.services.map((s) => s.name), nodes: NODES,
       configmaps: Object.keys(cluster.configMaps), networkpolicies: cluster.policies.map((x) => x.name),
-      rolebindings: cluster.bindings.map((b) => b.name), roles: Object.keys(cluster.roles), serviceaccounts: cluster.serviceAccounts
+      rolebindings: cluster.bindings.map((b) => b.name), roles: Object.keys(cluster.roles), serviceaccounts: cluster.serviceAccounts,
+      hpas: cluster.hpas.map((x) => x.name), vpas: cluster.vpas.map((x) => x.name), namespaces: [NS]
     };
     const names = byKind[kind] || [...Object.values(byKind).flat(),
       "get", "describe", "logs", "exec", "patch", "label", "create", "auth", "can-i", "pods", "deployment", "service",
-      "endpoints", "nodes", "events", "configmap", "networkpolicy", "rolebinding", "rollout", "kubectl"];
+      "endpoints", "nodes", "events", "configmap", "networkpolicy", "rolebinding", "rollout", "kubectl", "taint", "expose",
+      "hpa", "vpa", "namespace"];
     const hits = [...new Set(names)].filter((n) => n.startsWith(stem) && n !== stem);
     if (hits.length === 1) input.value = v.slice(0, start) + prefix + hits[0] + " ";
     else if (hits.length > 1) {
