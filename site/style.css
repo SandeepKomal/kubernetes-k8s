@@ -82,7 +82,7 @@ h1, h2, h3, h4 { letter-spacing: -.03em; line-height: 1.1; }
 .top-inner { display: flex; align-items: center; gap: 20px; height: 52px; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .95rem; color: var(--text); white-space: nowrap; }
 .brand:hover { text-decoration: none; }
-.brand svg { width: 20px; height: 20px; fill: var(--k8s); }
+.brand svg { width: 22px; height: 22px; }
 .top nav { display: flex; gap: 2px; overflow-x: auto; flex: 1; justify-content: center; scrollbar-width: none; }
 .top nav a { color: var(--text); opacity: .8; padding: 6px 12px; border-radius: 99px; white-space: nowrap; font-size: .82rem; transition: opacity .2s, background .2s; }
 .top nav a:hover { opacity: 1; text-decoration: none; }
@@ -94,6 +94,7 @@ main { padding-top: 8px; padding-bottom: 64px; min-height: 70vh; }
 
 /* Hero */
 .hero { text-align: center; padding: 72px 0 40px; }
+.hero-logo { display: block; margin: 0 auto 18px; width: 72px; height: 72px; border-radius: 17px; box-shadow: 0 8px 24px rgba(50, 108, 229, .25); }
 .eyebrow { color: var(--k8s); font-weight: 600; font-size: .95rem; margin: 0 0 10px; }
 .hero h1 { font-size: clamp(2.6rem, 7vw, 4.5rem); font-weight: 700; letter-spacing: -.045em; margin: 0 0 18px; line-height: 1.04; }
 .hero .sub { color: var(--muted); font-size: clamp(1.1rem, 2.2vw, 1.4rem); line-height: 1.38; max-width: 680px; margin: 0 auto 30px; letter-spacing: -.02em; }
@@ -290,3 +291,8 @@ select:focus, input[type="search"]:focus { border-color: var(--accent); outline:
 @media (prefers-reduced-motion: reduce) {
   *, *::before { transition: none !important; animation: none !important; }
 }
+
+/* Logo: a container with a check mark. */
+.brand svg .logo-bg { fill: var(--k8s); }
+.brand svg .logo-line { fill: none; stroke: #fff; stroke-width: 4; stroke-linejoin: round; }
+.brand svg .logo-check { stroke-width: 4.5; stroke-linecap: round; }

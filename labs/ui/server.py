@@ -37,6 +37,7 @@ STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/logo.svg": ("logo.svg", "image/svg+xml"),
 }
 # Long enough for a level whose setup waits for a rollout.
 COMMAND_TIMEOUT = 300

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/banner.svg" alt="Kubernetes Quest: learn Kubernetes by fixing it" width="720"></p>
+
 # Kubernetes Quest
 
 A hands-on Kubernetes course you run on your own machine. Each of the 22
@@ -343,3 +345,8 @@ other material.
 Released under the [MIT License](LICENSE).
 
 Maintained by [Sandeep Komal](https://github.com/SandeepKomal).
+
+Kubernetes is a registered trademark of The Linux Foundation. This is an
+independent community project, not affiliated with or endorsed by the
+Linux Foundation or the CNCF. The Kubernetes Quest logo is original work
+under the same MIT License.

@@ -100,6 +100,12 @@ class HttpTest(unittest.TestCase):
         self.assertIn("frame-ancestors 'none'", csp)
         self.assertEqual(resp.getheader("X-Content-Type-Options"), "nosniff")
 
+    def test_logo_is_served_as_svg(self):
+        resp, data = self.request("GET", "/logo.svg")
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.getheader("Content-Type"), "image/svg+xml")
+        self.assertIn(b"<svg", data)
+
     def test_api_needs_the_token(self):
         for method, path in [("GET", "/api/levels"), ("GET", "/api/levels/00"),
                              ("POST", "/api/levels/00/start"), ("POST", "/api/levels/00/kubectl")]:
