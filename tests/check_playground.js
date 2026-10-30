@@ -969,6 +969,81 @@ assert.ok(!won(c), "the running Job keeps its old template");
 step(c, "kubectl delete job menu-sync-29364180");
 assert.ok(won(c), "cronhung: no hung run, and a deadline for the next");
 
+// A webhook that is down refuses the Pods that would bring it back.
+c = fresh("webhook");
+assert.match(step(c, "kubectl get events"), /FailedCreate\s+replicaset\/policy-webhook-\S+\s+Error creating: Internal error occurred: failed calling webhook/);
+step(c, "kubectl scale deployment/policy-webhook --replicas=3");
+assert.ok(!c.deploymentReady("policy-webhook") && !won(c), "scaling cannot beat the deadlock");
+step(c, "kubectl delete validatingwebhookconfiguration kitchen-policy");
+assert.ok(!won(c), "deleting the policy leaves the cluster unchecked");
+const hookPolicy = (x) => `kubectl patch validatingwebhookconfiguration kitchen-policy -p '{"webhooks":[{"name":"validate.policy.kitchen.example","failurePolicy":"${x}"}]}'`;
+c = fresh("webhook");
+step(c, hookPolicy("Ignore"));
+assert.ok(c.deploymentReady("menu") && !won(c), "Ignore is only the way out");
+step(c, hookPolicy("Fail"));
+assert.ok(won(c), "webhook: back to Fail with the webhook running");
+
+// Default-deny egress blocks DNS too.
+c = fresh("dnsegress");
+assert.match(step(c, "kubectl logs deploy/checkout --previous"), /lookup payments-svc on 10\.96\.0\.10:53: .*i\/o timeout/);
+assert.match(step(c, "kubectl exec deploy/web -- nslookup payments-svc"), /no servers could be reached/);
+step(c, "kubectl delete networkpolicy default-deny-egress");
+assert.ok(!won(c), "dropping the default deny is not the fix");
+c = fresh("dnsegress");
+step(c, `kubectl patch networkpolicy allow-checkout-to-payments -p '{"spec":{"egress":[{"to":[{"podSelector":{"matchLabels":{"app":"payments"}}}],"ports":[{"port":8080}]},{"to":[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}},"podSelector":{"matchLabels":{"k8s-app":"kube-dns"}}}],"ports":[{"protocol":"UDP","port":53},{"protocol":"TCP","port":53}]}]}}'`);
+assert.match(step(c, "kubectl describe networkpolicy allow-checkout-to-payments"), /53\/UDP, 53\/TCP/);
+assert.ok(won(c), "dnsegress: DNS allowed beside the payments rule");
+
+// A full volume grows only when its StorageClass allows it.
+c = fresh("volumefull");
+assert.match(step(c, "kubectl logs deploy/inventory --previous"), /no space left on device/);
+const grow = `kubectl patch pvc inventory-data -p '{"spec":{"resources":{"requests":{"storage":"5Gi"}}}}'`;
+assert.match(step(c, grow), /must support resize/);
+assert.match(step(c, `kubectl patch pvc inventory-data -p '{"spec":{"resources":{"requests":{"storage":"512Mi"}}}}'`), /can not be less than/);
+step(c, "kubectl delete pvc inventory-data");
+assert.ok(!won(c), "deleting the claim throws the data away");
+c = fresh("volumefull");
+step(c, `kubectl patch storageclass standard -p '{"allowVolumeExpansion":true}'`);
+assert.match(step(c, "kubectl get storageclass"), /Immediate\s+true/);
+step(c, grow);
+assert.ok(won(c), "volumefull: the claim grew to 5Gi");
+
+// A Secret value base64-encoded by hand, then encoded again.
+c = fresh("base64twice");
+assert.match(step(c, "kubectl logs deploy/accounts --previous"), /password authentication failed/);
+assert.strictEqual(step(c, "echo Y0hKaFkzUnBZMlV0Y0dGemN3PT0= | base64 -d"), "cHJhY3RpY2UtcGFzcw==");
+assert.match(step(c, "echo not-base64! | base64 -d"), /invalid input/);
+step(c, "kubectl rollout restart deployment/accounts");
+assert.ok(!won(c), "a restart reads the same wrong value");
+step(c, "kubectl delete secret db-credentials");
+step(c, "kubectl create secret generic db-credentials --from-literal=DB_PASSWORD=practice-pass");
+assert.ok(won(c), "base64twice: the plain value, encoded once by kubectl");
+
+// A read-only root needs writable volumes where the app writes.
+c = fresh("readonlyroot");
+assert.match(step(c, "kubectl logs deploy/web --previous"), /Read-only file system/);
+const mounts = (paths) => `kubectl patch deployment web -p '{"spec":{"template":{"spec":{"volumes":[${paths.map((x, i) => `{"name":"v${i}","emptyDir":{}}`).join(",")}],"containers":[{"name":"web","volumeMounts":[${paths.map((x, i) => `{"name":"v${i}","mountPath":"${x}"}`).join(",")}]}]}}}}'`;
+step(c, `kubectl patch deployment web -p '{"spec":{"template":{"spec":{"containers":[{"name":"web","securityContext":{"readOnlyRootFilesystem":false}}]}}}}'`);
+assert.ok(c.deploymentReady("web") && !won(c), "turning the protection off is not the fix");
+c = fresh("readonlyroot");
+step(c, mounts(["/var/cache/nginx"]));
+assert.match(step(c, "kubectl logs deploy/web --previous"), /nginx\.pid/);
+assert.ok(!won(c), "one volume is not enough");
+step(c, mounts(["/var/cache/nginx", "/var/run"]));
+assert.ok(won(c), "readonlyroot: emptyDirs where nginx writes");
+
+// :latest with IfNotPresent keeps running what the node pulled before.
+c = fresh("stalelatest");
+assert.match(step(c, "kubectl logs deploy/shop"), /version 2\.4\.0/);
+assert.match(step(c, "docker buildx imagetools inspect localhost:5000/shop:latest"), /version 2\.5\.0/);
+step(c, "kubectl rollout restart deployment/shop");
+assert.ok(!won(c), "a restart reuses the cached image");
+step(c, `kubectl patch deployment shop -p '{"spec":{"template":{"spec":{"containers":[{"name":"shop","imagePullPolicy":"Always"}]}}}}'`);
+assert.match(step(c, "kubectl logs deploy/shop"), /version 2\.5\.0/);
+assert.ok(!won(c), "Always on a moving tag still hides what runs");
+step(c, "kubectl set image deployment/shop shop=localhost:5000/shop:2.5.0");
+assert.ok(won(c), "stalelatest: an immutable tag");
+
 // Commands the cheat sheet relies on.
 c = fresh("crash");
 assert.match(step(c, "kubectl get all -l app=web"), /pod\/web-\S+[\s\S]*deployment\.apps\/web[\s\S]*replicaset\.apps\/web-/);

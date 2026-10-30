@@ -306,7 +306,15 @@ window.QUEST_QUIZ_BANK = {
         "The node's disk space",
         "The HPA"
       ], answer: 0,
-      why: "A paused Deployment records changes but creates no new ReplicaSet, so the old ReplicaSet keeps replacing deleted Pods. Pause exists to batch several changes into one rollout." }
+      why: "A paused Deployment records changes but creates no new ReplicaSet, so the old ReplicaSet keeps replacing deleted Pods. Pause exists to batch several changes into one rollout." },
+    { q: "CI pushed a new image as `app:latest` and you ran a rollout restart, but Pods still run the old version. `imagePullPolicy` is IfNotPresent. Why?",
+      options: [
+        "The registry is down",
+        "The nodes already have an image named app:latest, the old one, and IfNotPresent never pulls again",
+        "Rollout restart does not create new Pods",
+        "The Deployment is paused"
+      ], answer: 1,
+      why: "Deploy immutable version tags or digests: the Deployment then changes, rolls out, and says exactly what runs." }
   ],
 
   "04": [
@@ -608,7 +616,15 @@ window.QUEST_QUIZ_BANK = {
         "In the node's /var/log/syslog",
         "Nowhere: delete the Pod"
       ], answer: 1,
-      why: "The container never started, so there are no logs. The kubelet mounts volumes first and reports why it cannot in the Pod's events, then keeps retrying until the Secret or ConfigMap exists." }
+      why: "The container never started, so there are no logs. The kubelet mounts volumes first and reports why it cannot in the Pod's events, then keeps retrying until the Secret or ConfigMap exists." },
+    { q: "A Secret's value decodes to `cHJhY3RpY2UtcGFzcw==` rather than the password. What happened?",
+      options: [
+        "The Secret is encrypted at rest",
+        "The value was base64-encoded by hand and then encoded again (stringData or --from-literal)",
+        "kubectl corrupted it",
+        "The key name is wrong"
+      ], answer: 1,
+      why: "Under data: you encode once yourself; with stringData or kubectl create secret --from-literal, Kubernetes does it. Doing both leaves the app with base64 as its password." }
   ],
 
   "06": [
@@ -873,7 +889,15 @@ window.QUEST_QUIZ_BANK = {
         "Recreate requires replicas: 0",
         "Only admins can change the strategy"
       ], answer: 1,
-      why: "A merge patch only changes the fields you name, so the defaulted rollingUpdate block stays. Clearing it in the same patch makes the object valid." }
+      why: "A merge patch only changes the fields you name, so the defaulted rollingUpdate block stays. Clearing it in the same patch makes the object valid." },
+    { q: "An app logs `no space left on device` on its PVC, and `kubectl patch pvc` to a bigger size is refused. What do you check?",
+      options: [
+        "The node's memory",
+        "Whether the StorageClass sets allowVolumeExpansion: true",
+        "The Pod's securityContext",
+        "The PV's reclaim policy"
+      ], answer: 1,
+      why: "Claims can only grow, and only when their StorageClass allows expansion. Never delete the claim to start over: its data goes with it." }
   ],
 
   "09": [
@@ -1142,7 +1166,15 @@ window.QUEST_QUIZ_BANK = {
         "Two items are invalid",
         "One item means either matches; two items mean both"
       ], answer: 1,
-      why: "Selectors inside one list item are ANDed; separate items are ORed. A stray dash in the YAML can turn \"frontend Pods in prod\" into \"any Pod in prod, or frontend Pods here\"." }
+      why: "Selectors inside one list item are ANDed; separate items are ORed. A stray dash in the YAML can turn \"frontend Pods in prod\" into \"any Pod in prod, or frontend Pods here\"." },
+    { q: "After adding a default-deny egress NetworkPolicy, apps log `lookup payments-svc on 10.96.0.10:53: i/o timeout`. What is missing?",
+      options: [
+        "A Service for payments",
+        "An egress rule allowing UDP and TCP 53 to kube-dns",
+        "An ingress rule on payments",
+        "A restart of CoreDNS"
+      ], answer: 1,
+      why: "Once an Egress policy selects a Pod, DNS lookups are egress too. Lookups time out instead of failing fast, which is the giveaway." }
   ],
 
   "12": [
@@ -1791,7 +1823,15 @@ window.QUEST_QUIZ_BANK = {
         "Custom",
         "Every type needs `apparmor_parser` first"
       ], answer: 1,
-      why: "RuntimeDefault ships with the container runtime. Localhost names a profile that must already be loaded in each node's kernel, and Unconfined turns AppArmor off for the container." }
+      why: "RuntimeDefault ships with the container runtime. Localhost names a profile that must already be loaded in each node's kernel, and Unconfined turns AppArmor off for the container." },
+    { q: "With `readOnlyRootFilesystem: true`, nginx crashes: `mkdir() \"/var/cache/nginx/client_temp\" failed (30: Read-only file system)`. Best fix?",
+      options: [
+        "Set readOnlyRootFilesystem to false",
+        "Mount emptyDir volumes at /var/cache/nginx and /var/run, keeping the root read-only",
+        "Run nginx as root",
+        "Use a bigger memory limit"
+      ], answer: 1,
+      why: "Keep the hardening and give the app writable space exactly where it needs it." }
   ],
 
   "18": [
@@ -2129,6 +2169,14 @@ window.QUEST_QUIZ_BANK = {
         "Kubernetes rejects tags in production",
         "A tag can be pushed again with different content, so the image that runs may not be the one you scanned; a digest always names the same image"
       ], answer: 3,
-      why: "Tags move; digests do not. Pinning by digest makes the scan result, the deploy and a rollback all refer to the same bytes." }
+      why: "Tags move; digests do not. Pinning by digest makes the scan result, the deploy and a rollback all refer to the same bytes." },
+    { q: "Every new Pod in the cluster fails with `failed calling webhook ... connection refused`, including the webhook's own Pods. What breaks the deadlock safely?",
+      options: [
+        "Delete the webhook configuration for good",
+        "Set its failurePolicy to Ignore until the webhook runs again, then back to Fail; then exclude its own namespace",
+        "Restart the API server",
+        "Scale the webhook Deployment up"
+      ], answer: 1,
+      why: "With failurePolicy Fail, a down webhook refuses even the Pods that would bring it back. Ignore lets them through for a moment; a namespaceSelector that skips the webhook's own namespace prevents a repeat." }
   ]
 };
