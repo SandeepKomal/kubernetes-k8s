@@ -108,7 +108,23 @@ window.QUEST_QUIZ_BANK = {
         "Deleting a Pod does not restart its containers",
         "For any tag other than `latest`, the default `imagePullPolicy` is `IfNotPresent`, so the node reused its cached copy of `myapp:1.4`"
       ], answer: 3,
-      why: "With `IfNotPresent` the kubelet only pulls when the image is missing on that node. Tags are mutable, so re-pushing one is unreliable: publish a new tag or pin a digest. `imagePullPolicy: Always` also works, at the cost of a registry check on every start." }
+      why: "With `IfNotPresent` the kubelet only pulls when the image is missing on that node. Tags are mutable, so re-pushing one is unreliable: publish a new tag or pin a digest. `imagePullPolicy: Always` also works, at the cost of a registry check on every start." },
+    { q: "A Pod is ImagePullBackOff and its events say `401 Unauthorized` from registry.example.com. What fixes it?",
+      options: [
+        "Fix the image tag",
+        "Create a `docker-registry` Secret with the registry's credentials and list it in `imagePullSecrets` on the Pod template or its ServiceAccount",
+        "Restart the kubelet",
+        "Set `imagePullPolicy: Never`"
+      ], answer: 1,
+      why: "401 means the registry wants credentials it did not get. A wrong name or tag gives `not found` instead. `imagePullPolicy: Never` only works if the image is already on the node." },
+    { q: "You add `imagePullSecrets` to the default ServiceAccount. The Deployment's existing Pods are still ImagePullBackOff. Why?",
+      options: [
+        "ServiceAccounts cannot hold pull secrets",
+        "The Secret must be in kube-system",
+        "Pull secrets from the ServiceAccount are copied into Pods when they are created, so existing Pods need replacing: `kubectl rollout restart`",
+        "The kubelet caches failures for 24 hours"
+      ], answer: 2,
+      why: "Admission adds the ServiceAccount's imagePullSecrets to new Pods only. A rollout restart creates new Pods that get them." }
   ],
 
   "02": [
@@ -333,7 +349,23 @@ window.QUEST_QUIZ_BANK = {
         "TLS and DNS",
         "Nothing; it is a rename of Ingress"
       ], answer: 1,
-      why: "Separating roles lets platform teams own listeners, addresses and certificates while app teams attach routes. It also adds features Ingress handled through annotations: header matching, traffic splitting, other protocols." }
+      why: "Separating roles lets platform teams own listeners, addresses and certificates while app teams attach routes. It also adds features Ingress handled through annotations: header matching, traffic splitting, other protocols." },
+    { q: "A Service has endpoints, the Pods are Ready, but every request to it gets `Connection refused`. What is the most likely cause?",
+      options: [
+        "A NetworkPolicy, which always shows as refused",
+        "The Service's `targetPort` is not the port the container listens on",
+        "DNS is down",
+        "The Service has no selector"
+      ], answer: 1,
+      why: "Endpoints only prove the selector matched Ready Pods. Traffic goes to targetPort; if nothing listens there, the Pod refuses it. A NetworkPolicy drop shows as a timeout, and DNS failure as `bad address`." },
+    { q: "Calls by Service name fail with `bad address`, but calling the Service's ClusterIP works. Where do you look?",
+      options: [
+        "kube-proxy on every node",
+        "The Service's selector",
+        "CoreDNS: `kubectl -n kube-system get pods,endpoints -l k8s-app=kube-dns`; a Pod's /etc/resolv.conf points at the kube-dns Service",
+        "The Ingress controller"
+      ], answer: 2,
+      why: "If the IP works, Service routing is fine and only name resolution is broken. With CoreDNS scaled to zero or crashing, kube-dns has no endpoints and nothing answers on port 53." }
   ],
 
   "05": [
@@ -416,7 +448,15 @@ window.QUEST_QUIZ_BANK = {
         "Automatic restarts of Pods that use it when it changes",
         "It makes the ConfigMap readable from every namespace"
       ], answer: 1,
-      why: "Immutable ConfigMaps and Secrets cannot be edited, only deleted and recreated, and kubelets do not need to watch them. A common pattern is a versioned name (app-config-v2), which also rolls the Pods that reference it." }
+      why: "Immutable ConfigMaps and Secrets cannot be edited, only deleted and recreated, and kubelets do not need to watch them. A common pattern is a versioned name (app-config-v2), which also rolls the Pods that reference it." },
+    { q: "You changed a value in a ConfigMap that a Deployment reads with `envFrom`. The Pods still use the old value. Why, and what is the clean fix?",
+      options: [
+        "The ConfigMap is cached by the API server for an hour",
+        "Environment variables are read once at container start; `kubectl rollout restart deployment/<name>` replaces the Pods without downtime",
+        "envFrom only works with Secrets",
+        "Delete and recreate the ConfigMap"
+      ], answer: 1,
+      why: "env and envFrom are fixed when the container starts. Mounted ConfigMap files do update after a short delay, but only help if the app re-reads them." }
   ],
 
   "06": [
@@ -1222,7 +1262,23 @@ window.QUEST_QUIZ_BANK = {
         "Only `systemctl restart kubelet`",
         "`kubeadm reset` and `kubeadm join`"
       ], answer: 1,
-      why: "`apply` upgrades the cluster once; `upgrade node` updates the local kubelet configuration on every other node. The drain keeps workloads running elsewhere while the kubelet restarts." }
+      why: "`apply` upgrades the cluster once; `upgrade node` updates the local kubelet configuration on every other node. The drain keeps workloads running elsewhere while the kubelet restarts." },
+    { q: "New Pods stay Pending and `kubectl describe pod` shows no events at all, not even FailedScheduling. What does that point to?",
+      options: [
+        "Insufficient memory on every node",
+        "A taint on every node",
+        "No scheduler is processing the Pod: kube-scheduler is down, or `schedulerName` names one that is not running",
+        "The image cannot be pulled"
+      ], answer: 2,
+      why: "Resource, affinity and taint problems all produce a FailedScheduling event, written by the scheduler. Silence means the scheduler never looked: check `kubectl -n kube-system get pods` and its logs." },
+    { q: "kube-scheduler on a kubeadm cluster is CrashLoopBackOff after someone edited it. Where is the fix made?",
+      options: [
+        "`kubectl edit deployment kube-scheduler -n kube-system`",
+        "In /etc/kubernetes/manifests/kube-scheduler.yaml on the control-plane node; the kubelet restarts the static Pod when the file changes",
+        "With `kubeadm reset`",
+        "By deleting the Pod with kubectl"
+      ], answer: 1,
+      why: "Control-plane components are static Pods owned by the kubelet, not by a Deployment. Deleting the mirror Pod changes nothing; the manifest file is the source of truth." }
   ],
 
   "15": [

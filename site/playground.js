@@ -748,6 +748,119 @@
       tries: ["kubectl -n kube-system get pods", "ls /etc/kubernetes/pki/etcd"]
     },
     {
+      id: "svcport",
+      title: "Wrong targetPort",
+      done: "web reaches menu through menu-svc on port 80.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "menu was moved from a custom image to plain nginx this morning. Its Pods are Running and Ready, its Service has endpoints, and still every call from web to menu-svc is refused.",
+      goal: "Make http://menu-svc (port 80) answer from inside the cluster again.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
+      services: [{ name: "web-svc", selector: { app: "web" }, ip: "10.96.12.40", age: 4 * HOUR }, { name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", targetPort: 8080, age: 30 * HOUR }],
+      won: (c) => { const s = c.services.find((x) => x.name === "menu-svc"); return s.port === 80 && c.reach(c.podsOf("web")[0], "menu-svc", 80).ok; },
+      check: (c) => { const ok = c.reach(c.podsOf("web")[0], "menu-svc", 80).ok; return { label: "web → menu-svc:80", ok, text: ok ? "200 OK" : "refused" }; },
+      hints: [
+        "Prove it from a Pod: kubectl exec deploy/web -- wget -qO- -T 2 http://menu-svc. Endpoints exist (kubectl get endpoints menu-svc), so the selector is fine.",
+        "kubectl describe svc menu-svc: compare TargetPort with the port nginx listens on. The endpoints list the port traffic is sent to.",
+        `The old image listened on 8080; nginx listens on 80. kubectl patch svc menu-svc -p '{"spec":{"ports":[{"port":80,"targetPort":80}]}}'`
+      ],
+      lesson: "port is what clients call; targetPort is where the Service sends it on the Pod. Endpoints only prove the selector matched, not that anything listens on targetPort.",
+      tries: ["kubectl get endpoints", "kubectl describe svc menu-svc"]
+    },
+    {
+      id: "coredns",
+      title: "CoreDNS down",
+      done: "CoreDNS runs two replicas and Service names resolve again.",
+      level: { id: "04", text: "Level 04 · Services and DNS" },
+      story: "Someone tidied up kube-system last night to save resources. Since then every app that calls another Service by name fails. Calling the Service's IP still works.",
+      goal: "Make Service names resolve again, and keep DNS able to survive one node going down.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 3 * HOUR }],
+      services: [{ name: "web-svc", selector: { app: "web" }, ip: "10.96.12.40", age: 4 * HOUR }, { name: "menu-svc", selector: { app: "menu" }, ip: "10.96.41.7", age: 3 * HOUR }],
+      coredns: 0,
+      won: (c) => c.coredns >= 2 && c.reach(c.podsOf("web")[0], "menu-svc", 80).ok,
+      check: (c) => ({ label: "CoreDNS", ok: c.coredns >= 2, text: `${c.coredns} replica${c.coredns === 1 ? "" : "s"}` }),
+      hints: [
+        "Compare kubectl exec deploy/web -- wget -qO- -T 2 http://menu-svc with the IP from kubectl get svc menu-svc. Then kubectl exec deploy/web -- nslookup menu-svc.",
+        "kubectl exec deploy/web -- cat /etc/resolv.conf names the DNS server, 10.96.0.10. That is kube-dns: kubectl -n kube-system get svc,endpoints, then kubectl -n kube-system get deploy.",
+        "kubectl -n kube-system scale deployment coredns --replicas=2. One replica works, but a single node failure would take DNS down again."
+      ],
+      lesson: "When names fail and IPs work, look at CoreDNS: /etc/resolv.conf points every Pod at the kube-dns Service, and with no endpoints nothing answers. Run at least two replicas.",
+      tries: ["kubectl exec deploy/web -- nslookup menu-svc", "kubectl -n kube-system get pods"]
+    },
+    {
+      id: "pullsecret",
+      title: "Private registry",
+      done: "menu pulls its image from the private registry with a pull secret.",
+      level: { id: "01", text: "Level 01 · CrashLoopBackOff" },
+      story: "menu now uses the company's private registry, registry.kitchen.example. Its Pods never start. The registry's robot account for pulls is described in /opt/registry.",
+      goal: "Let menu pull registry.kitchen.example/nginx:1.27, without switching to a public image.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "registry.kitchen.example/nginx:1.27", req: 64, lim: 128, age: 25 * MIN }],
+      registryAuth: { server: "registry.kitchen.example", user: "kitchen-ci", token: "rk-practice-7f3a9c" },
+      files: {
+        "/opt/registry/README": ["Pull-only robot account for registry.kitchen.example", "username: kitchen-ci", "token:    in kitchen-ci.token (a practice value)"],
+        "/opt/registry/kitchen-ci.token": ["rk-practice-7f3a9c"]
+      },
+      dirs: { "/opt/registry": ["README", "kitchen-ci.token"] },
+      won: (c) => { const d = c.deployments.find((x) => x.name === "menu"); return d.spec.image.startsWith("registry.kitchen.example/") && c.deploymentReady("menu"); },
+      check: (c) => ({ label: "menu", ok: c.deploymentReady("menu"), text: `${c.podsOf("menu").filter((p) => p.ready).length}/2 Running` }),
+      hints: [
+        "ImagePullBackOff has many causes; the events say which. kubectl describe pod on a menu Pod: 401 Unauthorized means the registry wants credentials.",
+        "cat /opt/registry/README and /opt/registry/kitchen-ci.token. Store them as a pull secret: kubectl create secret docker-registry regcred --docker-server=registry.kitchen.example --docker-username=kitchen-ci --docker-password=<token>",
+        `Then tell the Pods to use it: kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"regcred"}]}}}}' (or patch the default ServiceAccount and restart the rollout).`
+      ],
+      lesson: "Private registries need a docker-registry Secret, referenced in imagePullSecrets on the Pod or its ServiceAccount. 401 means no or wrong credentials; not found means a wrong name or tag.",
+      tries: ["kubectl get pods", "ls /opt/registry"]
+    },
+    {
+      id: "cmreload",
+      title: "ConfigMap not reloaded",
+      done: "Every orders Pod uses the new MENU_FILE from orders-config.",
+      level: { id: "05", text: "Level 05 · Missing configuration" },
+      story: "Yesterday the menu switched to autumn: MENU_FILE in the orders-config ConfigMap now points at autumn.json. Orders is still serving the summer menu.",
+      goal: "Get every orders Pod onto the new MENU_FILE, without downtime.",
+      deployments: [web(), { name: "orders", replicas: 2, image: "localhost:5000/orders:2.3", req: 128, lim: 256, age: 30 * HOUR, envFrom: "orders-config" }],
+      configMaps: { "orders-config": { MENU_FILE: "/etc/menu/summer.json" } },
+      setup: (c) => { c.configMaps["orders-config"].MENU_FILE = "/etc/menu/autumn.json"; },
+      won: (c) => {
+        const d = c.deployments.find((x) => x.name === "orders");
+        const pods = c.podsOf("orders").filter((p) => p.hash === d.hash);
+        return c.deploymentReady("orders") && pods.every((p) => (p.env || {}).MENU_FILE === "/etc/menu/autumn.json");
+      },
+      check: (c) => {
+        const pods = c.podsOf("orders").filter((p) => p.state === "Running");
+        const n = pods.filter((p) => (p.env || {}).MENU_FILE === "/etc/menu/autumn.json").length;
+        return { label: "orders on autumn.json", ok: n === pods.length && n > 0, text: `${n}/${pods.length} Pods` };
+      },
+      hints: [
+        "kubectl get configmap orders-config -o yaml shows the new value. kubectl logs deployment/orders shows what the app loaded.",
+        "kubectl exec deploy/orders -- env: environment variables are read once, when the container starts. Changing the ConfigMap does not change running Pods.",
+        "Replace the Pods the safe way: kubectl rollout restart deployment/orders. Deleting Pods one by one works too, but a rollout keeps the replicas available."
+      ],
+      lesson: "Values from a ConfigMap in env or envFrom are fixed when the container starts; mounted files update after a short delay, but the app must re-read them. Roll the Deployment after a config change.",
+      tries: ["kubectl logs deployment/orders", "kubectl get configmap orders-config -o yaml"]
+    },
+    {
+      id: "scheduler",
+      title: "Scheduler down",
+      done: "kube-scheduler runs again and menu's Pods are placed and Running.",
+      level: { id: "14", text: "Level 14 · Incident response" },
+      story: "After this morning's control-plane maintenance, Pods that were already running are fine. Every new Pod stays Pending, and its events are empty.",
+      goal: "Find out why nothing gets scheduled, and fix it on the control-plane node.",
+      deployments: [web(), { name: "menu", replicas: 2, image: "nginx:1.27", req: 64, lim: 128, age: 10 * MIN }],
+      files: {
+        "/etc/kubernetes/manifests/kube-scheduler.yaml": () => BASE_FILES["/etc/kubernetes/manifests/kube-scheduler.yaml"].map((l) => l.replace("    - --kubeconfig=/etc/kubernetes/scheduler.conf", "    - --kubeconfig=/etc/kubernetes/scheduler.config"))
+      },
+      setup: (c) => c.podsOf("web").forEach((p, i) => { p.node = NODES[i]; c.evaluate(p, false); }),
+      won: (c) => !c.schedulerError() && c.deploymentReady("menu"),
+      check: (c) => ({ label: "kube-scheduler", ok: !c.schedulerError(), text: c.schedulerError() ? "CrashLoopBackOff" : "Running" }),
+      hints: [
+        "kubectl describe pod on a menu Pod: Node is <none> and there are no events at all, not even FailedScheduling. Who writes those events? kubectl -n kube-system get pods",
+        "kubectl -n kube-system logs kube-scheduler-control-plane says which file it cannot find. Compare with ls /etc/kubernetes.",
+        "The scheduler is a static Pod: fix its manifest and the kubelet restarts it. sed -i 's#scheduler.config#scheduler.conf#' /etc/kubernetes/manifests/kube-scheduler.yaml"
+      ],
+      lesson: "Pending with no events at all means no scheduler is looking. Control-plane components are static Pods: read their logs with -n kube-system and fix the manifest in /etc/kubernetes/manifests.",
+      tries: ["kubectl get pods", "kubectl -n kube-system get pods"]
+    },
+    {
       id: "etcdrestore",
       title: "etcd restore",
       done: "etcd runs from the 03:00 snapshot and the menu app is back.",
@@ -917,12 +1030,12 @@
 
   // Easiest first: one object, then config, scheduling, networking, security.
   const GROUPS = [
-    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init"]],
+    ["Pods", ["image", "crash", "configmap", "oom", "liveness", "init", "pullsecret", "cmreload"]],
     ["Scheduling and storage", ["pending", "nodeselector", "taint", "pvc"]],
-    ["Networking", ["probe", "service", "dns", "ingress404", "ingress503", "gateway", "netpol"]],
+    ["Networking", ["probe", "service", "svcport", "dns", "coredns", "ingress404", "ingress503", "gateway", "netpol"]],
     ["Security", ["rbac", "csr", "podsecurity", "quota"]],
     ["Operations and delivery", ["job", "cronjob", "rollout", "helm", "drain"]],
-    ["Cluster administration", ["context", "nodenotready", "etcd", "etcdrestore", "kubeadm"]],
+    ["Cluster administration", ["context", "nodenotready", "scheduler", "etcd", "etcdrestore", "kubeadm"]],
     ["Cluster security", ["audit", "encryption", "registry", "trivy", "apparmor"]],
     ["Autoscaling", ["hpa", "vpa"]]
   ];
@@ -986,6 +1099,9 @@
         cp: "1.33.5", running: "1.33.5", cordoned: false, indexed: "v1.33", restartedUndrained: false, drained: false
       } : null;
       this.restore = { dir: null, applied: false };
+      this.coredns = scenario.coredns === undefined ? 2 : scenario.coredns; // CoreDNS replicas
+      this.registryAuth = scenario.registryAuth || null; // a private registry: { server, user, token }
+      this.saPullSecrets = {};
       this.lost = { deployments: [], services: [] };
       this.secrets = JSON.parse(JSON.stringify(scenario.secrets || []));
       this.vaps = JSON.parse(JSON.stringify(scenario.vaps || []));
@@ -1039,6 +1155,8 @@
 
     addPod(dep, opts) {
       const spec = dep ? JSON.parse(JSON.stringify(dep.spec)) : opts.spec;
+      const fromSa = this.saPullSecrets[spec.sa] || [];
+      if (fromSa.length) spec.pullSecrets = [...new Set([...(spec.pullSecrets || []), ...fromSa])];
       const denied = this.admissionErrors(spec);
       const vap = this.vaps.find((v) => v.bound && !String(spec.image).startsWith(v.prefix));
       if (dep && vap) {
@@ -1127,6 +1245,26 @@
 
     pvcOf(pod) { return pod.spec.pvc ? this.pvcs.find((v) => v.name === pod.spec.pvc) : null; }
 
+    pullAllowed(pod) {
+      const a = this.registryAuth;
+      return (pod.spec.pullSecrets || []).some((n) => {
+        const x = this.secrets.find((y) => y.name === n && y.docker);
+        return x && x.docker.server === a.server && x.docker.user === a.user && x.docker.token === a.token;
+      });
+    }
+    // The kube-scheduler static Pod fails to start when a kubeconfig it names is missing.
+    schedulerError() {
+      const f = this.files["/etc/kubernetes/manifests/kube-scheduler.yaml"];
+      if (!f) return null;
+      for (const l of f) {
+        const m = /--(?:authentication-|authorization-)?kubeconfig=(\S+)/.exec(l);
+        if (m && !(m[1].startsWith("/etc/kubernetes/") && (this.dirs["/etc/kubernetes"] || []).includes(m[1].slice(16)))) {
+          return `E1030 09:02:11.418273       1 run.go:72] "command failed" err="invalid configuration: stat ${m[1]}: no such file or directory"`;
+        }
+      }
+      return null;
+    }
+    dnsDown() { return this.coredns < 1; }
     encryptionOn() {
       const api = this.files["/etc/kubernetes/manifests/kube-apiserver.yaml"].join("\n");
       const m = /--encryption-provider-config=(\S+)/.exec(api);
@@ -1181,7 +1319,7 @@
       return { dataDir, mountPath, hostPath };
     }
     fileChanged(file) {
-      if (/\/manifests\//.test(file)) this.apiRestarts = 1; // the kubelet restarts the static Pod
+      if (/\/manifests\/(kube-apiserver|etcd)\.yaml$/.test(file)) this.apiRestarts = 1; // the kubelet restarts the static Pod
       if (/etcd\.yaml$/.test(file)) this.checkRestore();
       if (this.scenario.onFile) this.scenario.onFile(this, file);
       this.retry = true;
@@ -1190,6 +1328,7 @@
     nodeReady(n) { return !this.kubelet || this.kubelet.node !== n || this.kubelet.running; }
 
     place(pod) {
+      if (this.schedulerError()) return null;
       const claim = this.pvcOf(pod);
       if (pod.spec.pvc && (!claim || !claim.bound)) return null;
       const fits = this.nodesFor(pod).filter((n) => this.tolerates(pod, n) && !this.cordoned[n] && this.nodeReady(n)).map((n) => [n, this.freeOn(n)]).filter(([, free]) => free >= (pod.spec.req || 0));
@@ -1206,6 +1345,12 @@
       pod.creating = false;
       pod.last = null;
       pod.ready = false;
+      if (!pod.node && this.schedulerError()) {
+        // Nobody is scheduling: the Pod waits, and no component writes an event.
+        pod.state = "Pending";
+        pod.events = [];
+        return;
+      }
       if (!pod.node) {
         const n = NODES.length;
         // One reason per node, counted the way the scheduler reports them.
@@ -1233,6 +1378,16 @@
         return;
       }
       const scheduled = ["Normal", "Scheduled", "default-scheduler", `Successfully assigned ${NS}/${pod.name} to ${pod.node}`];
+      if (this.registryAuth && String(img).startsWith(this.registryAuth.server + "/") && !this.pullAllowed(pod)) {
+        pod.state = "ImagePullBackOff";
+        pod.events = [scheduled,
+          ["Normal", "Pulling", "kubelet", `Pulling image "${img}"`],
+          ["Warning", "Failed", "kubelet", `Failed to pull image "${img}": failed to pull and unpack image "${img}": failed to resolve reference "${img}": pulling from host ${this.registryAuth.server} failed with status code [manifests ${img.split(":").pop()}]: 401 Unauthorized`],
+          ["Warning", "Failed", "kubelet", "Error: ErrImagePull"],
+          ["Normal", "BackOff", "kubelet", `Back-off pulling image "${img}"`],
+          ["Warning", "Failed", "kubelet", "Error: ImagePullBackOff"]];
+        return;
+      }
       if (!app) {
         pod.state = "ImagePullBackOff";
         pod.events = [scheduled,
@@ -1343,8 +1498,10 @@
 
     reach(src, host, port) {
       if (this.edgeHost(host)) return this.viaEdge(host, "/");
-      const svc = this.resolve(host);
-      if (!svc) return { ok: false, text: `wget: bad address '${host}:${port}'` };
+      const ip = /^\d+\.\d+\.\d+\.\d+$/.test(host);
+      if (!ip && this.dnsDown()) return { ok: false, text: `wget: bad address '${host}:${port}'` };
+      const svc = ip ? this.services.find((x) => x.ip === host) : this.resolve(host);
+      if (!svc) return { ok: false, text: ip ? `wget: download timed out` : `wget: bad address '${host}:${port}'` };
       if (svc.static) return port === svc.port ? { ok: true, text: svc.body } : { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       if (port !== svc.port) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       const eps = this.endpointsOf(svc.name);
@@ -1352,6 +1509,8 @@
       const dst = eps[0];
       const app = APPS[appOf(dst.spec.image)];
       if (!src || !this.allowed(src, dst, app.port)) return { ok: false, text: "wget: download timed out" };
+      // The Service forwards to targetPort; nothing listens there unless it is the app's port.
+      if (svc.targetPort !== undefined && svc.targetPort !== app.port) return { ok: false, text: `wget: can't connect to remote host (${svc.ip}): Connection refused` };
       return { ok: true, text: app.body };
     }
 
@@ -1389,7 +1548,7 @@
       this.bindPvcs();
       // The scheduler and kubelet keep retrying Pods that could not start, and
       // a crash-looping container reads its environment again on each restart.
-      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|Init:)/.test(x.state || "");
+      const retrying = (x) => !x.node || /^(CreateContainerConfigError|CreateContainerError|CrashLoopBackOff|ImagePullBackOff|Init:)/.test(x.state || "");
       for (const p of this.pods.filter((x) => !x.creating && !x.terminating && retrying(x))) {
         if (!p.node) p.node = this.place(p);
         if (p.node) this.evaluate(p, true);
@@ -1565,7 +1724,9 @@
     "kubeadm upgrade plan | apply <version>     apt-get update | install <pkg>=<version>     apt-mark hold | unhold",
     "systemctl daemon-reload | restart kubelet     trivy image <image>     ssh <node> sudo aa-status | apparmor_parser <file>",
     "kubectl get secrets | validatingadmissionpolicy | validatingadmissionpolicybinding",
-    "kubectl exec <pod> -- wget -qO- -T 2 http://<service>:<port>   (also curl, env)",
+    "kubectl exec <pod> | deploy/<name> -- wget -qO- -T 2 http://<service>:<port>   (also curl, nslookup, env, cat /etc/resolv.conf)",
+    "kubectl -n kube-system get pods | deploy | svc | endpoints      kubectl -n kube-system logs <pod>      kubectl -n kube-system scale deployment coredns --replicas=N",
+    "kubectl create secret generic | docker-registry <name> ...      kubectl patch svc | serviceaccount <name> -p '{...}'",
     "kubectl rollout status | history | restart | undo deployment/<name>",
     "kubectl scale deployment/<name> --replicas=N",
     "kubectl delete pod | configmap | networkpolicy | rolebinding <name>",
@@ -1606,7 +1767,15 @@
       "    volumeMounts:", "    - mountPath: /etc/kubernetes/pki", "      name: k8s-certs", "      readOnly: true", "  volumes:", "  - hostPath:",
       "      path: /etc/kubernetes/pki", "      type: DirectoryOrCreate", "    name: k8s-certs"]
   };
+  BASE_FILES["/etc/kubernetes/manifests/kube-scheduler.yaml"] = [
+    "apiVersion: v1", "kind: Pod", "metadata:", "  name: kube-scheduler", "  namespace: kube-system", "spec:", "  containers:", "  - command:",
+    "    - kube-scheduler", "    - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf", "    - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf",
+    "    - --bind-address=127.0.0.1", "    - --kubeconfig=/etc/kubernetes/scheduler.conf", "    - --leader-elect=true",
+    "    image: registry.k8s.io/kube-scheduler:v1.34.0", "    name: kube-scheduler", "    volumeMounts:", "    - mountPath: /etc/kubernetes/scheduler.conf",
+    "      name: kubeconfig", "      readOnly: true", "  hostNetwork: true", "  volumes:", "  - hostPath:", "      path: /etc/kubernetes/scheduler.conf",
+    "      type: FileOrCreate", "    name: kubeconfig"];
   const BASE_DIRS = {
+    "/etc/kubernetes": ["admin.conf", "controller-manager.conf", "kubelet.conf", "manifests", "pki", "scheduler.conf", "super-admin.conf"],
     "/etc/kubernetes/pki/etcd": ["ca.crt", "ca.key", "healthcheck-client.crt", "healthcheck-client.key", "peer.crt", "peer.key", "server.crt", "server.key"],
     "/etc/kubernetes/pki": ["apiserver.crt", "apiserver.key", "ca.crt", "ca.key", "etcd/", "front-proxy-ca.crt", "sa.key", "sa.pub"],
     "/etc/kubernetes/manifests": ["etcd.yaml", "kube-apiserver.yaml", "kube-controller-manager.yaml", "kube-scheduler.yaml"],
@@ -2105,22 +2274,67 @@
     return lines.filter((l) => re.test(l) !== invert);
   }
 
-  function kubeSystem(c, args, verb, say) {
-    const pods = ["coredns-668d6bf9bc-4xk2p", "coredns-668d6bf9bc-q8w7m", "etcd-control-plane", "kube-apiserver-control-plane",
-      "kube-controller-manager-control-plane", "kube-scheduler-control-plane", ...NODES.map((n, i) => `kube-proxy-${["m4q8d", "z2v7r", "k9c3x"][i]}`)];
-    if (verb === "get") {
-      if (!/^(pods?|po)$/.test(args[1] || "")) return say("No resources found in kube-system namespace.");
-      return table3(say, [["NAME", "READY", "STATUS", "RESTARTS", "AGE"], ...pods.map((p) => [p, "1/1", "Running", 0, "12d"])]);
+  function kubeSystem(c, args, verb, say, flags) {
+    const dns = ["coredns-668d6bf9bc-4xk2p", "coredns-668d6bf9bc-q8w7m", "coredns-668d6bf9bc-z7t2k", "coredns-668d6bf9bc-h5n8c", "coredns-668d6bf9bc-r2w9d"].slice(0, c.coredns);
+    const sched = c.schedulerError();
+    const pods = [...dns, "etcd-control-plane", "kube-apiserver-control-plane", "kube-controller-manager-control-plane", "kube-scheduler-control-plane",
+      ...NODES.map((n, i) => `kube-proxy-${["m4q8d", "z2v7r", "k9c3x"][i]}`)];
+    const kind = KINDS[(args[1] || "").split("/")[0]] || "";
+    const name = (args[1] || "").includes("/") ? args[1].split("/")[1] : args[2];
+    if (verb === "scale") {
+      if (kind !== "deployments" || name !== "coredns") return say("In kube-system this playground scales deployment/coredns.", "dim");
+      const n = parseInt(flags.replicas, 10);
+      if (!(n >= 0 && n <= 5)) return say("error: use --replicas=N with N from 0 to 5 here", "warn");
+      c.coredns = n;
+      return say("deployment.apps/coredns scaled");
     }
-    const name = args[1] === "pod" || args[1] === "pods" ? args[2] : (args[1] || "").replace(/^pods?\//, "");
-    if (name !== "etcd-control-plane") return say(`(this playground describes etcd-control-plane in kube-system; other control-plane Pods are Running)`, "dim");
-    say("Name:         etcd-control-plane");
+    if (verb === "logs") {
+      const pod = (args[1] || "").replace(/^(pods?|po)\//, "").replace(/^(deployment|deploy)\/coredns$/, dns[0] || "coredns");
+      if (pod === "kube-scheduler-control-plane") {
+        if (sched) {
+          say('I1030 09:02:11.401922       1 serving.go:386] Generated self-signed cert in-memory');
+          return say(sched, "warn");
+        }
+        say('I1030 09:30:02.117405       1 leaderelection.go:271] successfully acquired lease kube-system/kube-scheduler');
+        return say('I1030 09:30:02.118210       1 server.go:167] "Starting Kubernetes Scheduler" version="v1.34.0"');
+      }
+      if (/^coredns/.test(pod)) {
+        if (!dns.includes(pod)) return say(`Error from server (NotFound): pods "${pod}" not found`, "warn");
+        say(".:53");
+        say("[INFO] plugin/reload: Running configuration SHA512 = 591cf328cccc12bc490481273e738df59329c62c0b729d94e8b61db9961c2fa5");
+        return say("CoreDNS-1.12.1");
+      }
+      return say("(this playground shows logs for kube-scheduler-control-plane and the coredns Pods in kube-system)", "dim");
+    }
+    if (verb === "get") {
+      if (kind === "deployments") {
+        return table3(say, [["NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"], ["coredns", `${c.coredns}/${c.coredns}`, c.coredns, c.coredns, "12d"]]);
+      }
+      if (kind === "services") {
+        return table3(say, [["NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"], ["kube-dns", "ClusterIP", "10.96.0.10", "<none>", "53/UDP,53/TCP,9153/TCP", "12d"]]);
+      }
+      if (kind === "endpoints") {
+        say("Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice", "dim");
+        return table3(say, [["NAME", "ENDPOINTS", "AGE"], ["kube-dns", dns.length ? dns.map((_, i) => `10.244.0.${2 + i}:53`).join(",") : "<none>", "12d"]]);
+      }
+      if (kind !== "pods") return say("No resources found in kube-system namespace.");
+      return table3(say, [["NAME", "READY", "STATUS", "RESTARTS", "AGE"], ...pods.map((p) => p === "kube-scheduler-control-plane" && sched
+        ? [p, "0/1", "CrashLoopBackOff", "9 (2m ago)", "12d"] : [p, "1/1", "Running", 0, "12d"])]);
+    }
+    const pod = (args[1] === "pod" || args[1] === "pods" ? args[2] : (args[1] || "").replace(/^pods?\//, ""));
+    const manifest = { "etcd-control-plane": "etcd", "kube-scheduler-control-plane": "kube-scheduler" }[pod];
+    if (!manifest) return say(`(this playground describes etcd-control-plane and kube-scheduler-control-plane in kube-system; the other control-plane Pods are Running)`, "dim");
+    say(`Name:         ${pod}`);
     say("Namespace:    kube-system");
     say("Containers:");
-    say("  etcd:");
-    say("    Image:   registry.k8s.io/etcd:3.6.4-0");
+    say(`  ${manifest}:`);
+    say(`    Image:   ${manifest === "etcd" ? "registry.k8s.io/etcd:3.6.4-0" : "registry.k8s.io/kube-scheduler:v1.34.0"}`);
     say("    Command:");
-    c.files["/etc/kubernetes/manifests/etcd.yaml"].filter((l) => l.startsWith("    - --") || l === "    - etcd").forEach((l) => say("      " + l.trim().slice(2)));
+    c.files[`/etc/kubernetes/manifests/${manifest}.yaml`].filter((l) => l.startsWith("    - --") || l === `    - ${manifest}`).forEach((l) => say("      " + l.trim().slice(2)));
+    if (manifest === "kube-scheduler" && sched) {
+      say("    State:          Waiting\n      Reason:       CrashLoopBackOff", "warn");
+      say("    Last State:     Terminated\n      Reason:       Error\n      Exit Code:    1", "warn");
+    }
   }
 
   function pipeline(c, parts) {
@@ -2229,7 +2443,7 @@
     const svcByName = (name) => c.services.find((s) => s.name === name && (s.ns || NS) === NS);
     if (all[0] !== "kubectl") return tools(c, all, say), out;
     if (verb === "config") return config(c, args, flags, say), out;
-    if (ns === "kube-system" && (verb === "get" || verb === "describe")) return kubeSystem(c, args, verb, say), out;
+    if (ns === "kube-system" && ["get", "describe", "logs", "scale"].includes(verb)) return kubeSystem(c, args, verb, say, flags), out;
     // Impersonation: --as=<user> runs the request with that user's rights.
     if (flags.as && (verb === "get" || verb === "describe" || verb === "delete" || verb === "logs")) {
       const k = (target(verb === "logs" ? "pods" : null).kind) || "pods";
@@ -2361,7 +2575,7 @@
         if (name && !svcs.length) return notFound("endpoints", name), out;
         if (!svcs.length) return say(`No resources found in ${NS} namespace.`), out;
         table([["NAME", "ENDPOINTS", "AGE"], ...svcs.map((s) => {
-          const eps = c.endpointsOf(s.name).map((p) => `${ipOf(p)}:${s.port}`);
+          const eps = c.endpointsOf(s.name).map((p) => `${ipOf(p)}:${s.targetPort === undefined ? s.port : s.targetPort}`);
           return [s.name, eps.length ? eps.join(",") : "<none>", age(nowMs - s.created)];
         })]);
         return out;
@@ -2505,7 +2719,7 @@
           return out;
         }
         if (!list.length) return say(`No resources found in ${NS} namespace.`), out;
-        table([["NAME", "TYPE", "DATA", "AGE"], ...list.map((x) => [x.name, "Opaque", Object.keys(x.data).length, "6d"])]);
+        table([["NAME", "TYPE", "DATA", "AGE"], ...list.map((x) => [x.name, x.docker ? "kubernetes.io/dockerconfigjson" : "Opaque", Object.keys(x.data).length, "6d"])]);
         return out;
       }
       if (kind === "vaps" || kind === "vapbindings") {
@@ -2660,8 +2874,8 @@
         say("Type:              ClusterIP");
         say(`IP:                ${s.ip}`);
         say(`Port:              <unset>  ${s.port}/TCP`);
-        say(`TargetPort:        ${s.port}/TCP`);
-        say(`Endpoints:         ${eps.map((p) => ipOf(p) + ":" + s.port).join(",")}`, eps.length ? "" : "warn");
+        say(`TargetPort:        ${s.targetPort === undefined ? s.port : s.targetPort}/TCP`);
+        say(`Endpoints:         ${eps.map((p) => ipOf(p) + ":" + (s.targetPort === undefined ? s.port : s.targetPort)).join(",")}`, eps.length ? "" : "warn");
         say("Events:            <none>");
         return out;
       }
@@ -2978,7 +3192,7 @@
       if (flags.c && flags.c !== cname) return say(`error: container ${flags.c} is not valid for pod ${p.name}`, "warn"), out;
       if (st.startsWith("Init:")) return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: PodInitializing`, "warn"), out;
       const crashLogsOf = () => (typeof app.crashLogs === "function" ? app.crashLogs({ env: c.envOf(p), c, pod: p }) : app.crashLogs || []);
-      const runLogs = () => (typeof app.logs === "function" ? app.logs({ env: c.envOf(p), c, pod: p }) : app.logs);
+      const runLogs = () => (typeof app.logs === "function" ? app.logs({ env: p.env || c.envOf(p), c, pod: p }) : app.logs);
       if ((flags.previous || st === "CrashLoopBackOff") && p.last && p.last.liveness) {
         [...runLogs(), "2026/10/30 10:41:07 [notice] 1#1: signal 15 (SIGTERM) received, exiting", "2026/10/30 10:41:07 [notice] 1#1: exit"].forEach((l) => say(l));
         return out;
@@ -2993,7 +3207,7 @@
         return out;
       }
       if (st !== "Running") return say(`Error from server (BadRequest): container "${cname}" in pod "${p.name}" is waiting to start: ${st === "Pending" ? "ContainerCreating" : st === "ImagePullBackOff" ? "trying and failing to pull image" : st}`, "warn"), out;
-      (typeof app.logs === "function" ? app.logs({ env: c.envOf(p), c, pod: p }) : app.logs).forEach((l) => say(l));
+      (typeof app.logs === "function" ? app.logs({ env: p.env || c.envOf(p), c, pod: p }) : app.logs).forEach((l) => say(l));
       return out;
     }
 
@@ -3370,6 +3584,24 @@
     if (verb === "create") {
       const what = KINDS[args[1]] || args[1];
       const name = args[2];
+      if (what === "secrets") {
+        const type = args[2];
+        const sname = args[3];
+        if (!["generic", "docker-registry"].includes(type) || !sname) return say("error: use kubectl create secret generic <name> --from-literal=KEY=value, or kubectl create secret docker-registry <name> --docker-server=... --docker-username=... --docker-password=...", "warn"), out;
+        if (c.secrets.some((x) => x.name === sname)) return say(`error: failed to create secret secrets "${sname}" already exists`, "warn"), out;
+        if (type === "generic") {
+          const data = {};
+          for (const kv of many["from-literal"] || []) { const i = kv.indexOf("="); if (i > 0) data[kv.slice(0, i)] = kv.slice(i + 1); }
+          c.secrets.push({ name: sname, data });
+        } else {
+          const docker = { server: flags["docker-server"] || "https://index.docker.io/v1/", user: flags["docker-username"] || "", token: flags["docker-password"] || "" };
+          if (!docker.user || !docker.token) return say("error: --docker-username and --docker-password are required", "warn"), out;
+          c.secrets.push({ name: sname, docker, data: { ".dockerconfigjson": JSON.stringify({ auths: { [docker.server]: { username: docker.user, password: docker.token } } }) } });
+        }
+        c.retry = true;
+        say(`secret/${sname} created`);
+        return out;
+      }
       if (what === "configmaps") {
         if (!name) return say("error: name the ConfigMap: kubectl create configmap <name> --from-literal=KEY=value", "warn"), out;
         if (c.configMaps[name]) return say(`error: failed to create configmap: configmaps "${name}" already exists`, "warn"), out;
@@ -3457,10 +3689,23 @@
         say(`networkpolicy.networking.k8s.io/${name} patched`);
         return out;
       }
+      if (kind === "serviceaccounts") {
+        if (!c.serviceAccounts.includes(name)) return notFound("serviceaccounts", name), out;
+        if (!Array.isArray(patch.imagePullSecrets)) return say(`This playground patches a ServiceAccount's imagePullSecrets: -p '{"imagePullSecrets":[{"name":"<secret>"}]}'`, "dim"), out;
+        c.saPullSecrets[name] = patch.imagePullSecrets.map((x) => x.name);
+        say(`serviceaccount/${name} patched`);
+        say("(new Pods get these pull secrets; Pods that already exist keep what they started with)", "dim");
+        return out;
+      }
       if (kind === "services") {
         const svc = svcByName(name);
         if (!svc) return notFound("services", name), out;
         if (spec.selector) svc.selector = { ...spec.selector };
+        const port = Array.isArray(spec.ports) && spec.ports[0];
+        if (port) {
+          if (port.port !== undefined) svc.port = Number(port.port);
+          if (port.targetPort !== undefined) svc.targetPort = Number(port.targetPort) || port.targetPort;
+        }
         say(`service/${name} patched`);
         return out;
       }
@@ -3492,6 +3737,7 @@
         }
         if (tpl.tolerations === null) next.tolerations = [];
         else if (Array.isArray(tpl.tolerations)) next.tolerations = tpl.tolerations.map((t) => ({ key: t.key, operator: t.operator || "Equal", value: t.value === undefined ? "" : String(t.value), effect: t.effect || "" }));
+        if (Array.isArray(tpl.imagePullSecrets)) next.pullSecrets = tpl.imagePullSecrets.map((x) => x.name);
         if (tpl.nodeSelector === null) next.nodeSelector = {};
         else if (tpl.nodeSelector) next.nodeSelector = { ...tpl.nodeSelector };
         if (spec.replicas !== undefined) return say("Use kubectl scale for replicas here.", "dim"), out;
@@ -3601,19 +3847,37 @@
     }
 
     if (verb === "exec") {
-      const name = args[1];
+      let name = args[1];
+      const dm = /^(?:deploy|deployment|deployments)\/(.+)$/.exec(name || "");
+      if (dm) {
+        if (!depByName(dm[1])) return notFound("deployments", dm[1]), out;
+        const run = c.podsOf(dm[1]).find((x) => c.status(x) === "Running") || c.podsOf(dm[1])[0];
+        if (!run) return say(`error: no Pods for deployment/${dm[1]}`, "warn"), out;
+        name = run.name;
+      }
       const p = podByName(name);
       if (!name || !inner.length) return say("error: use the form  kubectl exec <pod> -- <command>", "warn"), out;
       if (!p) return notFound("pods", name), out;
       if (c.status(p) !== "Running") return say(`error: unable to upgrade connection: container not found ("${p.owner || p.name}")`, "warn"), out;
       const cmd = inner[0];
       if (cmd === "env") {
-        Object.entries({ HOSTNAME: p.name, ...c.envOf(p) }).forEach(([k, v]) => say(`${k}=${v}`));
+        Object.entries({ HOSTNAME: p.name, ...(p.env || c.envOf(p)) }).forEach(([k, v]) => say(`${k}=${v}`));
+        return out;
+      }
+      if (cmd === "cat" && inner[1] === "/etc/resolv.conf") {
+        say(`search ${NS}.svc.cluster.local svc.cluster.local cluster.local`);
+        say("nameserver 10.96.0.10");
+        say("options ndots:5");
         return out;
       }
       if (cmd === "nslookup") {
         const host = inner[1];
         if (!host) return say("nslookup: missing host name", "warn"), out;
+        if (c.dnsDown()) {
+          say(";; connection timed out; no servers could be reached", "warn");
+          say("command terminated with exit code 1", "dim");
+          return out;
+        }
         const svc = c.resolve(host);
         say("Server:    10.96.0.10");
         say("Address:   10.96.0.10:53");

@@ -586,6 +586,81 @@ step(c, "ssh worker-3 sudo apparmor_parser -q /etc/apparmor.d/k8s-deny-write");
 assert.match(step(c, "ssh worker-3 sudo aa-status"), /k8s-deny-write/);
 assert.ok(won(c), "apparmor: loaded on every node");
 
+// Wrong targetPort: endpoints exist, nothing listens there.
+c = fresh("svcport");
+assert.match(step(c, "kubectl exec deploy/web -- wget -qO- -T 2 http://menu-svc"), /Connection refused/);
+assert.match(step(c, "kubectl get endpoints menu-svc"), /:8080/);
+assert.match(step(c, "kubectl describe svc menu-svc"), /TargetPort:\s+8080\/TCP/);
+step(c, `kubectl patch svc menu-svc -p '{"spec":{"ports":[{"port":8080,"targetPort":8080}]}}'`);
+assert.ok(!won(c), "moving the Service port does not move the app");
+step(c, `kubectl patch svc menu-svc -p '{"spec":{"ports":[{"port":80,"targetPort":80}]}}'`);
+assert.match(step(c, "kubectl exec deploy/web -- wget -qO- -T 2 http://menu-svc"), /Welcome to nginx/);
+assert.ok(won(c), "svcport: fixed by the right targetPort");
+
+// CoreDNS down: names fail, IPs work.
+c = fresh("coredns");
+assert.match(step(c, "kubectl exec deploy/web -- wget -qO- -T 2 http://menu-svc"), /bad address/);
+assert.match(step(c, "kubectl exec deploy/web -- wget -qO- -T 2 http://10.96.41.7"), /Welcome to nginx/);
+assert.match(step(c, "kubectl exec deploy/web -- nslookup menu-svc"), /no servers could be reached/);
+assert.match(step(c, "kubectl exec deploy/web -- cat /etc/resolv.conf"), /nameserver 10.96.0.10/);
+assert.match(step(c, "kubectl -n kube-system get endpoints"), /kube-dns\s+<none>/);
+assert.match(step(c, "kubectl -n kube-system get deploy"), /coredns\s+0\/0/);
+step(c, "kubectl -n kube-system scale deployment coredns --replicas=1");
+assert.match(step(c, "kubectl exec deploy/web -- nslookup menu-svc"), /Address:\s+10.96.41.7/);
+assert.ok(!won(c), "one replica is one node failure away from the same outage");
+step(c, "kubectl -n kube-system scale deployment coredns --replicas=2");
+assert.ok(won(c), "coredns: scaled back to two");
+
+// Private registry: credentials as a docker-registry Secret, referenced by the Pods.
+c = fresh("pullsecret");
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+ImagePullBackOff/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "menu")), /401 Unauthorized/);
+const token = step(c, "cat /opt/registry/kitchen-ci.token").trim();
+step(c, "kubectl create secret docker-registry regcred --docker-server=registry.kitchen.example --docker-username=kitchen-ci --docker-password=wrong");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"regcred"}]}}}}'`);
+assert.ok(!won(c), "a wrong token is still 401");
+c = fresh("pullsecret");
+step(c, "kubectl set image deployment/menu menu=nginx:1.27");
+assert.ok(!won(c), "switching to a public image does not count");
+c = fresh("pullsecret");
+step(c, `kubectl patch deployment menu -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"regcred"}]}}}}'`);
+assert.ok(!won(c));
+assert.match(step(c, `kubectl create secret docker-registry regcred --docker-server=registry.kitchen.example --docker-username=kitchen-ci --docker-password=${token}`), /secret\/regcred created/);
+assert.match(step(c, "kubectl get secrets"), /regcred\s+kubernetes.io\/dockerconfigjson/);
+assert.ok(won(c), "pullsecret: the kubelet retries once the secret exists");
+c = fresh("pullsecret");
+step(c, `kubectl create secret docker-registry regcred --docker-server=registry.kitchen.example --docker-username=kitchen-ci --docker-password=${token}`);
+assert.match(step(c, `kubectl patch serviceaccount default -p '{"imagePullSecrets":[{"name":"regcred"}]}'`), /new Pods get these/);
+assert.ok(!won(c), "existing Pods keep the pull secrets they started with");
+step(c, "kubectl rollout restart deployment/menu");
+assert.ok(won(c), "pullsecret: fixed through the ServiceAccount and a restart");
+
+// ConfigMap not reloaded: env is read at start.
+c = fresh("cmreload");
+assert.match(step(c, "kubectl get configmap orders-config -o yaml"), /autumn.json/);
+assert.match(step(c, "kubectl logs deployment/orders"), /summer.json/);
+assert.match(step(c, "kubectl exec deploy/orders -- env"), /MENU_FILE=\/etc\/menu\/summer.json/);
+step(c, `kubectl delete pod ${podOf(c, "orders")}`);
+assert.ok(!won(c), "one replaced Pod is not every Pod");
+step(c, "kubectl rollout restart deployment/orders");
+assert.match(step(c, "kubectl logs deployment/orders"), /autumn.json/);
+assert.ok(won(c), "cmreload: fixed by a rollout restart");
+
+// Scheduler down: Pending with no events at all.
+c = fresh("scheduler");
+assert.match(step(c, "kubectl get pods"), /web-\S+\s+1\/1\s+Running/);
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+0\/1\s+Pending/);
+assert.match(step(c, "kubectl describe pod " + podOf(c, "menu")), /Events:\s+<none>/);
+assert.match(step(c, "kubectl -n kube-system get pods"), /kube-scheduler-control-plane\s+0\/1\s+CrashLoopBackOff/);
+assert.match(step(c, "kubectl -n kube-system logs kube-scheduler-control-plane"), /scheduler.config: no such file/);
+assert.match(step(c, "ls /etc/kubernetes"), /scheduler.conf/);
+step(c, `kubectl delete pod ${podOf(c, "menu")}`);
+assert.ok(!won(c), "a new Pod waits for the same scheduler");
+step(c, "sed -i 's#scheduler.config#scheduler.conf#' /etc/kubernetes/manifests/kube-scheduler.yaml");
+assert.match(step(c, "kubectl get pods"), /menu-\S+\s+1\/1\s+Running/, "editing the scheduler does not take the API server down");
+assert.match(step(c, "kubectl -n kube-system get pods"), /kube-scheduler-control-plane\s+1\/1\s+Running/);
+assert.ok(won(c), "scheduler: fixed in its static Pod manifest");
+
 // Errors stay errors.
 c = fresh("crash");
 assert.match(text(c, "kubectl describe pod nope"), /NotFound/);
