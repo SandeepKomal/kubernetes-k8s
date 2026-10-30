@@ -93,11 +93,12 @@ h1, h2, h3, h4 { letter-spacing: -.03em; line-height: 1.1; }
 .top nav a { color: var(--text); opacity: .8; padding: 6px 12px; border-radius: 99px; white-space: nowrap; font-size: .82rem; transition: opacity .2s, background .2s; }
 .top nav a:hover { opacity: 1; text-decoration: none; }
 .top nav a[aria-current="page"] { opacity: 1; background: var(--code-bg); font-weight: 500; }
+/* The brand blue in both themes: white text on it keeps a 4.7:1 contrast. */
 .gh {
-  display: inline-flex; align-items: center; font-size: .8rem; font-weight: 500; color: var(--text);
-  background: var(--code-bg); border: 1px solid transparent; border-radius: 99px; padding: 6px 14px; transition: border-color .2s;
+  display: inline-flex; align-items: center; font-size: .8rem; font-weight: 500; color: #fff;
+  background: #0071e3; border: 1px solid transparent; border-radius: 99px; padding: 6px 14px; transition: background .2s;
 }
-.gh:hover { border-color: var(--line); text-decoration: none; }
+.gh:hover { background: #0062c4; color: #fff; text-decoration: none; }
 
 main { padding-top: 8px; padding-bottom: 64px; min-height: 70vh; }
 .tab > h2 { font-size: clamp(2rem, 4.5vw, 3rem); font-weight: 700; margin: 48px 0 14px; }
