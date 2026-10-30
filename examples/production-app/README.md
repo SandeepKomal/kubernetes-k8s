@@ -48,6 +48,7 @@ production-app/
 | Namespaces labelled `restricted` | Non-compliant Pods are rejected at the API | [Level 17](../../labs/17-pod-security/) |
 | `app.kubernetes.io/*` labels | The standard labels that dashboards, cost tools and GitOps tools understand | [Level 02](../../labs/02-labels-and-selectors/) |
 | Generated ConfigMap | Its name changes with its content, so config changes roll out new Pods | [Level 18](../../labs/18-kustomize-overlays/) |
+| Kustomize `labels` with `includeSelectors: false` | Selectors are written out by hand; letting Kustomize extend them would also rewrite the NetworkPolicy's `from` selector and lock out every caller | [Level 18](../../labs/18-kustomize-overlays/) |
 
 ## Making it yours
 

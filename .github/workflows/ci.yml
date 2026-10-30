@@ -114,15 +114,20 @@ jobs:
             kubectl -n "shop-$env" rollout status deployment/web-api --timeout=180s
           done
 
-      - name: The app answers inside its own product
+      - name: The NetworkPolicy lets the product in and keeps others out
         run: |
-          # The namespace enforces the restricted standard, so the probe must comply too.
-          kubectl -n shop-prod run probe --image=busybox:1.36 --restart=Never \
-            --labels=app.kubernetes.io/part-of=shop --overrides='{"spec":{
-              "securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},
-              "containers":[{"name":"probe","image":"busybox:1.36","command":["wget","-qO-","-T","5","http://web-api"],
-                "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
-          kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Succeeded pod/probe --timeout=60s
+          # The namespace enforces the restricted standard, so probes must comply too.
+          probe() {
+            kubectl -n shop-prod run "$1" --image=busybox:1.36 --restart=Never \
+              --labels="app.kubernetes.io/part-of=$2" --overrides='{"spec":{
+                "securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},
+                "containers":[{"name":"probe","image":"busybox:1.36","command":["wget","-qO-","-T","5","http://web-api"],
+                  "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
+          }
+          probe allowed shop
+          probe blocked other
+          kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Succeeded pod/allowed --timeout=90s
+          kubectl -n shop-prod wait --for=jsonpath='{.status.phase}'=Failed pod/blocked --timeout=90s
 
       - name: Cluster state on failure
         if: failure()
