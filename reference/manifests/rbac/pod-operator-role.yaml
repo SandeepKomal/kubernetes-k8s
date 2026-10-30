@@ -1,0 +1,21 @@
+# A wider Role for people who operate the workloads in a namespace: they can
+# restart and debug Pods and scale Deployments, but cannot read Secrets or
+# change RBAC.
+#
+# RBAC only ever adds permissions; there is no "deny" rule. To keep someone
+# out of something, do not bind any Role that grants it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-operator
+  namespace: team-a
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]     # running commands in containers: grant carefully
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "patch"]

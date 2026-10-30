@@ -1,0 +1,28 @@
+# Retries and time limits.
+#
+# This Job fails on purpose about half the time. backoffLimit allows 4
+# retries (with growing delays); activeDeadlineSeconds stops the whole Job
+# after 2 minutes, however many retries are left.
+#
+#   kubectl apply -f job-retries.yaml
+#   kubectl get pods -l job-name=flaky-task -w
+#   kubectl describe job flaky-task        # Events show each retry
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flaky-task
+spec:
+  backoffLimit: 4
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: task
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              if [ $((RANDOM % 2)) -eq 0 ]; then echo "failed, will retry"; exit 1; fi
+              echo "succeeded"

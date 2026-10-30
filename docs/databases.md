@@ -151,4 +151,4 @@ Practise the pieces with `busybox`: StatefulSets and headless Services in
 [level 08](../labs/08-persistent-storage/), PodDisruptionBudgets in
 [level 13](../labs/13-autoscaling/), spreading in
 [level 21](../labs/21-boss-production-hardening/), and the reference
-[StatefulSet example](../Kubernetes/k8's_objects/statefulset1/Statefulset.yaml).
+[StatefulSet example](../reference/manifests/statefulsets/statefulset.yaml).

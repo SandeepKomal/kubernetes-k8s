@@ -1,0 +1,24 @@
+# Keep average CPU of the web Pods near 50% of their request, with 1 to 10
+# replicas. Scale-down waits 5 minutes of stable low load, so a short pause
+# in traffic does not remove capacity. Needs metrics-server (see README.md).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

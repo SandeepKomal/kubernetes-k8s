@@ -21,7 +21,8 @@ explanations, new levels and new examples are all welcome.
 
 ```bash
 shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
-find Kubernetes labs -name '*.yaml' -not -name kind.yaml -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
+find reference labs -name '*.yaml' -not -name kind.yaml -not -path '*/app/*' -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
+python3 tests/check_links.py                # every internal link resolves
 python3 -m unittest discover -s tests      # dashboard server
 node tests/check_site_data.js               # site levels and quiz data
 ./quest up

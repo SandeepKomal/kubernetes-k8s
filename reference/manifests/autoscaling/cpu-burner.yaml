@@ -1,0 +1,26 @@
+# A Deployment that uses all the CPU it is allowed, to watch an HPA react
+# without generating traffic. Pair it with cpu-burner-hpa.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-burner
+spec:
+  selector:
+    matchLabels:
+      app: cpu-burner
+  template:
+    metadata:
+      labels:
+        app: cpu-burner
+    spec:
+      containers:
+        - name: burner
+          image: busybox:1.36
+          command: ["sh", "-c", "while true; do :; done"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 16Mi
+            limits:
+              cpu: 200m          # each Pod runs at 200% of its request
+              memory: 32Mi

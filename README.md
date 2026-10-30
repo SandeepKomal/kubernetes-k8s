@@ -246,7 +246,7 @@ cookies. To run it locally: `python3 -m http.server -d site 8000`.
 | Joining an on-call rotation | Levels 01, 02, 04, 06, 07 and 14, with the Pod doctor as a reference |
 | Platform or SRE role | Levels 15 to 21, then the [production example](examples/production-app/) |
 | Team onboarding | Assign levels as onboarding tasks; review real workloads with the [production readiness checklist](docs/production-checklist.md) |
-| Running on AWS | Complete the levels, then follow [EKS with a least-privilege CI identity](k8s-steps.md) |
+| Running on AWS | Complete the levels, then follow the [EKS quickstart](docs/eks-quickstart.md) |
 
 ## Production example
 
@@ -271,10 +271,11 @@ kubectl -n shop-dev get all,pdb,hpa,networkpolicy
 | [docs/production-checklist.md](docs/production-checklist.md) | Review checklist for workloads going to production |
 | [docs/databases.md](docs/databases.md) | How applications connect to databases, and how databases run on Kubernetes (explanation only) |
 | [docs/](docs/) | Guides on probes, network policies, PodDisruptionBudgets and troubleshooting |
-| [k8s-security.md](k8s-security.md) | Kubernetes security controls, with exercises on kind |
-| [k8s-steps.md](k8s-steps.md) | Creating an EKS cluster with eksctl and a least-privilege CI identity |
-| [Kubernetes/k8s_objects](Kubernetes/k8's_objects) | Example manifests: workloads, Services, Ingress, RBAC, scheduling, storage, autoscaling, Jobs |
-| [Kubernetes/](Kubernetes/) | kubectl command notes and AWS material: EKS, IAM, AWS Load Balancer Controller, Jenkins |
+| [docs/security.md](docs/security.md) | Kubernetes security controls, with exercises on kind |
+| [docs/eks-quickstart.md](docs/eks-quickstart.md) | Creating an EKS cluster with eksctl and a least-privilege CI identity |
+| [reference/kubectl.md](reference/kubectl.md) | The kubectl commands you use every week, by task |
+| [reference/manifests](reference/manifests/) | Example manifests by topic: workloads, Services, Ingress, config, RBAC, scheduling, resources, Jobs, autoscaling, DaemonSets, StatefulSets |
+| [reference/aws-eks](reference/aws-eks/) | Amazon EKS notes: IAM roles, deploying with Kustomize, Jenkins, AWS Load Balancer Controller |
 
 All manifests are validated against the Kubernetes API schema in CI.
 Values such as `<AWS_ACCOUNT_ID>` and `<REGION>` are placeholders.
@@ -289,7 +290,7 @@ kubernetes-k8s/
 ├── site/                  Companion web application (GitHub Pages)
 ├── examples/              Production-ready reference configurations
 ├── docs/                  Roadmap, guides and the production readiness checklist
-├── Kubernetes/            Reference manifests and AWS notes
+├── reference/             kubectl reference, example manifests, AWS EKS notes
 ├── tests/run-level.sh     End-to-end test for a single level
 └── .github/workflows/     Linting, per-level cluster tests, Pages deployment
 ```

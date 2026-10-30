@@ -49,7 +49,7 @@ own machine for free.
 | [11 Everyone can reach the database](../labs/11-network-policies/) | NetworkPolicy, default deny |
 | [17 Rejected at the door](../labs/17-pod-security/) | Pod Security Standards, `securityContext` |
 
-Read next: [k8s-security.md](../k8s-security.md).
+Read next: [security.md](security.md).
 
 ## Stage 5 · Platform and production
 

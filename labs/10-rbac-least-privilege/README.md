@@ -53,4 +53,4 @@ kubectl create role --help
 `*` verbs on `*` resources is the most common RBAC finding in security
 reviews. Read access to Secrets is effectively admin access to anything
 those Secrets unlock, and `pods/exec` lets someone run commands as any
-application. More in [k8s-security.md](../../k8s-security.md).
+application. More in [docs/security.md](../../docs/security.md).

@@ -59,4 +59,4 @@ this here?" before you turn it on for real.
 Roll it out in three steps: `warn` and `audit` first, fix what shows up,
 then `enforce`. Most official images run as root by default; prefer images
 built to run as a non-root user, or set a numeric `runAsUser` as this level does.
-See also [k8s-security.md](../../k8s-security.md).
+See also [docs/security.md](../../docs/security.md).

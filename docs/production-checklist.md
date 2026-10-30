@@ -33,7 +33,7 @@ purpose.
 
 ## Security
 
-- [ ] Runs as non-root with `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, all capabilities dropped (see [k8s-security.md](../k8s-security.md))
+- [ ] Runs as non-root with `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, all capabilities dropped (see [security.md](security.md))
 - [ ] Namespace enforces the `restricted` (or at least `baseline`) Pod Security Standard
 - [ ] Own ServiceAccount, with `automountServiceAccountToken: false` unless it calls the API
 - [ ] RBAC limited to what it needs; no `*` ([10](../labs/10-rbac-least-privilege/))
