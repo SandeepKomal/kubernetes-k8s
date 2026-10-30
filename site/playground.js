@@ -5834,8 +5834,10 @@
     }));
   }
 
-  function load(id) {
+  // Every scenario has its own link; the first one shown on arrival keeps the page's address.
+  function load(id, quiet) {
     scenario = SCENARIOS.find((s) => s.id === id) || SCENARIOS[0];
+    if (!quiet) window.history.replaceState(null, "", "#play/" + scenario.id);
     cluster = new Cluster(scenario);
     seen = new Map();
     solved = false;
@@ -5976,6 +5978,7 @@
   const reveal = () => { term.scrollIntoView({ block: "center" }); input.focus({ preventScroll: true }); };
   window.KQPlayground = {
     scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title })),
+    current: () => scenario.id,
     load: (id) => { load(id); reveal(); },
     // From the cheat sheet: open the scenario a command needs, if any, fill its
     // blanks from that cluster and run it; what cannot be filled is left to edit.
@@ -5987,5 +5990,5 @@
       else run(full);
     }
   };
-  load(SCENARIOS[0].id);
+  load(SCENARIOS[0].id, true);
 })(typeof window !== "undefined" ? window : globalThis);

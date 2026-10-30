@@ -3,6 +3,7 @@
 
 (function () {
   const Q = window.QUEST;
+  const { route, search } = window.KQRef;
   const $ = (sel) => document.querySelector(sel);
   // Scroll an element into view, without animation for those who prefer reduced motion.
   const scrollToEl = (el) => el.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -58,14 +59,10 @@
   // --- tabs ----------------------------------------------------------------
 
   const tabs = ["path", "quiz", "xray", "doctor", "cheats", "arch"];
+  const scenarioIds = () => (window.KQPlayground ? window.KQPlayground.scenarios.map((s) => s.id) : []);
   let current = null;
   function show() {
-    const [want, sub] = location.hash.slice(1).split("/");
-    const tab = tabs.includes(want) ? want : "path";
-    if (tab === "doctor" && sub) {
-      const i = Q.doctor.findIndex((d) => slug(d.status) === sub);
-      if (i >= 0) renderDoctor(i, true);
-    }
+    const { tab } = route(location.hash, Q.doctor, []);
     if (tab !== current) {
       const page = $("#tab-" + tab);
       page.classList.remove("tab-in");
@@ -80,12 +77,23 @@
       else a.removeAttribute("aria-current");
     });
   }
+  // Open the scenario or Troubleshoot entry a deep link names, if any. Code
+  // that opens a scenario itself has already loaded it when hashchange fires.
+  function openLinked(arriving) {
+    const { scenario, fix } = route(location.hash, Q.doctor, scenarioIds());
+    if (scenario && (arriving || scenario !== window.KQPlayground.current())) window.KQPlayground.load(scenario);
+    if (fix >= 0) renderDoctor(fix);
+  }
+  // A full URL for a deep link, for the Copy link buttons.
+  const linkTo = (hash) => location.href.split("#")[0] + "#" + hash;
+
   // A new page starts at the top. Code that switches tab itself (the
   // palette) calls show() first and scrolls where it wants.
   window.addEventListener("hashchange", () => {
     const before = current;
     show();
     if (current !== before) window.scrollTo(0, 0);
+    openLinked();
   });
 
   // --- path ----------------------------------------------------------------
@@ -388,70 +396,62 @@
 
   // --- troubleshooting reference ---------------------------------------------
 
-  const slug = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-  // Filter the symptoms by any word in their text, causes or commands.
-  // One row per group; search hides the symptoms, and the groups, that do not match.
-  function buildDoctorList() {
-    const index = new Map(Q.doctor.map((d, i) => [d.status, i]));
-    $("#doctor-list").replaceChildren(...Q.doctorGroups.map(([name, statuses]) => h("div.doctor-group", null,
-      h("div.doctor-group-name", null, name, h("span.doctor-group-count", null, String(statuses.length))),
-      h("div.doctor-group-items", null, statuses.map((s) => h("button.chip", {
-        type: "button", "data-index": index.get(s), "aria-pressed": "false", onclick: () => renderDoctor(index.get(s))
-      }, s))))));
-  }
+  // Without a search, every entry in its group; with one, the best matches
+  // first, so a pasted error leads straight to its entry.
+  let shownFix = -1;
+  let matches = [];
+  const doctorGroup = (name, indexes) => h("div.doctor-group", null,
+    h("div.doctor-group-name", null, name, h("span.doctor-group-count", null, String(indexes.length))),
+    h("div.doctor-group-items", null, indexes.map((i) => h("button.chip", {
+      type: "button", "data-index": i, "aria-pressed": String(i === shownFix), onclick: () => renderDoctor(i)
+    }, Q.doctor[i].status))));
   function renderDoctorList() {
-    const words = $("#doctor-q").value.toLowerCase().split(/\s+/).filter(Boolean);
-    let shown = 0;
-    for (const group of document.querySelectorAll(".doctor-group")) {
-      let inGroup = 0;
-      for (const b of group.querySelectorAll("button")) {
-        const d = Q.doctor[b.dataset.index];
-        b.hidden = !words.every((w) => [d.status, d.meaning, ...d.causes, ...d.commands].join(" ").toLowerCase().includes(w));
-        if (!b.hidden) inGroup++;
-      }
-      group.hidden = !inGroup;
-      group.querySelector(".doctor-group-count").textContent = String(inGroup);
-      shown += inGroup;
-    }
-    $("#doctor-none").hidden = shown > 0;
+    const q = $("#doctor-q").value.trim();
+    matches = search(q, Q.doctor);
+    const index = new Map(Q.doctor.map((d, i) => [d.status, i]));
+    const groups = q ? (matches.length ? [doctorGroup("Best matches", matches)] : [])
+      : Q.doctorGroups.map(([name, statuses]) => doctorGroup(name, statuses.map((s) => index.get(s))));
+    $("#doctor-list").replaceChildren(...groups);
+    $("#doctor-list").hidden = !groups.length;
+    $("#doctor-none").hidden = groups.length > 0;
   }
 
-  function renderDoctor(index, fromHash) {
+  function renderDoctor(index) {
     const d = Q.doctor[index];
+    shownFix = index;
     document.querySelectorAll("#doctor-list button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.index) === index)));
     const lv = Q.levels.find((l) => l.id === d.level);
-    // Each symptom has its own link, so it can be shared or bookmarked.
-    if (!fromHash) history.replaceState(null, "", "#doctor/" + slug(d.status));
+    // Each entry has its own link, so it can be shared or bookmarked.
+    history.replaceState(null, "", "#fix/" + d.id);
     const titles = Object.fromEntries((window.KQPlayground ? window.KQPlayground.scenarios : []).map((x) => [x.id, x.title]));
-    const practise = (d.scenarios || []).filter((id) => titles[id]);
-    $("#doctor-out").replaceChildren(h("div.card", null,
-      h("h3", null, d.status),
-      h("p", null, d.meaning),
-      h("h4", null, "Likely causes"),
-      h("ul", null, d.causes.map((c) => h("li", null, c))),
-      h("h4", null, "Confirm with"),
-      h("pre", null, h("code", null, d.commands.join("\n"))),
-      practise.length ? h("div.doctor-practise", null, h("span.muted.small", null, "Try the fix in the playground:"),
-        practise.map((id) => h("button.chip", {
-          type: "button", onclick: () => practise(id)
-        }, titles[id]))) : null,
-      h("p.note", null, "Practise it on a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))
-    ));
-    if (!fromHash) scrollToEl($("#doctor-out"));
+    const section = (title, ...body) => [h("h4", null, title), ...body];
+    $("#doctor-out").replaceChildren(h("article.card.problem", null,
+      h("div.fix-head", null, h("h3", null, d.status),
+        copyButton(linkTo("fix/" + d.id), { label: "Copy link", name: "Copy a link to this problem", failed: "Use the address bar" })),
+      ...section("Symptom", h("p", null, ...rich(d.symptom))),
+      ...section("Error or output", h("pre.fix-error", null, h("code", null, d.error))),
+      ...section("Cause", h("p", null, d.meaning), h("ul", null, d.causes.map((c) => h("li", null, c)))),
+      ...section("Confirm with", h("pre", null, h("code", null, d.commands.join("\n")))),
+      ...section("Fix", h("ol", null, d.fix.map((t) => h("li", null, ...rich(t))))),
+      ...section("Prevent it", h("ul", null, d.prevent.map((t) => h("li", null, ...rich(t))))),
+      ...section("Practise it",
+        h("div.doctor-practise", null, d.scenarios.filter((id) => titles[id]).map((id) => h("a.chip", { href: "#play/" + id }, titles[id]))),
+        h("p.note", null, "On a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`)))));
+    scrollToEl($("#doctor-out"));
   }
 
   // --- cheat sheet ---------------------------------------------------------
 
-  function copyButton(text) {
+  // Copies text, or what a function returns when clicked, and says so for a moment.
+  function copyButton(text, { label = "Copy", name = "Copy command", failed = "Select it" } = {}) {
     return h("button.copy", {
-      type: "button", "aria-label": "Copy command",
+      type: "button", "aria-label": name,
       onclick: async (e) => {
         const b = e.currentTarget;
-        try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { b.textContent = "Select it"; }
-        setTimeout(() => { b.textContent = "Copy"; }, 1200);
+        try { await navigator.clipboard.writeText(typeof text === "function" ? text() : text); b.textContent = "Copied"; } catch { b.textContent = failed; }
+        setTimeout(() => { b.textContent = label; }, 1200);
       }
-    }, "Copy");
+    }, label);
   }
 
   // Placeholders the reader can fill in once for every command.
@@ -574,10 +574,13 @@
     $("#xray-input").value = Q.xrayExample;
     explainPasted();
   });
-  buildDoctorList();
   $("#forget").addEventListener("click", forgetEverything);
-  $("#doctor-list").after(h("p.muted", { id: "doctor-none", hidden: true }, "No symptom matches. Try a status (Pending), an error word (forbidden, refused) or an object (hpa, pvc)."));
+  $("#doctor-list").after(h("p.muted", { id: "doctor-none", hidden: true }, "No entry matches. Try a status (Pending), an error word (forbidden, refused) or an object (hpa, pvc)."));
+  renderDoctorList();
   $("#doctor-q").addEventListener("input", renderDoctorList);
+  $("#doctor-q").addEventListener("keydown", (e) => { if (e.key === "Enter" && matches.length) renderDoctor(matches[0]); });
+  $("#pg-goal").after(copyButton(() => linkTo("play/" + window.KQPlayground.current()),
+    { label: "Copy link", name: "Copy a link to this scenario", failed: "Use the address bar" }));
   $("#cheat-q").addEventListener("input", renderCheats);
   renderFill();
   // Open on wide screens, or whenever names are already filled in.
@@ -607,7 +610,7 @@
     { label: "Kubernetes architecture: every component explained", kind: "Section", run: () => goTab("arch") },
     ...Q.levels.map((lv) => ({ label: `${lv.id} · ${lv.title}`, hint: lv.topic, kind: "Level", run: () => window.open(levelUrl(lv), "_blank", "noopener") })),
     ...Q.levels.map((lv) => ({ label: `Quiz: ${lv.id} · ${lv.topic}`, kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = lv.id; renderQuiz(); }) })),
-    ...Q.doctor.map((d, i) => ({ label: `Troubleshoot: ${d.status}`, kind: "Reference", run: () => goTab("doctor", () => renderDoctor(i)) }))
+    ...Q.doctor.map((d) => ({ label: `Troubleshoot: ${d.status}`, kind: "Reference", run: () => { location.hash = "fix/" + d.id; } }))
   ];
 
   function renderPalette() {
@@ -681,6 +684,6 @@
   // The Try buttons need the playground, which loads after this script.
   window.addEventListener("DOMContentLoaded", () => {
     renderCheats();
-    if (current === "doctor") show(); // the Practise buttons need the playground
+    openLinked(true); // scenarios, and the Practise it links, need the playground
   });
 })();
