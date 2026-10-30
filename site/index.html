@@ -24,6 +24,7 @@
         <a href="#doctor" data-tab="doctor">Pod doctor</a>
         <a href="#cheats" data-tab="cheats">Cheat sheet</a>
       </nav>
+      <button type="button" class="kbd-btn" id="palette-open" aria-label="Search the site (Ctrl+K)"><span>Search</span><kbd id="palette-key">Ctrl K</kbd></button>
       <a class="gh" id="gh-link" href="#">GitHub</a>
     </div>
   </header>
@@ -40,6 +41,36 @@
           <a class="pill" href="#quiz">Take the quiz</a>
         </div>
       </div>
+
+      <section class="playground" aria-labelledby="pg-title">
+        <div class="pg-head">
+          <div>
+            <h2 id="pg-title" class="section-title">Fix a broken Pod. Right here.</h2>
+            <p class="section-sub">A simulated cluster, real kubectl commands. No install, no account.</p>
+          </div>
+          <p id="pg-goal" class="pg-goal" aria-live="polite"></p>
+        </div>
+        <div class="pg-body">
+          <div class="pg-term" id="pg-term">
+            <div class="pg-bar" aria-hidden="true"><span></span><span></span><span></span><em>kitchen · kubectl</em></div>
+            <div class="pg-out" id="pg-out" role="log" aria-live="polite" aria-label="Terminal output"></div>
+            <form class="pg-form" id="pg-form" autocomplete="off">
+              <span aria-hidden="true">$</span>
+              <input id="pg-input" type="text" spellcheck="false" autocapitalize="off" aria-label="Type a kubectl command" placeholder="kubectl get pods">
+            </form>
+          </div>
+          <div class="pg-side">
+            <div class="pg-map" id="pg-map" aria-label="Cluster map"></div>
+            <div class="pg-try">
+              <span class="muted small">Try</span>
+              <button type="button" class="chip" data-pg="kubectl get pods">get pods</button>
+              <button type="button" class="chip" data-pg="kubectl describe pod menu">describe pod menu</button>
+              <button type="button" class="chip" data-pg="hint">hint</button>
+              <button type="button" class="chip" data-pg="reset">reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section class="flow-block" aria-labelledby="flow-title">
         <h2 id="flow-title" class="section-title">What happens when you run <code>kubectl apply</code></h2>
@@ -119,8 +150,15 @@ cd kubernetes-k8s
     <p>Open source under the MIT License. Built with no trackers, no cookies and nothing loaded from other sites.</p>
   </footer>
 
+  <dialog id="palette" class="palette" aria-label="Search">
+    <input id="palette-input" type="text" placeholder="Jump to a level, quiz or section" autocomplete="off" aria-controls="palette-list">
+    <ul id="palette-list" role="listbox"></ul>
+    <p class="palette-foot muted"><kbd>↑</kbd> <kbd>↓</kbd> to move · <kbd>Enter</kbd> to open · <kbd>Esc</kbd> to close</p>
+  </dialog>
+
   <script src="data.js"></script>
   <script src="quiz-bank.js"></script>
   <script src="app.js"></script>
+  <script src="playground.js"></script>
 </body>
 </html>
