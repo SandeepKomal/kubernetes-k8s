@@ -780,5 +780,28 @@ kbd {
 @media (max-width: 860px) { .pg-scenarios:empty { min-height: 1216px; } .pg-try:empty { min-height: 32px; } .pg-head:has(.pg-goal:empty) { min-height: 204px; } }
 @media (max-width: 720px) { .pg-scenarios:empty { min-height: 38px; } }
 @media (max-width: 599px) { .pg-try:empty { min-height: 72px; } .pg-head:has(.pg-goal:empty) { min-height: 251px; } }
+
+/* While a feature's code is still arriving, its space shows calm grey lines in the shape it will
+   fill, and the first screen fades in once as one piece. Both stop for reduced motion. */
+.pg-scenarios:empty, .pg-map:empty, .pg-try:empty, #pg-out:empty, #arch:empty, #quiz-list:empty {
+  border-radius: var(--radius-sm);
+  background: repeating-linear-gradient(to bottom, var(--code-bg) 0 12px, transparent 12px 28px) 0 0 / 100% 100% no-repeat;
+  animation: nimbus-skel 1.6s ease-in-out infinite alternate;
+}
+#pg-out:empty { background-image: repeating-linear-gradient(to bottom, color-mix(in srgb, #fff 9%, transparent) 0 10px, transparent 10px 24px); background-size: 70% 100%; }
+#quiz-list:empty { min-height: 320px; }
+#arch:empty { min-height: 597px; border: 1px solid var(--hair); background: var(--surface) linear-gradient(var(--code-bg), var(--code-bg)) 50% 50% / calc(100% - 56px) calc(100% - 56px) no-repeat; }
+#pg-goal:empty { width: min(250px, 60vw); height: 39px; border-color: transparent; background: var(--code-bg); animation: nimbus-skel 1.6s ease-in-out infinite alternate; }
+@media (max-width: 720px) {
+  .pg-scenarios:empty { background: var(--code-bg); border-radius: 99px; }
+  #arch:empty { min-height: 899px; }
+}
+@keyframes nimbus-skel { from { opacity: .5; } to { opacity: 1; } }
+#engage:not(:empty), #stages:not(:empty), #levels:not(:empty) { animation: nimbus-fade .2s ease-out both; }
+@keyframes nimbus-fade { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pg-scenarios:empty, .pg-map:empty, .pg-try:empty, #pg-out:empty, #arch:empty, #quiz-list:empty, #pg-goal:empty { animation: none; }
+  #engage:not(:empty), #stages:not(:empty), #levels:not(:empty) { animation: none; }
+}
 /* Narrow phones: the logo stands for DevOps Nimbus so the header keeps one row. */
 @media (max-width: 440px) { .brand-hub > span:not([class]) { display: none; } }
