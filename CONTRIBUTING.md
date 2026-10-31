@@ -75,3 +75,7 @@ wrong one.
 Small and focused is best. Fill in the template: what changed, why, and how
 you tested it. By contributing, you agree that your work is released under
 the [MIT License](LICENSE).
+
+## Personal data
+
+Never include real personal data in issues, pull requests, examples, logs or tests: no Aadhaar, PAN, phone numbers, personal emails, addresses, bank details or customer records. Use made-up values and reserved domains such as `example.com`. See [PRIVACY.md](PRIVACY.md).
