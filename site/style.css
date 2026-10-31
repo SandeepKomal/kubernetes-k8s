@@ -731,3 +731,8 @@ kbd {
 .brand-track { color: var(--accent); font-weight: 600; padding-left: 8px; border-left: 1px solid var(--line); }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; }
 .eyebrow-logo { width: 20px; height: 20px; }
+.eng-msg { margin: 0; font-size: .9rem; color: var(--muted); }
+.eng-carry { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.eng-file { position: relative; }
+.eng-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.eng-file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
