@@ -95,6 +95,13 @@ h1, h2, h3, h4 { letter-spacing: -.03em; line-height: 1.1; }
 .top nav a { color: var(--text); opacity: .8; padding: 6px 12px; border-radius: 99px; white-space: nowrap; font-size: .82rem; transition: opacity .2s, background .2s; }
 .top nav a:hover { opacity: 1; text-decoration: none; }
 .top nav a[aria-current="page"] { opacity: 1; background: var(--code-bg); font-weight: 500; }
+/* Two modes: Learn (the course) and Fix (the reference for something broken now). */
+.top nav { align-items: center; gap: 10px; }
+.mode { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 99px; }
+.mode-k { font-size: .7rem; font-weight: 600; padding: 0 6px 0 10px; color: var(--accent); }
+.mode.fix { background: var(--warn-soft); }
+.mode.fix .mode-k { color: var(--warn-text); }
+.mode.fix a[aria-current="page"] { background: var(--surface); }
 /* The brand blue in both themes: white text on it keeps a 4.7:1 contrast. */
 .gh {
   display: inline-flex; align-items: center; font-size: .8rem; font-weight: 500; color: #fff;
@@ -122,6 +129,19 @@ main { padding-top: 8px; padding-bottom: 64px; min-height: 70vh; }
 .pill.primary { background: var(--accent); color: var(--on-accent); }
 .pill.primary:hover { background: var(--accent-hover); }
 .small-pill { min-height: 36px; padding: 0 18px; font-size: .9rem; }
+.doors { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; max-width: 980px; margin: 8px auto 0; text-align: left; }
+.door { padding: 24px 26px; border-radius: var(--radius); border: 1px solid var(--hair); background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
+.door h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
+.door p { margin: 0; color: var(--muted); }
+.door .door-k { font-size: .85rem; font-weight: 600; color: var(--accent); }
+.door.fix { background: var(--warn-soft); border-color: transparent; }
+.door.fix .door-k { color: var(--warn-text); }
+.door .ctas { justify-content: flex-start; margin-top: 10px; }
+.door-search { display: flex; gap: 8px; margin-top: 10px; }
+.door-search input { flex: 1; min-width: 0; border-radius: 99px; }
+.mode-banner { margin: 32px 0 0; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--warn-soft); font-size: .95rem; }
+.mode-banner + h2 { margin-top: 32px; }
+.mode-banner strong { color: var(--warn-text); }
 
 .section-title { font-size: clamp(1.7rem, 3.5vw, 2.4rem); font-weight: 700; margin: 72px 0 8px; }
 .section-title code { font-size: .78em; }
@@ -320,6 +340,8 @@ a.chip:hover { text-decoration: none; }
 .problem pre.fix-error { white-space: pre-wrap; overflow-wrap: anywhere; }
 .problem li { overflow-wrap: anywhere; }
 .problem .doctor-practise { margin: 0 0 8px; }
+.learn-it { margin-top: 24px; padding: 18px 20px; border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--hair); }
+.problem .learn-it h4 { margin-top: 0; color: var(--text); }
 .fix-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
 
 /* problems.html: every entry on one static page */
@@ -385,7 +407,11 @@ a.chip:hover { text-decoration: none; }
   .top-inner { gap: 6px 10px; flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 6px; }
   .gh { display: none; }
   .brand { font-size: .95rem; flex: 1; }
-  .top nav { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 0 -8px; }
+  .top nav { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 6px; margin: 0 -8px; }
+  .mode { flex-wrap: wrap; justify-content: center; }
+  .mode-k { padding: 0 4px 0 8px; }
+  .doors { grid-template-columns: 1fr; }
+  .door-search { flex-direction: column; }
   .top nav a { padding: 6px 4px; text-align: center; }
   .hero { padding: 48px 0 24px; }
   .flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }

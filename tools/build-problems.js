@@ -37,7 +37,7 @@ function render() {
         <p>${rich(d.symptom)}</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>${esc(d.error)}</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>${esc(d.meaning)}</p>
         ${list("ul", d.causes, esc)}
         <h4>Confirm with</h4>
@@ -46,9 +46,7 @@ function render() {
         ${list("ol", d.fix, rich)}
         <h4>Prevent it</h4>
         ${list("ul", d.prevent, rich)}
-        <h4>Practise it</h4>
-        ${list("ul", d.scenarios, (id) => `<a href="./#play/${id}">${esc(titles[id])}</a> in the browser playground`)}
-        <p class="note">On a real cluster: <a href="${Q.repo}/tree/main/labs/${lv.slug}">Level ${lv.id} · ${esc(lv.title)}</a>. <a href="./#fix/${d.id}">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in ${d.scenarios.map((id) => `<a href="./#play/${id}">${esc(titles[id])}</a>`).join(" · ")}, then take <a href="${Q.repo}/tree/main/labs/${lv.slug}">Level ${lv.id} · ${esc(lv.title)}</a> on a real cluster. <a href="./#fix/${d.id}">Open this in the interactive reference</a>.</p>
       </article>`;
   };
 
@@ -79,19 +77,25 @@ function render() {
         Kubernetes Quest
       </a>
       <nav aria-label="Sections">
-        <a href="./#path">Path</a>
-        <a href="./#quiz">Quiz</a>
-        <a href="./#xray">YAML X-ray</a>
-        <a href="./#doctor" aria-current="page">Troubleshoot</a>
-        <a href="./#cheats">Cheat sheet</a>
-        <a href="./#arch">K8s arch</a>
+        <div class="mode learn" role="group" aria-label="Learn">
+          <span class="mode-k">Learn</span>
+          <a href="./#path">Path</a>
+          <a href="./#quiz">Quiz</a>
+          <a href="./#xray">YAML X-ray</a>
+          <a href="./#arch">K8s arch</a>
+        </div>
+        <div class="mode fix" role="group" aria-label="Fix">
+          <span class="mode-k">Fix</span>
+          <a href="./#doctor" aria-current="page">Troubleshoot</a>
+          <a href="./#cheats">Cheat sheet</a>
+        </div>
       </nav>
     </div>
   </header>
 
   <main id="main" class="wrap problems">
     <h1>Kubernetes errors and how to fix them</h1>
-    <p class="lede">${Q.doctor.length} problems you will meet in real clusters. Each one gives the exact error, the cause, the commands that confirm it, the fix and how to prevent it. Replace names in angle brackets with your own. To search by pasting an error, use the <a href="./#doctor">interactive reference</a>.</p>
+    <p class="lede">${Q.doctor.length} problems you will meet in real clusters. Each one gives the exact error, why it happens, the commands that confirm it, the fix and how to prevent it, then a scenario to break and fix it yourself. Replace names in angle brackets with your own. To search by pasting an error, use the <a href="./#doctor">interactive reference</a>.</p>
     <nav class="problems-toc" aria-label="Problems">${Q.doctorGroups.map(([name, statuses]) => `
       <div>
         <h2>${esc(name)}</h2>

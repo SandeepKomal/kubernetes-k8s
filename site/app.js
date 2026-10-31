@@ -430,13 +430,16 @@
         copyButton(linkTo("fix/" + d.id), { label: "Copy link", name: "Copy a link to this problem", failed: "Use the address bar" })),
       ...section("Symptom", h("p", null, ...rich(d.symptom))),
       ...section("Error or output", h("pre.fix-error", null, h("code", null, d.error))),
-      ...section("Cause", h("p", null, d.meaning), h("ul", null, d.causes.map((c) => h("li", null, c)))),
+      ...section("Why it happens", h("p", null, d.meaning), h("ul", null, d.causes.map((c) => h("li", null, c)))),
       ...section("Confirm with", h("pre", null, h("code", null, d.commands.join("\n")))),
       ...section("Fix", h("ol", null, d.fix.map((t) => h("li", null, ...rich(t))))),
       ...section("Prevent it", h("ul", null, d.prevent.map((t) => h("li", null, ...rich(t))))),
-      ...section("Practise it",
-        h("div.doctor-practise", null, d.scenarios.filter((id) => titles[id]).map((id) => h("a.chip", { href: "#play/" + id }, titles[id]))),
-        h("p.note", null, "On a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`)))));
+      // Fixing is the way in; the point is to learn it, so every entry ends in practice.
+      h("div.learn-it", null,
+        ...section("Now learn it",
+          h("p", null, "Break this yourself in a safe playground and fix it. Doing it once is what makes you recognise it next time."),
+          h("div.doctor-practise", null, d.scenarios.filter((id) => titles[id]).map((id) => h("a.chip", { href: "#play/" + id }, titles[id]))),
+          h("p.note", null, "Then the level that teaches it, on a real cluster: ", h("a", { href: levelUrl(lv) }, `Level ${lv.id} · ${lv.title}`))))));
     scrollToEl($("#doctor-out"));
   }
 
@@ -579,6 +582,10 @@
   renderDoctorList();
   $("#doctor-q").addEventListener("input", renderDoctorList);
   $("#doctor-q").addEventListener("keydown", (e) => { if (e.key === "Enter" && matches.length) renderDoctor(matches[0]); });
+  // The home page's "Something broken?" box hands the pasted error to Troubleshoot.
+  const doorGo = () => { $("#doctor-q").value = $("#door-q").value; goTab("doctor", () => { renderDoctorList(); $("#doctor-q").focus(); }); };
+  $("#door-go").addEventListener("click", doorGo);
+  $("#door-q").addEventListener("keydown", (e) => { if (e.key === "Enter") doorGo(); });
   $("#pg-goal").after(copyButton(() => linkTo("play/" + window.KQPlayground.current()),
     { label: "Copy link", name: "Copy a link to this scenario", failed: "Use the address bar" }));
   $("#cheat-q").addEventListener("input", renderCheats);
@@ -605,7 +612,7 @@
     { label: "Your path", kind: "Section", run: () => goTab("path", () => $("#path-title").scrollIntoView()) },
     { label: "Exam: random questions from every level", kind: "Quiz", run: () => goTab("quiz", () => { $("#quiz-level").value = "exam"; renderQuiz(); }) },
     { label: "YAML X-ray", kind: "Section", run: () => goTab("xray") },
-    { label: "Troubleshooting reference", kind: "Section", run: () => goTab("doctor") },
+    { label: "Fix: troubleshoot an error", kind: "Section", run: () => goTab("doctor") },
     { label: "Cheat sheet", kind: "Section", run: () => goTab("cheats", () => $("#cheat-q").focus()) },
     { label: "Kubernetes architecture: every component explained", kind: "Section", run: () => goTab("arch") },
     ...Q.levels.map((lv) => ({ label: `${lv.id} · ${lv.title}`, hint: lv.topic, kind: "Level", run: () => window.open(levelUrl(lv), "_blank", "noopener") })),

@@ -24,12 +24,18 @@
         Kubernetes Quest
       </a>
       <nav aria-label="Sections">
-        <a href="#path" data-tab="path">Path</a>
-        <a href="#quiz" data-tab="quiz">Quiz</a>
-        <a href="#xray" data-tab="xray">YAML X-ray</a>
-        <a href="#doctor" data-tab="doctor">Troubleshoot</a>
-        <a href="#cheats" data-tab="cheats">Cheat sheet</a>
-        <a href="#arch" data-tab="arch">K8s arch</a>
+        <div class="mode learn" role="group" aria-label="Learn">
+          <span class="mode-k">Learn</span>
+          <a href="#path" data-tab="path">Path</a>
+          <a href="#quiz" data-tab="quiz">Quiz</a>
+          <a href="#xray" data-tab="xray">YAML X-ray</a>
+          <a href="#arch" data-tab="arch">K8s arch</a>
+        </div>
+        <div class="mode fix" role="group" aria-label="Fix">
+          <span class="mode-k">Fix</span>
+          <a href="#doctor" data-tab="doctor">Troubleshoot</a>
+          <a href="#cheats" data-tab="cheats">Cheat sheet</a>
+        </div>
       </nav>
       <button type="button" class="kbd-btn" id="palette-open" aria-label="Search the site (Ctrl+K)"><span>Search</span><kbd id="palette-key">Ctrl K</kbd></button>
       <a class="gh" id="gh-link" href="#">GitHub</a>
@@ -43,9 +49,19 @@
         <p class="eyebrow">Free and open source · MIT</p>
         <h1>Learn Kubernetes<br>by fixing it.</h1>
         <p class="sub">Twenty-two hands-on levels on your own practice cluster. Every level starts broken. You fix it, and the cluster tells you when you are right.</p>
-        <div class="ctas">
-          <a class="pill primary" id="cta-start" href="#">Get started</a>
-          <a class="pill" href="#quiz">Take the quiz</a>
+        <div class="doors">
+          <div class="door learn">
+            <p class="door-k">Learning Kubernetes?</p>
+            <h2>Start from zero, step by step.</h2>
+            <p>Levels in order, each a broken cluster you fix, with a quiz to check you know why.</p>
+            <div class="ctas"><a class="pill primary" id="cta-start" href="#">Get started</a><a class="pill" href="#quiz">Take the quiz</a></div>
+          </div>
+          <div class="door fix">
+            <p class="door-k">Something broken right now?</p>
+            <h2>Paste the error, get the fix.</h2>
+            <p>The cause, the commands to confirm it and the fix, for every common Kubernetes error.</p>
+            <div class="door-search"><input id="door-q" type="search" placeholder="Paste an error, e.g. Back-off restarting failed container" aria-label="Paste an error" autocomplete="off" spellcheck="false"><button type="button" class="pill" id="door-go">Find the fix</button></div>
+          </div>
         </div>
       </div>
 
@@ -179,8 +195,9 @@ cd kubernetes-k8s
     </section>
 
     <section id="tab-doctor" class="tab" hidden>
-      <h2>Troubleshooting reference</h2>
-      <p class="lede">Paste the error you see, or pick a symptom. Each entry gives the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and a scenario to practise it. Also as a <a href="problems.html">single page of every problem</a>.</p>
+      <p class="mode-banner"><strong>Fix mode.</strong> For when something is broken right now. Learning Kubernetes instead? <a href="#path">Start the path</a>.</p>
+      <h2>Stuck on an error?</h2>
+      <p class="lede">Paste the error you see, or pick a symptom. Each entry explains why it happens, how to confirm it and how to fix and prevent it, then gives you a safe scenario to break and fix it yourself, so you recognise it next time. Also as a <a href="problems.html">single page of every problem</a>.</p>
       <div class="guide-slot" data-guide="doctor"></div>
       <label class="field">Search, or paste an error
         <input id="doctor-q" type="search" placeholder="Back-off restarting failed container, 403, OOMKilled, hpa..." autocomplete="off" spellcheck="false">
