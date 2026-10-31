@@ -12,7 +12,7 @@
   --accent-hover: #0077ed;
   --accent-soft: #e8f1fc;
   --on-accent: #ffffff;
-  --k8s: #326ce5;
+  --k8s: var(--accent);
   --ok: #1d8a3a;
   --ok-soft: #e9f6ec;
   --bad: #d70015;
@@ -144,7 +144,7 @@ main { padding-top: 8px; padding-bottom: 64px; min-height: 70vh; }
   transition: background .35s var(--ease), border-color .35s var(--ease), color .35s var(--ease), transform .35s var(--ease), box-shadow .35s var(--ease);
 }
 .step.past .dot { border-color: var(--k8s); color: var(--k8s); }
-.step.on .dot { background: var(--k8s); border-color: var(--k8s); color: #fff; transform: scale(1.12); box-shadow: 0 0 0 6px rgba(50, 108, 229, .18); }
+.step.on .dot { background: var(--k8s); border-color: var(--k8s); color: #fff; transform: scale(1.12); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent); }
 .step-name { font-weight: 600; font-size: .9rem; text-align: center; }
 .step-role { font-size: .75rem; color: var(--muted); text-align: center; }
 .flow-detail { min-height: 196px; }
