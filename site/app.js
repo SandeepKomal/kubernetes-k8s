@@ -47,8 +47,29 @@
     location.reload();
   }
 
+  // --- features that load after the first screen -----------------------------
+
+  // The first screen needs only data.js, reference.js, engage.js and this file. The
+  // rest loads in the background once it is drawn, or at once when someone asks for
+  // it; whatever calls into one of these modules waits for need() first.
+  const LAZY = { quiz: ["quiz-bank.js"], xray: ["xray-explain.js"], arch: ["architecture.js"], play: ["playground.js"] };
+  const loading = {};
+  function load(srcs) {
+    return Promise.all(srcs.map((src) => loading[src] || (loading[src] = new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src;
+      el.async = false; // run in the order asked for
+      el.addEventListener("load", resolve);
+      el.addEventListener("error", () => { delete loading[src]; el.remove(); reject(new Error("could not load " + src)); });
+      document.body.append(el);
+    }))));
+  }
+  const need = (...names) => load(names.flatMap((n) => LAZY[n]));
+  const needAll = () => need("quiz", "xray", "arch", "play");
+  const scenarioTitles = () => Object.fromEntries(Q.scenarios.map((x) => [x.id, x.title]));
+
   // Open a scenario in the playground, from anywhere on the site.
-  function practise(id) { location.hash = "path"; show(); window.KQPlayground.load(id); }
+  function practise(id) { location.hash = "path"; show(); need("play").then(() => window.KQPlayground.load(id), () => {}); }
 
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
   document.querySelectorAll("[data-repo]").forEach((a) => { a.href = Q.repo + a.dataset.repo; });
@@ -58,14 +79,18 @@
   // --- tabs ----------------------------------------------------------------
 
   const tabs = ["path", "quiz", "xray", "doctor", "cheats", "arch"];
-  const scenarioIds = () => (window.KQPlayground ? window.KQPlayground.scenarios.map((s) => s.id) : []);
+  const scenarioIds = () => Q.scenarios.map((s) => s.id);
   let current = null;
   function show() {
     const { tab } = route(location.hash, Q.doctor, []);
+    if (tab === "quiz" && !$("#quiz-list").firstChild) renderQuiz();
+    if (tab === "cheats" && !$("#cheat-out").firstChild) renderCheats();
+    if (tab === "xray") need("xray").catch(() => {});
+    if (tab === "arch") need("arch").catch(() => {});
     if (tab !== current) {
       const page = $("#tab-" + tab);
       page.classList.remove("tab-in");
-      void page.offsetWidth; // restart the fade
+      if (current) void page.offsetWidth; // restart the fade (the first one needs no restart)
       page.classList.add("tab-in");
     }
     current = tab;
@@ -84,7 +109,7 @@
   // that opens a scenario itself has already loaded it when hashchange fires.
   function openLinked(arriving) {
     const { scenario, fix } = route(location.hash, Q.doctor, scenarioIds());
-    if (scenario && (arriving || scenario !== window.KQPlayground.current())) window.KQPlayground.load(scenario);
+    if (scenario) need("play").then(() => { if (arriving || scenario !== window.KQPlayground.current()) window.KQPlayground.load(scenario); }, () => {});
     if (fix >= 0) renderDoctor(fix);
   }
   // A full URL for a deep link, for the Copy link buttons.
@@ -232,7 +257,13 @@
 
   function quizScores() { return store.get("quiz", {}); }
 
+  // The question bank loads after the first screen; the levels list is there from the start.
+  const quizLabel = (lv) => `${lv.id} · ${lv.topic}` + (window.TRACK_QUIZ_BANK ? ` (${questionsFor(lv.id).length} questions)` : "");
+  const quizBank = () => need("quiz").then(() => {
+    for (const o of $("#quiz-level").options) { const lv = Q.levels.find((l) => l.id === o.value); if (lv) o.textContent = quizLabel(lv); }
+  });
   function renderQuiz() {
+    if (!window.TRACK_QUIZ_BANK) { quizBank().then(renderQuiz, () => {}); return; }
     const mode = $("#quiz-level").value;
     const exam = mode === "exam";
     const lv = Q.levels.find((l) => l.id === mode);
@@ -380,6 +411,7 @@
     const error = $("#xray-error");
     const fail = (msg) => { error.textContent = msg; error.hidden = false; };
     if (!text.trim()) return fail("Paste a manifest first, or choose Load an example.");
+    if (!window.KQExplain) return void need("xray").then(explainPasted, () => fail("The X-ray could not load. Reload the page and try again."));
     const res = window.KQExplain.explain(text);
     if (res.error) return fail(res.error);
     error.hidden = true;
@@ -427,7 +459,7 @@
     const lv = Q.levels.find((l) => l.id === d.level);
     // Each entry has its own link, so it can be shared or bookmarked.
     history.replaceState(null, "", "#fix/" + d.id);
-    const titles = Object.fromEntries((window.KQPlayground ? window.KQPlayground.scenarios : []).map((x) => [x.id, x.title]));
+    const titles = scenarioTitles();
     const section = (title, ...body) => [h("h4", null, title), ...body];
     $("#doctor-out").replaceChildren(h("article.card.problem", null,
       h("div.fix-head", null, h("h3", null, d.status),
@@ -509,7 +541,7 @@
       groups.get(group).push([cmd, what, where]);
     }
     if (!groups.size) { out.append(h("p.muted", null, "No match. Try a resource name like pod, node or secret.")); return; }
-    const titles = window.KQPlayground ? Object.fromEntries(window.KQPlayground.scenarios.map((x) => [x.id, x.title])) : {};
+    const titles = scenarioTitles();
     for (const [group, rows] of groups) {
       out.append(h("h3.group", null, group), h("ul.cheats", null, rows.map(([cmd, what, where]) => {
         const parts = fillParts(cmd);
@@ -518,9 +550,9 @@
         // Where tells which scenario a command needs ("any" for whichever is open);
         // without one it needs a real cluster, which the free local lab provides.
         const actions = h("div.cheat-actions", null,
-          where && window.KQPlayground ? h("button.copy", {
+          where ? h("button.copy", {
             type: "button", title: where === "any" ? "Run it in the playground" : `Run it in the playground scenario "${titles[where]}"`,
-            onclick: () => { location.hash = "path"; show(); window.KQPlayground.prefill(full, where); }
+            onclick: () => { location.hash = "path"; show(); need("play").then(() => window.KQPlayground.prefill(full, where), () => {}); }
           }, "Try") : h("a.copy.lab", {
             href: Q.repo + "#installation", title: "Needs a real cluster: run it in the free local lab (./nimbus up)"
           }, "Lab"),
@@ -566,7 +598,7 @@
   // --- init ----------------------------------------------------------------
 
   $("#quiz-level").append(h("option", { value: "exam" }, `Exam: ${EXAM_SIZE} random questions from every level`));
-  for (const lv of Q.levels) $("#quiz-level").append(h("option", { value: lv.id }, `${lv.id} · ${lv.topic} (${questionsFor(lv.id).length} questions)`));
+  for (const lv of Q.levels) $("#quiz-level").append(h("option", { value: lv.id }, quizLabel(lv)));
   $("#quiz-level").value = "00";
   $("#quiz-level").addEventListener("change", renderQuiz);
   $("#quiz-again").addEventListener("click", () => { renderQuiz(); $("#quiz-list").scrollIntoView({ block: "start" }); });
@@ -590,7 +622,7 @@
   const doorGo = () => { $("#doctor-q").value = $("#door-q").value; goTab("doctor", () => { renderDoctorList(); $("#doctor-q").focus(); }); };
   $("#door-go").addEventListener("click", doorGo);
   $("#door-q").addEventListener("keydown", (e) => { if (e.key === "Enter") doorGo(); });
-  $("#pg-goal").after(copyButton(() => linkTo("play/" + window.KQPlayground.current()),
+  $("#pg-goal").after(copyButton(() => linkTo("play/" + (window.KQPlayground ? window.KQPlayground.current() : Q.scenarios[0].id)),
     { label: "Copy link", name: "Copy a link to this scenario", failed: "Use the address bar" }));
   $("#cheat-q").addEventListener("input", renderCheats);
   renderFill();
@@ -626,8 +658,8 @@
 
   function renderPalette() {
     const words = paletteInput.value.toLowerCase().split(/\s+/).filter(Boolean);
-    const scenarios = (window.KQPlayground ? window.KQPlayground.scenarios : []).map((sc) => ({
-      label: `Playground: ${sc.title}`, kind: "Practice", run: () => goTab("path", () => window.KQPlayground.load(sc.id))
+    const scenarios = Q.scenarios.map((sc) => ({
+      label: `Playground: ${sc.title}`, kind: "Practice", run: () => goTab("path", () => need("play").then(() => window.KQPlayground.load(sc.id), () => {}))
     }));
     paletteItems = [...ACTIONS, ...scenarios].filter((a) => {
       const text = `${a.label} ${a.hint || ""} ${a.kind}`.toLowerCase();
@@ -643,6 +675,7 @@
   }
   function openPalette() {
     if (palette.open) return;
+    needAll().catch(() => {});
     paletteInput.value = "";
     paletteActive = 0;
     renderPalette();
@@ -683,18 +716,22 @@
     }
   });
 
-  // Shared with architecture.js, which loads after this script.
+  // Shared with engage.js and architecture.js.
   window.KQUI = { h, rich, practise };
 
+  // The first screen, in one pass, so the flow, scoreboard and path appear together.
   renderGuides();
+  window.KQEngage.render();
   renderFlow();
   renderPath();
-  renderQuiz();
   renderXray(Q.xray.length);
   show();
-  // The Try buttons need the playground, which loads after this script.
-  window.addEventListener("DOMContentLoaded", () => {
-    renderCheats();
-    openLinked(true); // scenarios, and the Practise it links, need the playground
+  openLinked(true); // a #play/<id> link waits for the playground, a #fix/<id> link opens now
+
+  // Everything else loads while the reader looks at the first screen.
+  (window.requestIdleCallback || ((fn) => setTimeout(fn, 200)))(() => {
+    if (!$("#cheat-out").firstChild) renderCheats();
+    needAll().catch(() => {});
+    quizBank().then(() => { if (!$("#quiz-list").firstChild) renderQuiz(); }, () => {});
   });
 })();
