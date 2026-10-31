@@ -1088,6 +1088,10 @@ assert.match(step(c, "kubectl get endpointslices -l kubernetes.io/service-name=m
 // and each one left to the lab really cannot run here, so neither list goes stale.
 global.window = {};
 require(path.resolve(__dirname, "../site/data.js"));
+// The first screen counts and picks scenarios from data.js before the simulator loads;
+// the index must match the simulator exactly.
+assert.deepStrictEqual(window.TRACK.scenarios, SCENARIOS.map((s) => ({ id: s.id, title: s.title, level: s.level.id, story: s.story })),
+  "TRACK.scenarios in site/data.js must match the playground's scenarios (id, title, level, story, in order)");
 const runsIn = (id, cmd) => {
   const cl = fresh(id);
   const full = KQSim.fillBlanks(cl, cmd);
