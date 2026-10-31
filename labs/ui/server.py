@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Local practice dashboard for Kubernetes Quest.
+"""Local practice dashboard for DevOps Nimbus Kubernetes.
 
 Serves a small web page that shows each level's mission and lets the learner
 start a level, run its checks, read hints and watch the namespace, by calling
-the ./quest script. Standard library only.
+the ./nimbus script. Standard library only.
 
 Security model:
   * listens on 127.0.0.1 only;
@@ -29,8 +29,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 LEVELS = ROOT / "labs"
-QUEST = ROOT / "quest"
-STATE_DIR = Path(os.environ.get("QUEST_HOME", Path.home() / ".k8s-quest"))
+NIMBUS = ROOT / "nimbus"
+STATE_DIR = Path(os.environ.get("NIMBUS_HOME", Path.home() / ".k8s-nimbus"))
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LEVEL_ID = re.compile(r"^[0-9]{2}$")
 STATIC = {
@@ -44,7 +44,7 @@ COMMAND_TIMEOUT = 300
 CONSOLE_TIMEOUT = 60
 MAX_BODY = 256 * 1024
 MAX_OUTPUT = 200 * 1024
-PRACTICE_CONTEXT = "kind-k8s-quest"
+PRACTICE_CONTEXT = "kind-k8s-nimbus"
 # Flags that would send kubectl to another cluster or act as someone else.
 BLOCKED_FLAGS = (
     "--kubeconfig", "--context", "--cluster", "--server", "-s", "--token", "--user",
@@ -112,7 +112,7 @@ def practice_context():
     """The context kubectl may use from the dashboard, or None."""
     _, ctx = run(["kubectl", "config", "current-context"], timeout=10)
     ctx = ctx.strip()
-    if ctx == PRACTICE_CONTEXT or (ctx and os.environ.get("QUEST_ANY_CONTEXT") == "1"):
+    if ctx == PRACTICE_CONTEXT or (ctx and os.environ.get("NIMBUS_ANY_CONTEXT") == "1"):
         return ctx
     return None
 
@@ -167,7 +167,7 @@ def parse_checks(output):
 
 class Handler(BaseHTTPRequestHandler):
     token = ""
-    server_version = "k8s-quest-ui"
+    server_version = "k8s-nimbus-ui"
 
     def log_message(self, fmt, *args):  # keep the terminal quiet
         pass
@@ -183,10 +183,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def authorised(self):
-        given = self.headers.get("X-Quest-Token", "")
+        given = self.headers.get("X-Nimbus-Token", "")
         if secrets.compare_digest(given, self.token):
             return True
-        self.send_json({"error": "missing or wrong token; open the URL printed by ./quest ui"}, HTTPStatus.FORBIDDEN)
+        self.send_json({"error": "missing or wrong token; open the URL printed by ./nimbus ui"}, HTTPStatus.FORBIDDEN)
         return False
 
     def do_GET(self):
@@ -225,7 +225,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "no such level"}, HTTPStatus.NOT_FOUND)
             return
         if m.group(2):
-            ns = "quest-" + level.name[:2]
+            ns = "nimbus-" + level.name[:2]
             code, out = run(["kubectl", "get", "deploy,rs,pods,svc,pvc,jobs,cronjobs,netpol,hpa",
                              "-n", ns, "-o", "wide"], timeout=20)
             self.send_json({"ok": code == 0, "output": out.strip() or "No resources yet."})
@@ -256,7 +256,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "no such level or action"}, HTTPStatus.NOT_FOUND)
             return
         action = m.group(2)
-        code, out = run([str(QUEST), action, str(int(level.name[:2]))])
+        code, out = run([str(NIMBUS), action, str(int(level.name[:2]))])
         result = {"ok": code == 0, "output": out.strip()}
         if action == "check":
             result["checks"] = parse_checks(out)
@@ -270,9 +270,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         ctx = practice_context()
         if not ctx:
-            self.send_json({"ok": False, "output": "kubectl is not pointing at the practice cluster. Run ./quest up first."})
+            self.send_json({"ok": False, "output": "kubectl is not pointing at the practice cluster. Run ./nimbus up first."})
             return
-        ns = "quest-" + level_id
+        ns = "nimbus-" + level_id
         try:
             body = self.read_json()
             if action == "kubectl":
@@ -293,8 +293,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Kubernetes Quest practice dashboard")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("QUEST_UI_PORT", "8765")))
+    parser = argparse.ArgumentParser(description="DevOps Nimbus Kubernetes practice dashboard")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("NIMBUS_UI_PORT", "8765")))
     args = parser.parse_args()
 
     Handler.token = secrets.token_urlsafe(24)
@@ -308,7 +308,7 @@ def main():
     if codespace and domain:
         # In GitHub Codespaces the browser reaches the port through GitHub's forwarder.
         base = f"https://{codespace}-{args.port}.{domain}"
-    print("Kubernetes Quest dashboard")
+    print("DevOps Nimbus Kubernetes dashboard")
     print(f"  Open: {base}/#token={Handler.token}")
     print("  Keep your terminal for kubectl. Press Ctrl+C here to stop the dashboard.")
     try:

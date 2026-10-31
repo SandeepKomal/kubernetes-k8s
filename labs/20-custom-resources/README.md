@@ -61,5 +61,5 @@ cert-manager (`Certificate`), Argo CD (`Application`), Prometheus
 operate day to day arrives as CRDs plus an operator. `kubectl explain`
 and `kubectl get crd` are how you learn an unfamiliar one quickly.
 
-> This level creates a cluster-wide CRD. `./quest start` (any level)
+> This level creates a cluster-wide CRD. `./nimbus start` (any level)
 > removes it again.

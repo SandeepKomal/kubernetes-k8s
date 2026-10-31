@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Kubernetes Quest: learn Kubernetes by fixing a broken practice cluster.
+# DevOps Nimbus Kubernetes: learn Kubernetes by fixing a broken practice cluster.
 #
-#   ./quest up            create the local kind cluster
-#   ./quest list          show every level and your progress
-#   ./quest start 0       set up level 0 in its own namespace
-#   ./quest check         check your work on the current level
-#   ./quest hint          reveal the next hint
-#   ./quest ui            open the practice dashboard in your browser
+#   ./nimbus up            create the local kind cluster
+#   ./nimbus list          show every level and your progress
+#   ./nimbus start 0       set up level 0 in its own namespace
+#   ./nimbus check         check your work on the current level
+#   ./nimbus hint          reveal the next hint
+#   ./nimbus ui            open the practice dashboard in your browser
 #
-# Run ./quest help for everything else.
+# Run ./nimbus help for everything else.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LEVELS="$ROOT/labs"
-CLUSTER="k8s-quest"
-STATE_DIR="${QUEST_HOME:-$HOME/.k8s-quest}"
+CLUSTER="k8s-nimbus"
+STATE_DIR="${NIMBUS_HOME:-$HOME/.k8s-nimbus}"
+# Keep progress saved before the course was renamed.
+[ -n "${NIMBUS_HOME:-}" ] || [ -e "$STATE_DIR" ] || [ ! -d "$HOME/.k8s-quest" ] || mv "$HOME/.k8s-quest" "$STATE_DIR"
 mkdir -p "$STATE_DIR"
 
 if [ -t 1 ]; then
@@ -24,7 +26,7 @@ else
 fi
 
 die() { printf '%serror:%s %s\n' "$BAD" "$END" "$*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "$1 is not installed. Run ./quest doctor"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is not installed. Run ./nimbus doctor"; }
 
 # --- levels -----------------------------------------------------------------
 
@@ -35,16 +37,16 @@ level_dirs() { find "$LEVELS" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9]-
 resolve() {
   local arg=${1:-} d
   [ -n "$arg" ] || arg=$(cat "$STATE_DIR/current" 2>/dev/null || true)
-  [ -n "$arg" ] || die "which level? e.g. ./quest start 0"
+  [ -n "$arg" ] || die "which level? e.g. ./nimbus start 0"
   if [[ "$arg" =~ ^[0-9]+$ ]]; then arg=$(printf '%02d' "$((10#$arg))"); fi
   while read -r d; do
     case "$(basename "$d")" in "$arg"|"$arg"-*) echo "$d"; return ;; esac
   done < <(level_dirs)
-  die "no level '$arg'. Run ./quest list"
+  die "no level '$arg'. Run ./nimbus list"
 }
 
 level_id() { basename "$1" | cut -d- -f1; }
-level_ns() { echo "quest-$(level_id "$1")"; }
+level_ns() { echo "nimbus-$(level_id "$1")"; }
 level_title() { head -n1 "$1/README.md" | sed -E 's/^# *//'; }
 is_done() { grep -qx "$(level_id "$1")" "$STATE_DIR/done" 2>/dev/null; }
 
@@ -56,10 +58,10 @@ guard_context() {
   need kubectl
   local ctx
   ctx=$(kubectl config current-context 2>/dev/null || true)
-  if [ "$ctx" != "kind-$CLUSTER" ] && [ "${QUEST_ANY_CONTEXT:-}" != "1" ]; then
+  if [ "$ctx" != "kind-$CLUSTER" ] && [ "${NIMBUS_ANY_CONTEXT:-}" != "1" ]; then
     die "current kubectl context is '${ctx:-none}', not kind-$CLUSTER.
-       Quest deletes and recreates namespaces, so it only runs on its own practice cluster.
-       Run ./quest up, or set QUEST_ANY_CONTEXT=1 if you really mean another disposable cluster."
+       nimbus deletes and recreates namespaces, so it only runs on its own practice cluster.
+       Run ./nimbus up, or set NIMBUS_ANY_CONTEXT=1 if you really mean another disposable cluster."
   fi
 }
 
@@ -75,9 +77,9 @@ cmd_doctor() {
     fi
   done
   if command -v python3 >/dev/null 2>&1; then
-    printf '  %s✔%s python3  (optional, for ./quest ui)\n' "$OK" "$END"
+    printf '  %s✔%s python3  (optional, for ./nimbus ui)\n' "$OK" "$END"
   else
-    printf '  %s-%s python3  (optional, only needed for ./quest ui)\n' "$DIM" "$END"
+    printf '  %s-%s python3  (optional, only needed for ./nimbus ui)\n' "$DIM" "$END"
   fi
   if [ $missing -eq 0 ] && ! docker info >/dev/null 2>&1; then
     printf '  %s!%s docker is installed but not running\n' "$WARN" "$END"; missing=1
@@ -94,7 +96,7 @@ cmd_up() {
   fi
   kubectl config use-context "kind-$CLUSTER" >/dev/null
   echo
-  echo "${OK}Ready.${END} Next: ${B}./quest list${END}, then ${B}./quest start 0${END}"
+  echo "${OK}Ready.${END} Next: ${B}./nimbus list${END}, then ${B}./nimbus start 0${END}"
 }
 
 cmd_down() {
@@ -105,7 +107,7 @@ cmd_down() {
 cmd_list() {
   local d mark cur done_count
   cur=$(cat "$STATE_DIR/current" 2>/dev/null || true)
-  echo "${B}Kubernetes Quest${END}  ${DIM}(✔ done, ▶ current)${END}"
+  echo "${B}DevOps Nimbus Kubernetes${END}  ${DIM}(✔ done, ▶ current)${END}"
   echo
   while read -r d; do
     mark=" "
@@ -130,7 +132,7 @@ cmd_start() {
     if [ -x "$c" ]; then "$c" >/dev/null 2>&1 || true; fi
   done
   kubectl create namespace "$ns" >/dev/null
-  kubectl label namespace "$ns" k8s-quest=level >/dev/null
+  kubectl label namespace "$ns" k8s-nimbus=level >/dev/null
   if [ -f "$d/setup.yaml" ]; then kubectl apply -n "$ns" -f "$d/setup.yaml" >/dev/null; fi
   if [ -x "$d/setup.sh" ]; then NS=$ns "$d/setup.sh" >/dev/null; fi
   kubectl config set-context --current --namespace="$ns" >/dev/null
@@ -139,7 +141,7 @@ cmd_start() {
   echo
   echo "kubectl now defaults to ${B}$ns${END}, so a plain ${B}kubectl get pods${END} works."
   echo "Read the mission:  ${B}${d#"$ROOT"/}/README.md${END}"
-  echo "Check your work:   ${B}./quest check${END}"
+  echo "Check your work:   ${B}./nimbus check${END}"
 }
 
 cmd_check() {
@@ -161,7 +163,7 @@ cmd_check() {
     is_done "$d" || level_id "$d" >> "$STATE_DIR/done"
     next=$(level_dirs | grep -A1 -x "$d" | tail -n +2 || true)
     if [ -n "$next" ]; then
-      echo "Next: ${B}$(level_title "$next")${END}  ->  ${B}./quest start $((10#$(level_id "$next")))${END}"
+      echo "Next: ${B}$(level_title "$next")${END}  ->  ${B}./nimbus start $((10#$(level_id "$next")))${END}"
     else
       echo "${OK}You finished every level.${END} Try the production checklist in docs/production-checklist.md."
     fi
@@ -186,7 +188,7 @@ cmd_solution() {
   local d a
   d=$(resolve "${1:-}")
   if [ -t 0 ]; then
-    read -r -p "Peek at the solution for $(level_title "$d")? Try ./quest hint first. [y/N] " a
+    read -r -p "Peek at the solution for $(level_title "$d")? Try ./nimbus hint first. [y/N] " a
     [[ "$a" =~ ^[Yy] ]] || exit 0
   fi
   cat "$d/solution.sh"
@@ -211,19 +213,19 @@ cmd_reset() {
 
 cmd_help() {
   cat <<EOF
-${B}Kubernetes Quest${END}: learn Kubernetes by fixing a practice cluster.
+${B}DevOps Nimbus Kubernetes${END}: learn Kubernetes by fixing a practice cluster.
 
-  ${B}./quest doctor${END}         check docker, kind and kubectl are installed
-  ${B}./quest up${END}             create the practice cluster (kind, 3 nodes)
-  ${B}./quest list${END}           levels and your progress
-  ${B}./quest start <n>${END}      set up level n (run it again to start over)
-  ${B}./quest check [n]${END}      check your work (defaults to the current level)
-  ${B}./quest hint [n]${END}       next hint, one at a time
-  ${B}./quest solution [n]${END}   print the reference solution
-  ${B}./quest solve [n]${END}      apply the reference solution
-  ${B}./quest ui${END}             practice dashboard in your browser (needs python3)
-  ${B}./quest reset${END}          forget your progress
-  ${B}./quest down${END}           delete the practice cluster
+  ${B}./nimbus doctor${END}         check docker, kind and kubectl are installed
+  ${B}./nimbus up${END}             create the practice cluster (kind, 3 nodes)
+  ${B}./nimbus list${END}           levels and your progress
+  ${B}./nimbus start <n>${END}      set up level n (run it again to start over)
+  ${B}./nimbus check [n]${END}      check your work (defaults to the current level)
+  ${B}./nimbus hint [n]${END}       next hint, one at a time
+  ${B}./nimbus solution [n]${END}   print the reference solution
+  ${B}./nimbus solve [n]${END}      apply the reference solution
+  ${B}./nimbus ui${END}             practice dashboard in your browser (needs python3)
+  ${B}./nimbus reset${END}          forget your progress
+  ${B}./nimbus down${END}           delete the practice cluster
 
 Progress is stored in $STATE_DIR.
 EOF
@@ -242,5 +244,5 @@ case "${1:-help}" in
   ui) shift; cmd_ui "$@" ;;
   reset) cmd_reset ;;
   help|-h|--help) cmd_help ;;
-  *) die "unknown command '$1'. Run ./quest help" ;;
+  *) die "unknown command '$1'. Run ./nimbus help" ;;
 esac

@@ -1076,7 +1076,7 @@ assert.match(step(c, "kubectl get all -l app=web"), /pod\/web-\S+[\s\S]*deployme
 assert.match(step(c, "kubectl wait --for=condition=Ready pod -l app=web --timeout=60s"), /condition met/);
 assert.match(step(c, "kubectl logs -l app=web --tail=1"), /GET \/ HTTP/);
 assert.match(step(c, "kubectl api-resources"), /deployments\s+deploy\s+apps\/v1\s+true\s+Deployment/);
-assert.match(step(c, "kubectl config use-context kind-k8s-quest"), /Switched to context/);
+assert.match(step(c, "kubectl config use-context kind-k8s-nimbus"), /Switched to context/);
 assert.match(step(c, "kubectl rollout pause deployment/web; kubectl rollout resume deployment/web"), /paused\n.*resumed/);
 assert.match(step(c, "kubectl create deployment web --image=nginx:1.27 --dry-run=client -o yaml"), /kind: Deployment[\s\S]*- image: nginx:1.27/);
 step(c, "kubectl autoscale deployment/web --cpu-percent=70 --min=2 --max=6");
@@ -1094,7 +1094,7 @@ const runsIn = (id, cmd) => {
   if (/<[^>]+>/.test(full)) return false;
   return !kubectl(cl, full).some(([t, k]) => k === "na" || /command not found|^(error|Error)\b|No such file|refused|Unable to connect/.test(t));
 };
-for (const [cmd, , , where] of window.QUEST.cheats) {
+for (const [cmd, , , where] of window.TRACK.cheats) {
   if (where) assert.ok(runsIn(where === "any" ? "crash" : where, cmd), `cheat sheet: "${cmd}" should run in ${where}`);
   else assert.ok(!SCENARIOS.some((s) => runsIn(s.id, cmd)), `cheat sheet: "${cmd}" now runs in the playground; give it a Try`);
 }
@@ -1106,7 +1106,7 @@ assert.match(text(c, "kubectl get pods -n other"), /No resources found in other 
 assert.match(text(c, "kubectl scale deployment/orders --replicas=99"), /0 to 6/);
 
 // Each scenario names its course level by the level's own title.
-const levelTitles = Object.fromEntries(window.QUEST.levels.map((l) => [l.id, l.title]));
+const levelTitles = Object.fromEntries(window.TRACK.levels.map((l) => [l.id, l.title]));
 for (const s of SCENARIOS) assert.strictEqual(s.level.text, `Level ${s.level.id} · ${levelTitles[s.level.id]}`, `${s.id}: level text`);
 
 console.log(`playground ok: ${SCENARIOS.length} scenarios`);

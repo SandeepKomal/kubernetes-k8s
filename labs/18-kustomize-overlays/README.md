@@ -5,7 +5,7 @@
 > We stopped copying YAML per environment. The `shop` app now has one
 > `base` and a `prod` overlay that changes only what differs in
 > production. Nobody has managed to deploy the overlay yet: it does not
-> even build. Fix it and deploy production into `quest-18`.
+> even build. Fix it and deploy production into `nimbus-18`.
 
 **You will learn:** Kustomize bases and overlays, patches, generated
 ConfigMaps with hash suffixes, image overrides, and `kubectl apply -k`.
@@ -13,11 +13,11 @@ Kustomize is built into kubectl; there is nothing to install.
 
 ## Where the files are
 
-`./quest start 18` copies the app into a scratch folder so you can edit
+`./nimbus start 18` copies the app into a scratch folder so you can edit
 freely:
 
 ```text
-~/.k8s-quest/workspace/18-kustomize/
+~/.k8s-nimbus/workspace/18-kustomize/
 ├── base/                  shared by every environment
 │   ├── kustomization.yaml
 │   ├── deployment.yaml
@@ -29,7 +29,7 @@ freely:
 
 ## Mission
 
-Deploy `overlays/prod` so that, in `quest-18`:
+Deploy `overlays/prod` so that, in `nimbus-18`:
 
 - [ ] `shop` has 3 ready replicas
 - [ ] It runs `nginx:1.27-alpine`
@@ -40,7 +40,7 @@ Deploy `overlays/prod` so that, in `quest-18`:
 ## Field notes
 
 ```bash
-cd ~/.k8s-quest/workspace/18-kustomize
+cd ~/.k8s-nimbus/workspace/18-kustomize
 kubectl kustomize overlays/prod        # render the final YAML; nothing is applied
 kubectl diff -k overlays/prod          # what would change in the cluster
 kubectl apply -k overlays/prod         # apply it

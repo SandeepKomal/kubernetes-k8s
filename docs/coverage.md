@@ -9,7 +9,7 @@ before an exam.
 Where to practise, from lightest to deepest:
 
 - **Playground**: the simulated cluster on the companion site, no install.
-- **Level**: a hands-on level on your own kind cluster (`./quest start <n>`).
+- **Level**: a hands-on level on your own kind cluster (`./nimbus start <n>`).
 - **Reference**: the guides in [docs/](README.md) and examples in
   [reference/](../reference/) and [examples/](../examples/).
 - **Troubleshoot**: the reference page on the companion site.

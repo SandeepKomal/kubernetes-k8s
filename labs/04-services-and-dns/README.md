@@ -38,8 +38,8 @@ node IP:30080 ──▶ (same Service) ──▶ Pod IP:targetPort
 | `LoadBalancer` | A cloud load balancer | Exposing a service on EKS, GKE, AKS |
 
 Every Service gets a DNS name: `kitchen` from the same namespace,
-`kitchen.quest-04` from another namespace, and in full
-`kitchen.quest-04.svc.cluster.local`.
+`kitchen.nimbus-04` from another namespace, and in full
+`kitchen.nimbus-04.svc.cluster.local`.
 
 Test from inside the cluster with a throwaway Pod:
 

@@ -1,4 +1,4 @@
-// Kubernetes Quest practice dashboard. Talks only to the local ./quest ui server.
+// DevOps Nimbus Kubernetes practice dashboard. Talks only to the local ./nimbus ui server.
 "use strict";
 
 (function () {
@@ -26,7 +26,7 @@
   }
 
   async function api(path, method = "GET", body) {
-    const headers = { "X-Quest-Token": token };
+    const headers = { "X-Nimbus-Token": token };
     if (body) headers["Content-Type"] = "application/json";
     const res = await fetch("/api/" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json();
@@ -322,8 +322,8 @@
     levels = data.levels;
     const ctx = $("#context");
     ctx.textContent = data.context || "no kubectl context";
-    ctx.className = "context " + (data.context === "kind-k8s-quest" ? "ok" : "bad");
-    if (data.context !== "kind-k8s-quest") ctx.title = "Run ./quest up to create and select the practice cluster";
+    ctx.className = "context " + (data.context === "kind-k8s-nimbus" ? "ok" : "bad");
+    if (data.context !== "kind-k8s-nimbus") ctx.title = "Run ./nimbus up to create and select the practice cluster";
     renderLevels();
     return data;
   }

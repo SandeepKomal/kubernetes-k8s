@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-gpu=$(kubectl get namespace "$NS" -o 'jsonpath={.metadata.annotations.k8s-quest/gpu-node}' 2>/dev/null)
+gpu=$(kubectl get namespace "$NS" -o 'jsonpath={.metadata.annotations.k8s-nimbus/gpu-node}' 2>/dev/null)
 on_gpu_node() {
   local nodes
   nodes=$(kubectl -n "$NS" get pods -l app=trainer --field-selector=status.phase=Running \

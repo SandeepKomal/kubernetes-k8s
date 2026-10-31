@@ -1,5 +1,5 @@
 name: Idea for a new level
-description: A real-world Kubernetes problem that would make a good quest.
+description: A real-world Kubernetes problem that would make a good level.
 labels: ["level-idea"]
 body:
   - type: textarea

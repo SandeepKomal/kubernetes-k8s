@@ -17,8 +17,8 @@ kind version
 
 cat <<'MSG'
 
-Kubernetes Quest is ready. In the terminal:
-  ./quest up          create the practice cluster (1-2 minutes)
-  ./quest ui          open the practice dashboard
-  ./quest start 0     or work from the terminal only
+DevOps Nimbus Kubernetes is ready. In the terminal:
+  ./nimbus up          create the practice cluster (1-2 minutes)
+  ./nimbus ui          open the practice dashboard
+  ./nimbus start 0     or work from the terminal only
 MSG

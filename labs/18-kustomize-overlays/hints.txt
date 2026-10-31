@@ -1,4 +1,4 @@
-Run `kubectl kustomize overlays/prod` in ~/.k8s-quest/workspace/18-kustomize
+Run `kubectl kustomize overlays/prod` in ~/.k8s-nimbus/workspace/18-kustomize
 and read the error. Then check the image tag against the mission.
 ---
 The patch in resources.yaml names a Deployment that does not exist in the

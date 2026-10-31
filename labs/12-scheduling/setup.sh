@@ -5,4 +5,4 @@ node=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o name | t
 [ -n "$node" ] || node=$(kubectl get nodes -o name | tail -n1)
 node=${node#node/}
 kubectl taint nodes "$node" dedicated=gpu:NoSchedule --overwrite
-kubectl annotate namespace "$NS" "k8s-quest/gpu-node=$node" --overwrite
+kubectl annotate namespace "$NS" "k8s-nimbus/gpu-node=$node" --overwrite

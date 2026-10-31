@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: shellcheck
-        run: shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
+        run: shellcheck -x nimbus labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
 
       - name: Install kubeconform
         run: |
@@ -96,7 +96,7 @@ jobs:
           kind version
 
       - name: Create the practice cluster
-        run: ./quest up
+        run: ./nimbus up
 
       - name: Start broken, fail, solve, pass
         run: tests/run-level.sh ${{ matrix.level }}
@@ -104,7 +104,7 @@ jobs:
       - name: Cluster state on failure
         if: failure()
         run: |
-          kubectl get all,events -n "quest-$(printf '%02d' ${{ matrix.level }})" || true
+          kubectl get all,events -n "nimbus-$(printf '%02d' ${{ matrix.level }})" || true
           kubectl get nodes -o wide || true
 
   example:
@@ -121,7 +121,7 @@ jobs:
           sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
 
       - name: Create the practice cluster
-        run: ./quest up
+        run: ./nimbus up
 
       - name: Deploy both overlays
         run: |

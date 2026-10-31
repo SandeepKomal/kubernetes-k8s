@@ -3434,22 +3434,22 @@
   function config(c, args, flags, say) {
     const sub = args[1];
     if (sub === "get-contexts") {
-      return table3(say, [["CURRENT", "NAME", "CLUSTER", "AUTHINFO", "NAMESPACE"], ["*", "kind-k8s-quest", "kind-k8s-quest", "kind-k8s-quest", c.currentNs]]);
+      return table3(say, [["CURRENT", "NAME", "CLUSTER", "AUTHINFO", "NAMESPACE"], ["*", "kind-k8s-nimbus", "kind-k8s-nimbus", "kind-k8s-nimbus", c.currentNs]]);
     }
-    if (sub === "current-context") return say("kind-k8s-quest");
+    if (sub === "current-context") return say("kind-k8s-nimbus");
     if (sub === "view") {
-      ["apiVersion: v1", "kind: Config", "current-context: kind-k8s-quest", "contexts:", "- name: kind-k8s-quest", "  context:", "    cluster: kind-k8s-quest",
-        "    user: kind-k8s-quest", `    namespace: ${c.currentNs}`].forEach((l) => say(l));
+      ["apiVersion: v1", "kind: Config", "current-context: kind-k8s-nimbus", "contexts:", "- name: kind-k8s-nimbus", "  context:", "    cluster: kind-k8s-nimbus",
+        "    user: kind-k8s-nimbus", `    namespace: ${c.currentNs}`].forEach((l) => say(l));
       return;
     }
     if (sub === "set-context") {
       if (!flags.current) return say("error: this playground sets the current context only: kubectl config set-context --current --namespace=<ns>", "warn");
       if (!flags.namespace && !flags.n) return say("error: give --namespace=<ns>", "warn");
       c.currentNs = flags.namespace || flags.n;
-      return say('Context "kind-k8s-quest" modified.');
+      return say('Context "kind-k8s-nimbus" modified.');
     }
     if (sub === "use-context") {
-      if (args[2] === "kind-k8s-quest") return say('Switched to context "kind-k8s-quest".');
+      if (args[2] === "kind-k8s-nimbus") return say('Switched to context "kind-k8s-nimbus".');
       return say(`error: no context exists with the name: "${args[2] || ""}" (kubectl config get-contexts lists them)`, "warn");
     }
     return say("Try: kubectl config get-contexts, current-context, view --minify, set-context --current --namespace=<ns>", "dim");
@@ -5615,7 +5615,7 @@
         if (!res.ok) say("command terminated with exit code 1", "dim");
         return out;
       }
-      return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./quest start 0", "na"), out;
+      return say("kubectl exec runs wget, curl, nslookup and env in this playground. For a shell, use the course: ./nimbus start 0", "na"), out;
     }
     if (verb === "annotate") {
       const { kind, name } = target(null);
@@ -5660,7 +5660,7 @@
     }
     if (verb === "edit") return say("kubectl edit opens an editor, which this playground does not have. Use kubectl set ... instead.", "na"), out;
     if (verb === "apply") return say("There are no files in this playground. Use kubectl set, create, label or patch to change live objects.", "na"), out;
-    if (verb === "run" || verb === "port-forward") return say(`kubectl ${verb} needs a real cluster. Try it in the course: ./quest start 0`, "na"), out;
+    if (verb === "run" || verb === "port-forward") return say(`kubectl ${verb} needs a real cluster. Try it in the course: ./nimbus start 0`, "na"), out;
     if (verb === "version" && c.kadm) {
       say(`Client Version: v${c.kadm.pkgs.kubectl}`);
       say("Kustomize Version: v5.7.1");
@@ -5683,7 +5683,7 @@
     const file = (ext) => Object.keys(c.files).find((f) => f.endsWith(ext) && !f.includes("staging"));
     const named = { vpa: c.vpas[0], hpa: c.hpas[0], httproute: c.routes[0], approve: c.csrs[0], limitrange: c.limitRanges[0], cronjob: c.cronjobs[0], storageclass: c.storageClasses[0] };
     const v = {
-      ctx: "kind-k8s-quest", ns: c.oldNs && !c.oldNs.gone ? c.oldNs.name : c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
+      ctx: "kind-k8s-nimbus", ns: c.oldNs && !c.oldNs.gone ? c.oldNs.name : c.currentNs || NS, app: dep && dep.name, d: dep && dep.name, pod: pod && pod.name,
       container: pod && (pod.owner || pod.name), svc: svc && svc.name, "node-ip": "172.18.0.2", nodePort: svc && svc.nodePort,
       cj: c.cronjobs[0] && c.cronjobs[0].name, image: pod && pod.spec.image, n: 1, revision: 1, release: c.helm && c.helm.name,
       chart: c.helm && c.helm.chart, node: /kube-scheduler-<node>/.test(cmd) ? "control-plane" : c.disk ? c.disk.node : "worker-1", sts: c.statefulsets[0] && c.statefulsets[0].name,
@@ -5861,6 +5861,7 @@
     if (!solved && scenario.won(cluster)) {
       solved = true;
       saved.add(scenario.id);
+      document.dispatchEvent(new CustomEvent("dq:solved", { detail: scenario.id }));
       renderPicker();
       // The checkmark and the group's count mark the moment.
       const b = picker.querySelector('.pg-scn[aria-pressed="true"]');
@@ -5874,7 +5875,7 @@
       print("✓ Fixed. " + scenario.lesson, "ok");
       print(`  Practise it on a real cluster in ${scenario.level.text}.`, "dim");
       const next = SCENARIOS.find((s) => !saved.get().includes(s.id));
-      print(next ? `  Next scenario: ${next.title}. Pick it above, or type 'next'.` : "  You solved every scenario. Start the course: ./quest start 0", "dim");
+      print(next ? `  Next scenario: ${next.title}. Pick it above, or type 'next'.` : "  You solved every scenario. Start the course: ./nimbus start 0", "dim");
     }
   }
 
@@ -5977,7 +5978,7 @@
 
   const reveal = () => { term.scrollIntoView({ block: "center" }); input.focus({ preventScroll: true }); };
   window.KQPlayground = {
-    scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title })),
+    scenarios: SCENARIOS.map((s) => ({ id: s.id, title: s.title, story: s.story, level: s.level.id })),
     current: () => scenario.id,
     load: (id) => { load(id); reveal(); },
     // From the cheat sheet: open the scenario a command needs, if any, fill its
