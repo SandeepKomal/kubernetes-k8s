@@ -393,7 +393,7 @@ To report a vulnerability, follow [SECURITY.md](SECURITY.md): report it privatel
 
 ## Privacy and cost
 
-The site runs entirely in your browser: no accounts, cookies, trackers or database. Your progress stays in your own browser's storage, and `./nimbus` keeps its progress in `~/.k8s-nimbus` on your computer. The site is hosted free on GitHub Pages and the course runs on a local kind cluster at no cost; only the optional [EKS quickstart](docs/eks-quickstart.md) uses AWS, which charges for the resources it creates.
+The site runs entirely in your browser: no accounts, cookies, trackers or database. Your progress stays in your own browser's storage, and `./nimbus` keeps its progress in `~/.k8s-nimbus` on your computer. The site is hosted free on GitHub Pages and the course runs on a local kind cluster at no cost; only the optional [EKS quickstart](docs/eks-quickstart.md) uses AWS, which charges for the resources it creates. See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
 ## License and trademarks
 
