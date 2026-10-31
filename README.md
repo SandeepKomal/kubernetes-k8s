@@ -2,35 +2,76 @@
 
 # DevOps Nimbus Kubernetes
 
+**Kubernetes, zero to on-call.** 22 deliberately broken levels you fix with `kubectl` on a local kind cluster, plus a free browser site with a playground of real incidents, for engineers learning Kubernetes or preparing for on-call.
+
+[![Learning site](https://img.shields.io/badge/learn-DevOps%20Nimbus-1d1d1f)](https://sandeepkomal.github.io/kubernetes-k8s/)
+[![CI](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml/badge.svg)](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml)
+[![Pages](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/pages.yml/badge.svg)](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/pages.yml)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-kind-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/docs/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![No trackers](https://img.shields.io/badge/site-no%20trackers%20%C2%B7%20no%20cookies-2ea44f)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)](CONTRIBUTING.md)
+![Last commit](https://img.shields.io/github/last-commit/SandeepKomal/kubernetes-k8s)
+[![GitHub stars](https://img.shields.io/github/stars/SandeepKomal/kubernetes-k8s?style=social)](https://github.com/SandeepKomal/kubernetes-k8s/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/SandeepKomal/kubernetes-k8s?style=social)](https://github.com/SandeepKomal/kubernetes-k8s/network/members)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/SandeepKomal/kubernetes-k8s)
+
+**[Open the learning site](https://sandeepkomal.github.io/kubernetes-k8s/)** · [Troubleshoot an error](https://sandeepkomal.github.io/kubernetes-k8s/#doctor) · [Every error on one page](https://sandeepkomal.github.io/kubernetes-k8s/problems.html) · [All DevOps Nimbus tracks](https://sandeepkomal.github.io/devops-nimbus/)
+
+## Contents
+
+- [Learn it in your browser](#learn-it-in-your-browser)
+- [What's in this repository](#whats-in-this-repository)
+- [Quick start](#quick-start)
+- [Your first level](#your-first-level)
+- [Practice dashboard](#practice-dashboard)
+- [Command reference](#command-reference)
+- [Levels](#levels)
+- [Learning paths](#learning-paths)
+- [Production example](#production-example)
+- [Reference material](#reference-material)
+- [FAQ](#faq)
+- [Repository layout](#repository-layout)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Privacy and cost](#privacy-and-cost)
+- [License and trademarks](#license-and-trademarks)
+- [Author and contributors](#author-and-contributors)
+
+## Learn it in your browser
+
+[`site/`](site/) is a static web application that complements the levels.
+It is published with GitHub Pages at
+<https://sandeepkomal.github.io/kubernetes-k8s/>.
+
+| Section | Description |
+| --- | --- |
+| Playground | Seventy-three simulated incidents to diagnose and fix beside a live cluster map, with kubectl, helm, curl, docker buildx, etcdctl, etcdutl, kubeadm, apt-get, trivy and ssh. Pods: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, OOMKilled, a liveness restart loop, a slow app killed before it starts, a stuck init container, a typo in the container command, an image built for the wrong CPU architecture, a private registry without credentials, the Docker Hub pull rate limit, a ConfigMap change running Pods never saw, a Secret without the key a Pod reads, a Secret volume that does not exist, an OOMKill from a LimitRange default, a password encoded twice, nginx under a read-only root filesystem, old code still running on :latest. Scheduling and storage: Pending, a node selector, an untolerated taint, a node at its maxPods limit, required anti-affinity capping replicas, a critical Pod that needs a PriorityClass to preempt batch work, a DaemonSet missing a tainted node, a StatefulSet stuck behind its first Pod, a PVC stuck Pending, a full volume to expand, a Multi-Attach volume error during a rollout, Pods evicted by node DiskPressure. Networking: a failing readiness probe, no endpoints, a canary leaking into the stable Service, a wrong targetPort, DNS across namespaces, CoreDNS scaled to zero, Ingress 404 and 503, an Ingress path that is too exact, an Ingress rewrite that loses the path, an Ingress serving the fake TLS certificate, a Gateway API route, a LoadBalancer stuck pending on kind, a NetworkPolicy, a default-deny egress policy that breaks DNS. Security: RBAC forbidden, a new user's certificate and access, Pod Security, an admission webhook that is down, an exceeded quota. Operations: a failed Job, a suspended CronJob, a CronJob blocked by a hung Job, a bad rollout, a paused rollout, a failed Helm upgrade, a blocked drain, a Pod stuck Terminating behind a finalizer. Cluster administration: the wrong namespace, a namespace stuck Terminating, a NotReady node, a crashed kube-scheduler, expired control-plane certificates, an etcd backup and restore, a kubeadm upgrade. Cluster security: an audit log investigation, encryption at rest, a ValidatingAdmissionPolicy, an image scan, an AppArmor profile. Autoscaling: HPA and VPA |
+| Path | All levels, with progress saved in the browser |
+| Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
+| YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
+| Troubleshoot | A reference of 58 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC and admission, rollouts, autoscaling, storage, Jobs, nodes and the control plane). Paste an error to find its entry; each gives the symptom, the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and the playground scenario to practise it. Every entry and every scenario has its own link (`#fix/<id>`, `#play/<id>`) with a Copy link button, and [`problems.html`](site/problems.html) lists them all as one plain page that reads without JavaScript |
+| Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
+| K8s arch | An interactive diagram of the control plane, worker nodes and add-ons. Point at a component to see what it does and how it fails; click for the commands to inspect it and the playground scenarios that break it; follow a `kubectl apply` through the cluster step by step |
+
+- **Scoreboard**: a score, a skill radar, learning uptime and on-call shifts against the clock; **Download my progress** and **Load my progress** move it to another device.
+
+Every page opens with a How to use this panel: what the page is, step-by-step
+use, what it is for, and tips. Press Ctrl+K (⌘K on a Mac) or `/` anywhere to
+jump to a level, quiz, scenario or section.
+
+The site has no dependencies, makes no network requests and sets no
+cookies. To run it locally: `python3 -m http.server -d site 8000`.
+
+## What's in this repository
+
 A hands-on Kubernetes course you run on your own machine. Each of the 22
 levels deploys a deliberately broken workload into a local cluster. You
 diagnose and fix it with `kubectl`, and an automated check verifies the
 result against the live cluster.
 
-[![ci](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml/badge.svg)](https://github.com/SandeepKomal/kubernetes-k8s/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/SandeepKomal/kubernetes-k8s?quickstart=1)
-
-## Contents
-
-- [How it works](#how-it-works)
-- [Requirements](#requirements)
-- [Practise in the browser (no install)](#practise-in-the-browser-no-install)
-- [Installation](#installation)
-- [Your first level](#your-first-level)
-- [Practice dashboard](#practice-dashboard)
-- [Command reference](#command-reference)
-- [Levels](#levels)
-- [Companion site](#companion-site)
-- [Learning paths](#learning-paths)
-- [Production example](#production-example)
-- [Reference material](#reference-material)
-- [Troubleshooting](#troubleshooting)
-- [FAQ](#faq)
-- [Contributing](#contributing)
-- [License](#license)
-
-## How it works
+### How it works
 
 1. `./nimbus start <n>` creates a namespace (`nimbus-NN`) and deploys a
    workload with one or more faults in it.
@@ -52,7 +93,9 @@ Every level is tested in CI. For each one, a fresh kind cluster confirms
 that the checks fail on the starting state and pass after the reference
 solution.
 
-## Requirements
+## Quick start
+
+### Requirements
 
 | Tool | Version | Purpose |
 | --- | --- | --- |
@@ -68,26 +111,7 @@ account is needed and nothing in the course incurs cost.
 Installation steps for each operating system are in
 [docs/setup.md](docs/setup.md).
 
-## Practise in the browser (no install)
-
-Select **Open in GitHub Codespaces** above. GitHub starts a cloud
-workspace with VS Code, a terminal, Docker, kind and kubectl already set
-up. In its terminal run:
-
-```bash
-./nimbus up
-./nimbus ui
-```
-
-Ctrl+click (Cmd+click on macOS) the link `./nimbus ui` prints to open the practice dashboard.
-
-Codespaces runs on the learner's own GitHub account. Personal accounts
-include a free monthly allowance, and the default spending limit of $0
-means it stops rather than charging when the allowance is used up. It
-never bills the repository owner. Stop the codespace when you finish
-(**Codespaces** menu, **Stop current codespace**) to save the allowance.
-
-## Installation
+### Installation
 
 ```bash
 git clone https://github.com/SandeepKomal/kubernetes-k8s.git
@@ -106,7 +130,7 @@ This creates a kind cluster named `k8s-nimbus` (one control-plane node and
 two workers) and switches your kubectl context to `kind-k8s-nimbus`. It
 takes one to two minutes the first time.
 
-### When you finish
+#### When you finish
 
 ```bash
 ./nimbus down
@@ -118,6 +142,25 @@ not in the cluster, so it is kept; `./nimbus up` creates a fresh cluster
 next time. The kind node image stays cached so the next `./nimbus up` is
 fast; to reclaim its disk space too, list it with `docker images kindest/node`
 and remove it with `docker image rm kindest/node:<tag>`.
+
+### Practise in the browser (no install)
+
+Select **Open in GitHub Codespaces** above. GitHub starts a cloud
+workspace with VS Code, a terminal, Docker, kind and kubectl already set
+up. In its terminal run:
+
+```bash
+./nimbus up
+./nimbus ui
+```
+
+Ctrl+click (Cmd+click on macOS) the link `./nimbus ui` prints to open the practice dashboard.
+
+Codespaces runs on the learner's own GitHub account. Personal accounts
+include a free monthly allowance, and the default spending limit of $0
+means it stops rather than charging when the allowance is used up. It
+never bills the repository owner. Stop the codespace when you finish
+(**Codespaces** menu, **Stop current codespace**) to save the allowance.
 
 ## Your first level
 
@@ -233,29 +276,6 @@ Levels are independent and can be taken in any order. The
 foundations to platform engineering, and lists what to learn next. The layout of a level folder is described
 in [labs/README.md](labs/README.md).
 
-## Companion site
-
-[`site/`](site/) is a static web application that complements the levels.
-It is published with GitHub Pages at
-<https://sandeepkomal.github.io/kubernetes-k8s/>.
-
-| Section | Description |
-| --- | --- |
-| Playground | Seventy-three simulated incidents to diagnose and fix beside a live cluster map, with kubectl, helm, curl, docker buildx, etcdctl, etcdutl, kubeadm, apt-get, trivy and ssh. Pods: ImagePullBackOff, CrashLoopBackOff, a missing ConfigMap, OOMKilled, a liveness restart loop, a slow app killed before it starts, a stuck init container, a typo in the container command, an image built for the wrong CPU architecture, a private registry without credentials, the Docker Hub pull rate limit, a ConfigMap change running Pods never saw, a Secret without the key a Pod reads, a Secret volume that does not exist, an OOMKill from a LimitRange default, a password encoded twice, nginx under a read-only root filesystem, old code still running on :latest. Scheduling and storage: Pending, a node selector, an untolerated taint, a node at its maxPods limit, required anti-affinity capping replicas, a critical Pod that needs a PriorityClass to preempt batch work, a DaemonSet missing a tainted node, a StatefulSet stuck behind its first Pod, a PVC stuck Pending, a full volume to expand, a Multi-Attach volume error during a rollout, Pods evicted by node DiskPressure. Networking: a failing readiness probe, no endpoints, a canary leaking into the stable Service, a wrong targetPort, DNS across namespaces, CoreDNS scaled to zero, Ingress 404 and 503, an Ingress path that is too exact, an Ingress rewrite that loses the path, an Ingress serving the fake TLS certificate, a Gateway API route, a LoadBalancer stuck pending on kind, a NetworkPolicy, a default-deny egress policy that breaks DNS. Security: RBAC forbidden, a new user's certificate and access, Pod Security, an admission webhook that is down, an exceeded quota. Operations: a failed Job, a suspended CronJob, a CronJob blocked by a hung Job, a bad rollout, a paused rollout, a failed Helm upgrade, a blocked drain, a Pod stuck Terminating behind a finalizer. Cluster administration: the wrong namespace, a namespace stuck Terminating, a NotReady node, a crashed kube-scheduler, expired control-plane certificates, an etcd backup and restore, a kubeadm upgrade. Cluster security: an audit log investigation, encryption at rest, a ValidatingAdmissionPolicy, an image scan, an AppArmor profile. Autoscaling: HPA and VPA |
-| Path | All levels, with progress saved in the browser |
-| Quiz | Scenario-based questions for every level and a mixed 20-question exam; right or wrong shown immediately, with the reasoning |
-| YAML X-ray | Line-by-line explanation of sample manifests, or of your own: paste one and every field is explained, risky values are flagged and missing essentials listed |
-| Troubleshoot | A reference of 58 real-world problems (Pod states, Service, Ingress and DNS errors, RBAC and admission, rollouts, autoscaling, storage, Jobs, nodes and the control plane). Paste an error to find its entry; each gives the symptom, the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and the playground scenario to practise it. Every entry and every scenario has its own link (`#fix/<id>`, `#play/<id>`) with a Copy link button, and [`problems.html`](site/problems.html) lists them all as one plain page that reads without JavaScript |
-| Cheat sheet | kubectl reference that fills in your own names, copies ready-to-run commands, and runs supported ones in the playground |
-| K8s arch | An interactive diagram of the control plane, worker nodes and add-ons. Point at a component to see what it does and how it fails; click for the commands to inspect it and the playground scenarios that break it; follow a `kubectl apply` through the cluster step by step |
-
-Every page opens with a How to use this panel: what the page is, step-by-step
-use, what it is for, and tips. Press Ctrl+K (⌘K on a Mac) or `/` anywhere to
-jump to a level, quiz, scenario or section.
-
-The site has no dependencies, makes no network requests and sets no
-cookies. To run it locally: `python3 -m http.server -d site 8000`.
-
 ## Learning paths
 
 | Goal | Suggested route |
@@ -301,7 +321,26 @@ kubectl -n shop-dev get all,pdb,hpa,networkpolicy
 All manifests are validated against the Kubernetes API schema in CI.
 Values such as `<AWS_ACCOUNT_ID>` and `<REGION>` are placeholders.
 
-### Repository layout
+## FAQ
+
+**Does this need a cloud account or cost money?**
+No. Everything runs locally in kind. Codespaces, if you choose it, uses
+your own free GitHub allowance. Only the optional EKS guide uses AWS, and
+it states the costs involved.
+
+**Can I use minikube, k3d or Docker Desktop's Kubernetes?**
+Set `NIMBUS_ANY_CONTEXT=1` and most levels will work. The project is tested
+on kind only: level 11 requires a network plugin that enforces
+NetworkPolicy, and level 12 expects at least one worker node.
+
+**Are the solutions the only correct answers?**
+No. Checks verify the resulting cluster state, not the commands you ran.
+Any fix that meets the acceptance criteria passes.
+
+**Can I use this for training at my company?**
+Yes. The project is MIT licensed. Keep the copyright notice.
+
+## Repository layout
 
 ```text
 kubernetes-k8s/
@@ -332,24 +371,7 @@ kubernetes-k8s/
 For anything else, open an [issue](https://github.com/SandeepKomal/kubernetes-k8s/issues/new/choose)
 with the output of `./nimbus check`, `kind version` and `kubectl version`.
 
-## FAQ
-
-**Does this need a cloud account or cost money?**
-No. Everything runs locally in kind. Codespaces, if you choose it, uses
-your own free GitHub allowance. Only the optional EKS guide uses AWS, and
-it states the costs involved.
-
-**Can I use minikube, k3d or Docker Desktop's Kubernetes?**
-Set `NIMBUS_ANY_CONTEXT=1` and most levels will work. The project is tested
-on kind only: level 11 requires a network plugin that enforces
-NetworkPolicy, and level 12 expects at least one worker node.
-
-**Are the solutions the only correct answers?**
-No. Checks verify the resulting cluster state, not the commands you ran.
-Any fix that meets the acceptance criteria passes.
-
-**Can I use this for training at my company?**
-Yes. The project is MIT licensed. Keep the copyright notice.
+The companion site's [Troubleshoot](https://sandeepkomal.github.io/kubernetes-k8s/#doctor) page explains real-world errors one by one, and [every error on one page](https://sandeepkomal.github.io/kubernetes-k8s/problems.html) lists them all.
 
 ## Contributing
 
@@ -363,13 +385,31 @@ All content must be original. Explanations are written for this project;
 reference the official Kubernetes documentation rather than reproducing
 other material.
 
-## License
+To run the checks locally, including the link check, see [Running the checks locally](CONTRIBUTING.md#running-the-checks-locally); for example `python3 tests/check_links.py` and `node tests/check_site_data.js`.
+
+## Security
+
+To report a vulnerability, follow [SECURITY.md](SECURITY.md): report it privately to the repository owner through GitHub rather than posting exploitable details publicly. CI lints the scripts with shellcheck, validates every manifest with kubeconform, pins GitHub Actions to commit SHAs and checks the SHA-256 of every tool it downloads; no separate security scanners run in CI.
+
+## Privacy and cost
+
+The site runs entirely in your browser: no accounts, cookies, trackers or database. Your progress stays in your own browser's storage, and `./nimbus` keeps its progress in `~/.k8s-nimbus` on your computer. The site is hosted free on GitHub Pages and the course runs on a local kind cluster at no cost; only the optional [EKS quickstart](docs/eks-quickstart.md) uses AWS, which charges for the resources it creates.
+
+## License and trademarks
 
 Released under the [MIT License](LICENSE).
-
-Maintained by [Sandeep Komal](https://github.com/SandeepKomal).
 
 Kubernetes is a registered trademark of The Linux Foundation. This is an
 independent community project, not affiliated with or endorsed by the
 Linux Foundation or the CNCF. The DevOps Nimbus Kubernetes logo is original work
 under the same MIT License.
+
+## Author and contributors
+
+**Sandeep Komal** · [github.com/SandeepKomal](https://github.com/SandeepKomal)
+
+Maintained by [Sandeep Komal](https://github.com/SandeepKomal).
+
+Built and maintained with [DevopsNimbus](https://github.com/DevopsNimbus). See everyone who has contributed in the [contributors graph](https://github.com/SandeepKomal/kubernetes-k8s/graphs/contributors).
+
+If this helped you, a ⭐ on the repository helps others find it.
