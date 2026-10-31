@@ -8,9 +8,10 @@
   --muted: #6e6e73;
   --line: #d2d2d7;
   --hair: rgba(0, 0, 0, .08);
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-soft: #e8f1fc;
+  --accent: #2072d6;
+  --accent-hover: #1a5dae;
+  --accent-2: #2072d6;
+  --accent-soft: #e6e8eb;
   --on-accent: #ffffff;
   --k8s: var(--accent);
   --ok: #1d8a3a;
@@ -39,9 +40,10 @@
     --muted: #a1a1a6;
     --line: #424245;
     --hair: rgba(255, 255, 255, .1);
-    --accent: #2997ff;
-    --accent-hover: #47a6ff;
-    --accent-soft: #0b2a4a;
+    --accent: #3884e1;
+    --accent-hover: #5b9ae6;
+    --accent-2: #3884e1;
+    --accent-soft: #212f41;
     --on-accent: #000000;
     --ok: #30d158;
     --ok-soft: #0f2e18;
@@ -617,8 +619,7 @@ kbd {
 .link-btn:hover { text-decoration: underline; }
 
 /* Architecture: a diagram whose components explain themselves. */
-:root { --arch-cp: #eef4fd; }
-@media (prefers-color-scheme: dark) { :root { --arch-cp: rgba(41, 151, 255, .1); } }
+:root { --arch-cp: color-mix(in srgb, var(--accent) 8%, transparent); }
 .arch-figure { position: relative; background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
 .arch-svg { display: block; width: 100%; height: auto; font-family: inherit; }
 .arch-panel { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
@@ -646,7 +647,7 @@ kbd {
 .arch-box.arch-addon rect { stroke-dasharray: 4 3; }
 .arch-name { fill: var(--text); font-weight: 600; text-anchor: middle; }
 .arch-short { fill: var(--muted); text-anchor: middle; }
-.arch-box:hover rect, .arch-box.is-on rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 4px 10px rgba(0, 113, 227, .18)); }
+.arch-box:hover rect, .arch-box.is-on rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--accent) 18%, transparent)); }
 .arch-box.is-near rect { stroke: var(--accent); }
 .arch-box:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
 .has-focus .arch-box:not(.is-on):not(.is-near) { opacity: .4; }
@@ -713,12 +714,12 @@ kbd {
 .eng-uptime { display: flex; gap: 2px; height: 96px; margin-top: 14px; }
 .eng-30 { display: none; }
 .eng-up { flex: 1; border-radius: 2px; background: var(--code-bg); }
-.eng-up.on { background: var(--ok); }
+.eng-up.on { background: var(--accent-2); }
 .eng-up-axis { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); }
 .eng-budget { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 10px; font-size: .88rem; }
 .eng-pips { display: flex; gap: 4px; }
-.eng-pips span { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--ok); }
-.eng-pips span.on { background: var(--ok); }
+.eng-pips span { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--accent-2); }
+.eng-pips span.on { background: var(--accent-2); }
 .eng-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--hair); border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); }
 .eng-stats div { background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; }
 .eng-stats b { font-size: 1.3rem; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }

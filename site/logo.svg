@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kubernetes">
   <title>Kubernetes</title>
-  <path d="M32 4.5l23.8 13.75v27.5L32 59.5 8.2 45.75v-27.5z" fill="#0066cc" stroke="#0066cc" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M32 4.5l23.8 13.75v27.5L32 59.5 8.2 45.75v-27.5z" fill="#2072d6" stroke="#2072d6" stroke-width="5" stroke-linejoin="round"/>
   <path d="M32 23v-9.5M24.2 36.5l-8.2 4.75M39.8 36.5l8.2 4.75" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
   <circle cx="32" cy="12" r="4" fill="#fff"/>
   <circle cx="14.6" cy="42" r="4" fill="#fff"/>
   <circle cx="49.4" cy="42" r="4" fill="#fff"/>
   <path d="M32 21.5l9.1 5.25v10.5L32 42.5l-9.1-5.25v-10.5z" fill="#fff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
   <path d="M32 26.5l4.8 2.75L32 32l-4.8-2.75z" fill="#9dbdf7"/>
-  <path d="M27.2 29.25L32 32v5.5l-4.8-2.75z" fill="#0066cc"/>
-  <path d="M36.8 29.25L32 32v5.5l4.8-2.75z" fill="#004c99"/>
+  <path d="M27.2 29.25L32 32v5.5l-4.8-2.75z" fill="#2072d6"/>
+  <path d="M36.8 29.25L32 32v5.5l4.8-2.75z" fill="#1a5dae"/>
 </svg>
