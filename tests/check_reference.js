@@ -14,7 +14,7 @@ require(path.join(root, "site/data.js"));
 require(path.join(root, "site/playground.js"));
 require(path.join(root, "site/reference.js"));
 const { render } = require(path.join(root, "tools/build-problems.js"));
-const Q = window.QUEST;
+const Q = window.TRACK;
 const { route, search, slug } = window.KQRef;
 const scenarioIds = window.KQSim.SCENARIOS.map((s) => s.id);
 

@@ -1,6 +1,6 @@
 # Examples
 
-Reference configurations to copy into real projects. Unlike the quest
+Reference configurations to copy into real projects. Unlike the course
 levels, nothing here is broken.
 
 | Example | What it shows |

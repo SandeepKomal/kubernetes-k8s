@@ -9,7 +9,7 @@ no cost.
 | kind | "Kubernetes in Docker": a real, conformant cluster on your laptop |
 | kubectl | The command-line client for every Kubernetes cluster |
 
-About 4 GB of free memory is enough for the 3-node quest cluster.
+About 4 GB of free memory is enough for the 3-node practice cluster.
 
 ## No install: GitHub Codespaces
 
@@ -47,20 +47,20 @@ On ARM machines replace `amd64` with `arm64`.
 ## Windows
 
 Use WSL 2 with Ubuntu and Docker Desktop's WSL integration, then follow the
-Linux steps inside WSL. `./quest` is a bash script, so run it from WSL.
+Linux steps inside WSL. `./nimbus` is a bash script, so run it from WSL.
 
 ## Check and start
 
 ```bash
-./quest doctor     # ✔ docker, kind, kubectl
-./quest up         # creates the k8s-quest cluster (1-2 minutes)
-./quest list
-./quest start 0
-./quest ui         # optional: practice dashboard in your browser (needs python3)
+./nimbus doctor     # ✔ docker, kind, kubectl
+./nimbus up         # creates the k8s-nimbus cluster (1-2 minutes)
+./nimbus list
+./nimbus start 0
+./nimbus ui         # optional: practice dashboard in your browser (needs python3)
 ```
 
-When you are done for the day, `./quest down` deletes the cluster.
-Your progress is kept in `~/.k8s-quest`.
+When you are done for the day, `./nimbus down` deletes the cluster.
+Your progress is kept in `~/.k8s-nimbus`.
 
 ## Troubleshooting the setup
 
@@ -68,7 +68,7 @@ Your progress is kept in `~/.k8s-quest`.
 | --- | --- |
 | `permission denied ... docker.sock` | Your user is not in the `docker` group yet: log out and in again |
 | `kind create cluster` hangs or nodes are `NotReady` | Give Docker more memory (4 GB+). On Linux, raise inotify limits: `sudo sysctl fs.inotify.max_user_watches=524288 fs.inotify.max_user_instances=512` |
-| `./quest` says the context is not `kind-k8s-quest` | Run `./quest up`, or `kubectl config use-context kind-k8s-quest` |
+| `./nimbus` says the context is not `kind-k8s-nimbus` | Run `./nimbus up`, or `kubectl config use-context kind-k8s-nimbus` |
 | Image pulls are slow or rate limited | Docker Hub limits anonymous pulls; `docker login` raises the limit |
 
 More detail on kind itself is in [kind-on-ubuntu.md](kind-on-ubuntu.md).

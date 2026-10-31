@@ -10,8 +10,8 @@ const root = path.resolve(__dirname, "..");
 global.window = {};
 require(path.join(root, "site/data.js"));
 require(path.join(root, "site/quiz-bank.js"));
-const Q = window.QUEST;
-const bank = window.QUEST_QUIZ_BANK;
+const Q = window.TRACK;
+const bank = window.TRACK_QUIZ_BANK;
 
 const dirs = fs.readdirSync(path.join(root, "labs")).filter((d) => /^\d\d-/.test(d)).sort();
 assert.deepStrictEqual(Q.levels.map((l) => l.slug), dirs, "site/data.js levels must match labs/ folders");

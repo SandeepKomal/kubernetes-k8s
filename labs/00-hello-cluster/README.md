@@ -17,8 +17,8 @@ the difference between *imperative* and *declarative* work.
 - [ ] It is Ready
 
 ```bash
-./quest start 0     # sets kubectl's default namespace to quest-00
-./quest check       # run as often as you like
+./nimbus start 0     # sets kubectl's default namespace to nimbus-00
+./nimbus check       # run as often as you like
 ```
 
 ## Field notes
@@ -53,7 +53,7 @@ the difference between *imperative* and *declarative* work.
 
 ## Stuck?
 
-`./quest hint` shows one hint at a time, from a gentle nudge to the answer.
+`./nimbus hint` shows one hint at a time, from a gentle nudge to the answer.
 
 ## Production lens
 

@@ -18,11 +18,11 @@ import server  # noqa: E402
 
 class KubectlArgsTest(unittest.TestCase):
     def test_adds_level_namespace_before_the_command(self):
-        self.assertEqual(server.kubectl_args("get pods", "quest-05"), ["-n", "quest-05", "get", "pods"])
+        self.assertEqual(server.kubectl_args("get pods", "nimbus-05"), ["-n", "nimbus-05", "get", "pods"])
 
     def test_namespace_never_lands_after_double_dash(self):
-        args = server.kubectl_args("exec web -- cat /etc/hostname", "quest-05")
-        self.assertEqual(args[:2], ["-n", "quest-05"])
+        args = server.kubectl_args("exec web -- cat /etc/hostname", "nimbus-05")
+        self.assertEqual(args[:2], ["-n", "nimbus-05"])
         self.assertEqual(args[-3:], ["--", "cat", "/etc/hostname"])
 
     def test_keeps_an_explicit_namespace(self):
@@ -105,7 +105,7 @@ class HttpTest(unittest.TestCase):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         headers = {}
         if token:
-            headers["X-Quest-Token"] = token
+            headers["X-Nimbus-Token"] = token
         if body is not None:
             headers["Content-Type"] = content_type
         conn.request(method, path, body=body, headers=headers)
@@ -117,7 +117,7 @@ class HttpTest(unittest.TestCase):
     def test_static_page_is_served_with_a_strict_csp(self):
         resp, data = self.request("GET", "/")
         self.assertEqual(resp.status, 200)
-        self.assertIn(b"Kubernetes Quest", data)
+        self.assertIn(b"DevOps Nimbus Kubernetes", data)
         csp = resp.getheader("Content-Security-Policy")
         self.assertIn("default-src 'self'", csp)
         self.assertIn("frame-ancestors 'none'", csp)
@@ -159,7 +159,7 @@ class HttpTest(unittest.TestCase):
                 self.assertEqual(resp.status, 404)
 
     def test_unknown_static_paths_are_not_served(self):
-        for path in ["/server.py", "/../../quest", "/index.html.bak"]:
+        for path in ["/server.py", "/../../nimbus", "/index.html.bak"]:
             with self.subTest(path=path):
                 resp, _ = self.request("GET", path)
                 self.assertEqual(resp.status, 404)
@@ -177,13 +177,13 @@ class HttpTest(unittest.TestCase):
 
     def test_malformed_bodies_get_an_answer(self):
         # A JSON array, or a negative length, once dropped the connection without a response.
-        with mock.patch.object(server, "practice_context", return_value="kind-k8s-quest"):
+        with mock.patch.object(server, "practice_context", return_value="kind-k8s-nimbus"):
             resp, data = self.request("POST", "/api/levels/00/kubectl", token="test-token", body="[]")
             self.assertEqual(resp.status, 200)
             self.assertIn("JSON object", json.loads(data)["output"])
             conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
             conn.putrequest("POST", "/api/levels/00/kubectl")
-            for k, v in {"X-Quest-Token": "test-token", "Content-Type": "application/json", "Content-Length": "-1"}.items():
+            for k, v in {"X-Nimbus-Token": "test-token", "Content-Type": "application/json", "Content-Length": "-1"}.items():
                 conn.putheader(k, v)
             conn.endheaders()
             resp = conn.getresponse()

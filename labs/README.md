@@ -1,10 +1,10 @@
-# Kubernetes Quest: the labs
+# DevOps Nimbus Kubernetes: the labs
 
 Twenty-two hands-on levels, from a first Pod to production hardening. Each one is a ticket from the on-call queue of
 **Kubelet Kitchen**, a made-up food-delivery startup, and each one starts
 with something already broken in your practice cluster.
 
-You learn a concept by fixing it, and `./quest check` tells you, check by
+You learn a concept by fixing it, and `./nimbus check` tells you, check by
 check, when you have got it right.
 
 | # | Level | You will learn |
@@ -35,17 +35,17 @@ check, when you have got it right.
 ## How a level works
 
 ```bash
-./quest start 3      # resets namespace quest-03 and breaks something in it
+./nimbus start 3      # resets namespace nimbus-03 and breaks something in it
                      # read labs/03-rollouts-and-rollbacks/README.md
-kubectl get pods     # investigate; kubectl already points at quest-03
-./quest check        # ✔ / ✘ for every acceptance criterion
-./quest hint         # stuck? hints go from a nudge to the answer
-./quest solution     # the reference solution, with comments
+kubectl get pods     # investigate; kubectl already points at nimbus-03
+./nimbus check        # ✔ / ✘ for every acceptance criterion
+./nimbus hint         # stuck? hints go from a nudge to the answer
+./nimbus solution     # the reference solution, with comments
 ```
 
 Every level is independent: start anywhere, restart any time.
 
-Prefer buttons? `./quest ui` opens a local dashboard with the mission,
+Prefer buttons? `./nimbus ui` opens a local dashboard with the mission,
 Start / Check / Hint / Solution buttons and a live view of the namespace.
 Its code is in [`ui/`](ui/).
 
@@ -60,4 +60,4 @@ Its code is in [`ui/`](ui/).
 | `solution.sh` | A reference solution; CI runs it to prove the level works |
 | `cleanup.sh` | Optional: undoes cluster-wide changes (node labels, taints) |
 
-Want to add a level? See [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-quest-level).
+Want to add a level? See [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-level).

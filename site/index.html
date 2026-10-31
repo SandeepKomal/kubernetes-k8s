@@ -6,22 +6,22 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="description" content="Learn Kubernetes by fixing a broken practice cluster: 22 hands-on levels, a browser playground of real incidents, quizzes, a YAML X-ray, a searchable reference of Kubernetes errors and fixes, and a kubectl cheat sheet.">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Kubernetes Quest">
-  <meta property="og:title" content="Kubernetes Quest: learn Kubernetes by fixing it">
+  <meta property="og:site_name" content="DevOps Nimbus">
+  <meta property="og:title" content="Kubernetes, zero to on-call · DevOps Nimbus">
   <meta property="og:description" content="Free hands-on Kubernetes course: fix real incidents in a browser playground, and look up any Kubernetes error with its cause, fix and the commands that confirm it.">
   <meta property="og:url" content="https://sandeepkomal.github.io/kubernetes-k8s/">
   <link rel="canonical" href="https://sandeepkomal.github.io/kubernetes-k8s/">
-  <title>Kubernetes Quest</title>
+  <title>Kubernetes · DevOps Nimbus</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="top">
     <div class="wrap top-inner">
-      <a class="brand" href="#path" aria-label="Kubernetes Quest home">
-        <img src="logo.svg" alt="" width="22" height="22">
-        Kubernetes Quest
+      <a class="brand" href="#path" aria-label="DevOps Nimbus Kubernetes, home">
+        <img class="mark" src="nimbus.svg" alt="" width="37" height="22">
+        DevOps Nimbus <span class="brand-track">Kubernetes</span>
       </a>
       <nav aria-label="Sections">
         <div class="mode learn" role="group" aria-label="Learn">
@@ -38,15 +38,13 @@
         </div>
       </nav>
       <button type="button" class="kbd-btn" id="palette-open" aria-label="Search the site (Ctrl+K)"><span>Search</span><kbd id="palette-key">Ctrl K</kbd></button>
-      <a class="gh" id="gh-link" href="#">GitHub</a>
     </div>
   </header>
 
   <main id="main" class="wrap">
     <section id="tab-path" class="tab">
       <div class="hero">
-        <img class="hero-logo" src="logo.svg" alt="" width="72" height="72">
-        <p class="eyebrow">Free and open source · MIT</p>
+        <p class="eyebrow"><img class="eyebrow-logo" src="logo.svg" alt="" width="20" height="20">Kubernetes · zero to on-call</p>
         <h1>Learn Kubernetes<br>by fixing it.</h1>
         <p class="sub">Twenty-two hands-on levels on your own practice cluster. Every level starts broken. You fix it, and the cluster tells you when you are right.</p>
         <div class="doors">
@@ -63,6 +61,7 @@
             <div class="door-search"><input id="door-q" type="search" placeholder="Paste an error, e.g. Back-off restarting failed container" aria-label="Paste an error" autocomplete="off" spellcheck="false"><button type="button" class="pill" id="door-go">Find the fix</button></div>
           </div>
         </div>
+        <section class="engage" id="engage" aria-label="Your learning"></section>
       </div>
 
       <section class="playground" aria-labelledby="pg-title">
@@ -114,17 +113,17 @@ git clone https://github.com/SandeepKomal/kubernetes-k8s.git
 cd kubernetes-k8s
 
 <span class="cm"># 2. Check Docker, kind and kubectl</span>
-./quest doctor
+./nimbus doctor
 
 <span class="cm"># 3. Create the cluster (1-2 minutes)</span>
-./quest up
+./nimbus up
 
 <span class="cm"># 4. Open the practice dashboard</span>
-./quest ui
+./nimbus ui
 
 <span class="cm"># 5. Done? Delete the cluster to free</span>
 <span class="cm">#    memory. Your progress is kept.</span>
-./quest down</code></pre>
+./nimbus down</code></pre>
           </div>
           <div class="card">
             <h3>In your browser</h3>
@@ -143,7 +142,7 @@ cd kubernetes-k8s
         <span id="bar-text"></span>
       </div>
       <div id="levels"></div>
-      <p class="note">Progress is saved in this browser only. Tick a level when <code>./quest check</code> passes.</p>
+      <p class="note">Progress is saved in this browser only. Tick a level when <code>./nimbus check</code> passes.</p>
     </section>
 
     <section id="tab-quiz" class="tab" hidden>
@@ -233,8 +232,8 @@ cd kubernetes-k8s
     <div class="wrap foot-grid">
       <div class="foot-brand">
         <a class="brand" href="#path">
-          <img src="logo.svg" alt="" width="28" height="28">
-          Kubernetes Quest
+          <img class="mark" src="nimbus.svg" alt="" width="47" height="28">
+          DevOps Nimbus <span class="brand-track">Kubernetes</span>
         </a>
         <p>Learn Kubernetes by fixing a broken practice cluster: hands-on levels, a playground, quizzes and references, free for everyone.</p>
         <a class="pill small-pill foot-gh" data-repo="" href="#">GitHub source code</a>
@@ -250,6 +249,7 @@ cd kubernetes-k8s
       </nav>
       <nav class="foot-col" aria-label="Project">
         <h2>Project</h2>
+        <a href="https://sandeepkomal.github.io/devops-nimbus/">All DevOps Nimbus tracks</a>
         <a data-repo="#installation" href="#">Install the course</a>
         <a data-repo="/blob/main/CONTRIBUTING.md" href="#">Contributing</a>
         <a data-repo="/issues/new/choose" href="#">Report an issue</a>
@@ -261,7 +261,7 @@ cd kubernetes-k8s
     <div class="wrap foot-base">
       <p>© 2024–2026 Sandeep Komal Pothu and contributors.</p>
       <p>Open source under the <a data-repo="/blob/main/LICENSE" href="#">MIT License</a>. Built with no trackers, no cookies and nothing loaded from other sites.</p>
-      <p>Your progress (levels, quiz scores, solved scenarios, cheat sheet names) stays in this browser and is never sent anywhere. <button type="button" class="link-btn" id="forget">Clear it</button></p>
+      <p>Your progress (levels, quiz scores, solved scenarios, score, activity days, cheat sheet names) stays in this browser and is never sent anywhere. <button type="button" class="link-btn" id="forget">Clear it</button></p>
       <p class="foot-tm">Kubernetes® is a registered trademark of The Linux Foundation. This project is independent and not affiliated with the CNCF.</p>
     </div>
   </footer>
@@ -279,5 +279,6 @@ cd kubernetes-k8s
   <script src="playground.js"></script>
   <script src="xray-explain.js"></script>
   <script src="architecture.js"></script>
+  <script src="engage.js"></script>
 </body>
 </html>

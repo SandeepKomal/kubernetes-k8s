@@ -16,12 +16,12 @@ Nothing leaves your machine.
   cheat sheet) is kept in your browser's local storage, under keys starting
   with `kq:`. "Clear it" in the page footer deletes all of it. YAML pasted
   into X-ray is explained in the page and never uploaded.
-- **`./quest`** keeps your progress in `~/.k8s-quest` on your computer;
-  `./quest reset` clears it.
+- **`./nimbus`** keeps your progress in `~/.k8s-nimbus` on your computer;
+  `./nimbus reset` clears it.
 
 ## How the local tools are protected
 
-- `./quest ui` listens on 127.0.0.1 only, and every API call needs a random
+- `./nimbus ui` listens on 127.0.0.1 only, and every API call needs a random
   token printed at start-up, so other web pages cannot drive it.
 - Its console runs `kubectl` without a shell, against the practice cluster's
   context only. It accepts a fixed list of sub-commands (no plugins) and

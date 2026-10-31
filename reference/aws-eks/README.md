@@ -1,7 +1,7 @@
 # AWS EKS notes
 
 Practical notes for running the course's ideas on Amazon EKS. Unlike the
-quest levels, these create real AWS resources, which cost money. Delete what
+course levels, these create real AWS resources, which cost money. Delete what
 you create when you finish.
 
 | Guide | Covers |

@@ -1,6 +1,6 @@
-// Question bank for the Kubernetes Quest quiz. Plain data, no logic.
+// Question bank for the DevOps Nimbus Kubernetes quiz. Plain data, no logic.
 "use strict";
-window.QUEST_QUIZ_BANK = {
+window.TRACK_QUIZ_BANK = {
   "00": [
     { q: "After `kubectl apply` creates a Pod, how does it end up running on a particular node?",
       options: [
@@ -513,7 +513,7 @@ window.QUEST_QUIZ_BANK = {
         "Lets each Pod read it only once"
       ], answer: 2,
       why: "An immutable ConfigMap cannot be edited or made mutable again; you create a new one with a new name and point Pods at it. Because it can never change, kubelets need not watch it, which matters on large clusters." },
-    { q: "A Pod is stuck in `CreateContainerConfigError`, and `describe` says `couldn't find key API_TOKEN in Secret quest-05/checkout-secrets`. The Secret exists. What is the most likely cause?",
+    { q: "A Pod is stuck in `CreateContainerConfigError`, and `describe` says `couldn't find key API_TOKEN in Secret nimbus-05/checkout-secrets`. The Secret exists. What is the most likely cause?",
       options: [
         "The Secret was created with a different key name, such as `api_token`; keys are case-sensitive",
         "The Secret's values are not base64-encoded",

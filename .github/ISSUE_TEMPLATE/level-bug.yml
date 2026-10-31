@@ -1,5 +1,5 @@
 name: A level does not work
-description: A quest level fails to start, checks pass or fail wrongly, or a hint is misleading.
+description: A course level fails to start, checks pass or fail wrongly, or a hint is misleading.
 labels: ["level", "bug"]
 body:
   - type: input
@@ -13,7 +13,7 @@ body:
     id: what
     attributes:
       label: What happened
-      description: Paste the output of `./quest check` and anything else relevant.
+      description: Paste the output of `./nimbus check` and anything else relevant.
       render: text
     validations:
       required: true

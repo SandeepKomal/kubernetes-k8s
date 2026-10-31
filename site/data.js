@@ -1,7 +1,7 @@
-// Content for the Kubernetes Quest companion site. Plain data, no logic.
+// Content for the DevOps Nimbus Kubernetes companion site. Plain data, no logic.
 "use strict";
 
-window.QUEST = {
+window.TRACK = {
   repo: "https://github.com/SandeepKomal/kubernetes-k8s",
   site: "https://sandeepkomal.github.io/kubernetes-k8s/",
 
@@ -277,16 +277,16 @@ window.QUEST = {
         "Up and down arrows bring back earlier commands. `k` works as a short form of `kubectl`. Besides kubectl the terminal understands `helm`, `curl` (from your machine), `etcdctl` and `etcdutl`, `kubeadm`, `apt-get`, `systemctl`, `trivy`, `ssh <node>`, and `ls`, `cat`, `grep` and `sed -i` for files on the control-plane node, where a scenario needs them. `&&` chains commands and `|` pipes into `grep`, `head`, `tail` or `wc -l`.",
         "Solved scenarios get a tick and are remembered in this browser. Nothing is sent anywhere.",
         "Every scenario has its own link: Copy link, beside the goal, copies it to share or bookmark.",
-        "When you have solved them all, do the real thing on your own cluster: `./quest start 0`."
+        "When you have solved them all, do the real thing on your own cluster: `./nimbus start 0`."
       ]
     },
     path: {
       what: "The full course: 22 levels in five stages, from your first Pod to a production-ready service. Every level runs on a free practice cluster on your own machine (or in GitHub Codespaces), starts broken, and checks your fix automatically.",
       steps: [
-        "Set up once with the steps under Start in two minutes: install Docker, kind and kubectl, run `./quest doctor` to check them, then `./quest up` to create the practice cluster.",
-        "Start a level with `./quest start <n>`, for example `./quest start 0`. Read the brief it prints, and the level's README on GitHub. `./quest list` shows every level and your progress.",
-        "Investigate and fix with kubectl. Run `./quest check` as often as you like; it tells you what is still wrong.",
-        "Use `./quest hint` for help, and `./quest solution` only when you have tried.",
+        "Set up once with the steps under Start in two minutes: install Docker, kind and kubectl, run `./nimbus doctor` to check them, then `./nimbus up` to create the practice cluster.",
+        "Start a level with `./nimbus start <n>`, for example `./nimbus start 0`. Read the brief it prints, and the level's README on GitHub. `./nimbus list` shows every level and your progress.",
+        "Investigate and fix with kubectl. Run `./nimbus check` as often as you like; it tells you what is still wrong.",
+        "Use `./nimbus hint` for help, and `./nimbus solution` only when you have tried.",
         "Tick a level here when you finish it. Your progress is saved in this browser."
       ],
       uses: [

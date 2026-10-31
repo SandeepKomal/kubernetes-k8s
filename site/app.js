@@ -1,8 +1,8 @@
-// Kubernetes Quest companion site. No dependencies, no network requests.
+// DevOps Nimbus Kubernetes companion site. No dependencies, no network requests.
 "use strict";
 
 (function () {
-  const Q = window.QUEST;
+  const Q = window.TRACK;
   const { route, search } = window.KQRef;
   const $ = (sel) => document.querySelector(sel);
   // Scroll an element into view, without animation for those who prefer reduced motion.
@@ -51,7 +51,6 @@
   function practise(id) { location.hash = "path"; show(); window.KQPlayground.load(id); }
 
   const levelUrl = (lv) => `${Q.repo}/tree/main/labs/${lv.slug}`;
-  $("#gh-link").href = Q.repo;
   document.querySelectorAll("[data-repo]").forEach((a) => { a.href = Q.repo + a.dataset.repo; });
   $("#cta-start").href = Q.repo + "#installation";
   $("#cta-codespaces").href = "https://codespaces.new/SandeepKomal/kubernetes-k8s?quickstart=1";
@@ -110,14 +109,14 @@
         list = h("ol.levels");
         box.append(h("h3.stage", { id: "stage-" + stage.toLowerCase().replace(/\s+/g, "-") }, stage), list);
       }
-      const id = "lv-" + lv.id;
       const isDone = done.has(lv.id);
-      list.append(h("li.level" + (isDone ? ".done" : ""), null,
+      list.append(h("li.level" + (isDone ? ".done" : ""), { id: "lv-" + lv.id },
         h("input", {
-          type: "checkbox", id, checked: isDone, "aria-label": `Mark level ${lv.id} complete`,
+          type: "checkbox", checked: isDone, "aria-label": `Mark level ${lv.id} complete`,
           onchange: (e) => {
             if (e.target.checked) done.add(lv.id); else done.delete(lv.id);
             store.set("done", [...done]);
+            if (e.target.checked) window.KQEngage.active();
             renderPath();
           }
         }),
@@ -128,7 +127,7 @@
         h("span.actions", null,
           h("a.small", { href: "#quiz", onclick: () => { $("#quiz-level").value = lv.id; renderQuiz(); } },
             lv.id in quizScores() ? `Quiz ${quizScores()[lv.id]}%` : "Quiz"),
-          h("code.cmd", null, `./quest start ${Number(lv.id)}`))
+          h("code.cmd", null, `./nimbus start ${Number(lv.id)}`))
       ));
     }
     renderStages(done);
@@ -214,7 +213,7 @@
 
   // Every question for a level: the starters in data.js plus the bank.
   function questionsFor(id) {
-    const bank = (window.QUEST_QUIZ_BANK || {})[id] || [];
+    const bank = (window.TRACK_QUIZ_BANK || {})[id] || [];
     return [...(Q.quiz[id] || []), ...bank].map((item) => ({ ...item, level: id }));
   }
 
@@ -254,6 +253,7 @@
           const all = quizScores();
           all[mode] = Math.max(all[mode] || 0, pct);
           store.set("quiz", all);
+          window.KQEngage.active();
           renderPath();
         }
         score.append(h("p.result", null,
@@ -518,7 +518,7 @@
             type: "button", title: where === "any" ? "Run it in the playground" : `Run it in the playground scenario "${titles[where]}"`,
             onclick: () => { location.hash = "path"; show(); window.KQPlayground.prefill(full, where); }
           }, "Try") : h("a.copy.lab", {
-            href: Q.repo + "#installation", title: "Needs a real cluster: run it in the free local lab (./quest up)"
+            href: Q.repo + "#installation", title: "Needs a real cluster: run it in the free local lab (./nimbus up)"
           }, "Lab"),
           copyButton(full));
         return h("li", null, h("div", null, code, h("span.muted", null, what)), actions);

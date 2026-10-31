@@ -13,7 +13,7 @@ and ClusterRoleBindings, and how to test permissions with
 
 ## Mission
 
-`auditor` (`system:serviceaccount:quest-10:auditor`) can:
+`auditor` (`system:serviceaccount:nimbus-10:auditor`) can:
 
 - [ ] `get`, `list` and `watch` Pods in this namespace
 - [ ] read Pod logs (`pods/log`)
@@ -42,9 +42,9 @@ and can **not**:
 Ask the API server instead of guessing:
 
 ```bash
-kubectl auth can-i list pods --as=system:serviceaccount:quest-10:auditor
-kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:quest-10:auditor
-kubectl auth can-i --list --as=system:serviceaccount:quest-10:auditor
+kubectl auth can-i list pods --as=system:serviceaccount:nimbus-10:auditor
+kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:nimbus-10:auditor
+kubectl auth can-i --list --as=system:serviceaccount:nimbus-10:auditor
 kubectl create role --help
 ```
 

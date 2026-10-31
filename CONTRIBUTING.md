@@ -20,14 +20,14 @@ explanations, new levels and new examples are all welcome.
 ## Running the checks locally
 
 ```bash
-shellcheck -x quest labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
+shellcheck -x nimbus labs/lib.sh labs/*/*.sh tests/*.sh .devcontainer/*.sh
 find reference labs -name '*.yaml' -not -name kind.yaml -not -path '*/app/*' -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
 python3 tests/check_links.py                # every internal link resolves
 python3 -m unittest discover -s tests      # dashboard server
 node tests/check_site_data.js               # site levels and quiz data
 node tests/check_playground.js              # playground scenarios
 node tests/check_reference.js               # deep links, Troubleshoot entries, problems.html
-./quest up
+./nimbus up
 tests/run-level.sh 6      # starts level 6, expects failure, solves it, expects success
 ```
 
@@ -41,7 +41,7 @@ Each entry needs an `id` (its `#fix/<id>` link: never rename one), a
 symptom, the exact error text, the causes, commands to confirm, a fix, how
 to prevent it, and at least one playground scenario to practise it.
 
-## Adding a quest level
+## Adding a level
 
 1. Copy an existing level folder to `labs/NN-short-name/`.
 2. `README.md`: the first line must be `# Level NN · Title`. Then the
@@ -50,7 +50,7 @@ to prevent it, and at least one playground scenario to practise it.
    commands that reveal it) and **Production lens** (how it shows up at
    work).
 3. `setup.yaml` and/or `setup.sh`: the broken starting state. Do not set
-   `metadata.namespace`; `./quest` applies everything into `quest-NN`.
+   `metadata.namespace`; `./nimbus` applies everything into `nimbus-NN`.
 4. `check.sh`: one `check "<what the learner should see>" <command>` per
    mission item, using the helpers in [`labs/lib.sh`](labs/lib.sh). Checks
    must be read-only (throwaway probe Pods are fine) and must **fail** on

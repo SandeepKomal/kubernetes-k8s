@@ -58,4 +58,4 @@ Topology spread constraints and pod anti-affinity use the same scheduler
 machinery to spread replicas across zones.
 
 > This level changes a node, which is shared by every level.
-> `./quest start` (any level) removes the label and taint again.
+> `./nimbus start` (any level) removes the label and taint again.

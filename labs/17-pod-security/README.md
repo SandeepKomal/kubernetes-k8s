@@ -47,8 +47,8 @@ the Pods would be created:
 ```bash
 kubectl get deploy,rs,pods
 kubectl describe rs -l app=payments        # FailedCreate: violates PodSecurity "restricted:latest"
-kubectl get ns quest-17 --show-labels
-kubectl label --dry-run=server --overwrite ns quest-17 pod-security.kubernetes.io/enforce=restricted
+kubectl get ns nimbus-17 --show-labels
+kubectl label --dry-run=server --overwrite ns nimbus-17 pod-security.kubernetes.io/enforce=restricted
 ```
 
 The last command is a safe way to ask "what would break if I enforced

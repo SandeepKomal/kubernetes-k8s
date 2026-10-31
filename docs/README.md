@@ -1,6 +1,6 @@
 # Guides
 
-Reference guides that go with the hands-on [quest levels](../labs/).
+Reference guides that go with the hands-on [course levels](../labs/).
 
 ## Start here
 

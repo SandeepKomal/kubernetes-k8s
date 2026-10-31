@@ -1,6 +1,6 @@
 # Reference
 
-Working examples to read and reuse. Unlike the [quest levels](../labs/),
+Working examples to read and reuse. Unlike the [course levels](../labs/),
 nothing here is broken. Every manifest is validated against the Kubernetes
 schema in CI, and the scheduling, DaemonSet and StatefulSet examples are
 deployed to a real cluster on every change.
