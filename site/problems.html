@@ -25,19 +25,25 @@
         Kubernetes Quest
       </a>
       <nav aria-label="Sections">
-        <a href="./#path">Path</a>
-        <a href="./#quiz">Quiz</a>
-        <a href="./#xray">YAML X-ray</a>
-        <a href="./#doctor" aria-current="page">Troubleshoot</a>
-        <a href="./#cheats">Cheat sheet</a>
-        <a href="./#arch">K8s arch</a>
+        <div class="mode learn" role="group" aria-label="Learn">
+          <span class="mode-k">Learn</span>
+          <a href="./#path">Path</a>
+          <a href="./#quiz">Quiz</a>
+          <a href="./#xray">YAML X-ray</a>
+          <a href="./#arch">K8s arch</a>
+        </div>
+        <div class="mode fix" role="group" aria-label="Fix">
+          <span class="mode-k">Fix</span>
+          <a href="./#doctor" aria-current="page">Troubleshoot</a>
+          <a href="./#cheats">Cheat sheet</a>
+        </div>
       </nav>
     </div>
   </header>
 
   <main id="main" class="wrap problems">
     <h1>Kubernetes errors and how to fix them</h1>
-    <p class="lede">58 problems you will meet in real clusters. Each one gives the exact error, the cause, the commands that confirm it, the fix and how to prevent it. Replace names in angle brackets with your own. To search by pasting an error, use the <a href="./#doctor">interactive reference</a>.</p>
+    <p class="lede">58 problems you will meet in real clusters. Each one gives the exact error, why it happens, the commands that confirm it, the fix and how to prevent it, then a scenario to break and fix it yourself. Replace names in angle brackets with your own. To search by pasting an error, use the <a href="./#doctor">interactive reference</a>.</p>
     <nav class="problems-toc" aria-label="Problems">
       <div>
         <h2>Pod will not start</h2>
@@ -145,7 +151,7 @@
 Error: ErrImagePull
 Back-off pulling image &quot;ngnix:1.27&quot;
 Error: ImagePullBackOff</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The node cannot download the image.</p>
         <ul>
           <li>Typo in the image name or tag</li>
@@ -167,12 +173,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.spec.containers[*].image}'</code></pr
           <li>Deploy only tags your pipeline has just pushed, and fail the pipeline if the push fails.</li>
           <li>Attach pull Secrets to the namespace's ServiceAccount, so every Pod there gets them.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/image">ImagePullBackOff</a> in the browser playground</li>
-          <li><a href="./#play/pullsecret">Private registry</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a>. <a href="./#fix/imagepullbackoff">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/image">ImagePullBackOff</a> · <a href="./#play/pullsecret">Private registry</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a> on a real cluster. <a href="./#fix/imagepullbackoff">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="createcontainerconfigerror" aria-labelledby="createcontainerconfigerror-title">
@@ -183,7 +184,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.spec.containers[*].image}'</code></pr
         <pre class="fix-error"><code>Warning  Failed  kubelet  Error: configmap &quot;menu-config&quot; not found
 Warning  Failed  kubelet  Error: couldn't find key DB_PASSWORD in Secret kitchen/db
 Warning  Failed  kubelet  Error: container has runAsNonRoot and image will run as root</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The container cannot be created because something it references is missing or invalid.</p>
         <ul>
           <li>Missing ConfigMap or Secret</li>
@@ -205,13 +206,7 @@ kubectl get configmap &lt;name&gt; -o yaml</code></pre>
           <li>Ship the ConfigMaps and Secrets in the same release as the Deployment that reads them.</li>
           <li>Mark optional references <code>optional: true</code>, and only those.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/configmap">Missing ConfigMap</a> in the browser playground</li>
-          <li><a href="./#play/secretkey">Missing Secret key</a> in the browser playground</li>
-          <li><a href="./#play/podsecurity">Pod Security</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a>. <a href="./#fix/createcontainerconfigerror">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/configmap">Missing ConfigMap</a> · <a href="./#play/secretkey">Missing Secret key</a> · <a href="./#play/podsecurity">Pod Security</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a> on a real cluster. <a href="./#fix/createcontainerconfigerror">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="starterror-128" aria-labelledby="starterror-128-title">
@@ -220,7 +215,7 @@ kubectl get configmap &lt;name&gt; -o yaml</code></pre>
         <p>The container never starts; <code>kubectl logs</code> is empty and Last State shows StartError with exit code 128.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: &quot;ngnix&quot;: executable file not found in $PATH: unknown</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The container's process could not even be started, so there is nothing to log.</p>
         <ul>
           <li>A typo in command or args (executable file not found in $PATH)</li>
@@ -241,11 +236,7 @@ kubectl get deploy &lt;name&gt; -o jsonpath='{.spec.template.spec.containers[0].
           <li>Start the image with its real command in CI before deploying it.</li>
           <li>Prefer the image's own ENTRYPOINT over overriding command in the manifest.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/cmdtypo">Wrong command</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a>. <a href="./#fix/starterror-128">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/cmdtypo">Wrong command</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a> on a real cluster. <a href="./#fix/starterror-128">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="exec-format-error" aria-labelledby="exec-format-error-title">
@@ -254,7 +245,7 @@ kubectl get deploy &lt;name&gt; -o jsonpath='{.spec.template.spec.containers[0].
         <p>The container exits at once and its only log line is exec format error.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>exec /usr/local/bin/invoice: exec format error</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The image was built for another CPU architecture than the node's.</p>
         <ul>
           <li>An image built on an Apple Silicon (arm64) laptop running on amd64 nodes, or the reverse</li>
@@ -276,11 +267,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t &lt;image&gt; --push .
           <li>Build images in CI, for every architecture you run, never from a laptop.</li>
           <li>Never push a single-architecture build over a multi-arch tag.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/arch">Wrong CPU architecture</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a>. <a href="./#fix/exec-format-error">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/arch">Wrong CPU architecture</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a> on a real cluster. <a href="./#fix/exec-format-error">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="init-container-stuck" aria-labelledby="init-container-stuck-title">
@@ -290,7 +277,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t &lt;image&gt; --push .
         <h4>Error or output</h4>
         <pre class="fix-error"><code>menu-5b8d9c6f7-tw4kp   0/1   Init:0/1                0             5m
 menu-5b8d9c6f7-tw4kp   0/1   Init:CrashLoopBackOff   4 (30s ago)   5m</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>An init container has not finished, so the app containers have not started.</p>
         <ul>
           <li>It waits for a Service or DNS name that does not exist</li>
@@ -312,11 +299,7 @@ kubectl get svc</code></pre>
           <li>Give wait loops a timeout and a log line that names what they wait for.</li>
           <li>Prefer retries in the app over init containers that block on other services.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/init">Init container</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/16-init-and-sidecar-containers">Level 16 · The menu never loads</a>. <a href="./#fix/init-container-stuck">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/init">Init container</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/16-init-and-sidecar-containers">Level 16 · The menu never loads</a> on a real cluster. <a href="./#fix/init-container-stuck">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="containercreating-stuck" aria-labelledby="containercreating-stuck-title">
@@ -326,7 +309,7 @@ kubectl get svc</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedMount  kubelet  MountVolume.SetUp failed for volume &quot;tls&quot; : secret &quot;menu-tls&quot; not found
 Warning  FailedMount  kubelet  Unable to attach or mount volumes: unmounted volumes=[tls], unattached volumes=[tls kube-api-access-8x2lp]: timed out waiting for the condition</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Stuck before the container can start, usually on volumes or networking.</p>
         <ul>
           <li>A mounted ConfigMap or Secret does not exist (FailedMount)</li>
@@ -348,12 +331,7 @@ kubectl get events --sort-by=.lastTimestamp</code></pre>
           <li>Deploy the objects a Pod mounts before, or together with, the Pod.</li>
           <li>Alert on Pods in ContainerCreating for more than a few minutes.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/secretvolume">Secret volume not found</a> in the browser playground</li>
-          <li><a href="./#play/multiattach">Multi-Attach volume</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/containercreating-stuck">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/secretvolume">Secret volume not found</a> · <a href="./#play/multiattach">Multi-Attach volume</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/containercreating-stuck">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="multi-attach" aria-labelledby="multi-attach-title">
@@ -362,7 +340,7 @@ kubectl get events --sort-by=.lastTimestamp</code></pre>
         <p>A new Pod stays in ContainerCreating during a rollout, waiting for a volume the old Pod still holds.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedAttachVolume  attachdetach-controller  Multi-Attach error for volume &quot;pvc-&lt;uid&gt;&quot; Volume is already used by pod(s) orders-6c9b7f5d4-qx8zm</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>A ReadWriteOnce volume is still attached to another node, so the new Pod cannot mount it.</p>
         <ul>
           <li>A RollingUpdate starts the new Pod before the old one, which keeps the volume</li>
@@ -384,11 +362,7 @@ kubectl patch deployment &lt;name&gt; -p '{&quot;spec&quot;:{&quot;strategy&quot
           <li>Use StatefulSets for apps that own a disk.</li>
           <li>Never share one ReadWriteOnce claim between replicas.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/multiattach">Multi-Attach volume</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a>. <a href="./#fix/multi-attach">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/multiattach">Multi-Attach volume</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a> on a real cluster. <a href="./#fix/multi-attach">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="image-pull-rate-limit" aria-labelledby="image-pull-rate-limit-title">
@@ -397,7 +371,7 @@ kubectl patch deployment &lt;name&gt; -p '{&quot;spec&quot;:{&quot;strategy&quot
         <p>Many Pods fail to pull public images at once, often during a scale-out or node upgrade.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Failed to pull image &quot;nginx:1.27&quot;: ... 429 Too Many Requests - Server message: toomanyrequests: You have reached your unauthenticated pull rate limit. https://www.docker.com/increase-rate-limit</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Docker Hub refused the pull: the anonymous rate limit for the cluster's public IP is used up.</p>
         <ul>
           <li>Many nodes behind one NAT address pulling at once (new nodes, a scale-out, an upgrade)</li>
@@ -419,11 +393,7 @@ kubectl create secret docker-registry &lt;name&gt; ... and add it to imagePullSe
           <li>Mirror the public images you use into your own registry, and reference them by that name.</li>
           <li>Use imagePullPolicy IfNotPresent with immutable tags.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/ratelimit">Docker Hub rate limit</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a>. <a href="./#fix/image-pull-rate-limit">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/ratelimit">Docker Hub rate limit</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a> on a real cluster. <a href="./#fix/image-pull-rate-limit">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="apparmor-profile-not-found" aria-labelledby="apparmor-profile-not-found-title">
@@ -432,7 +402,7 @@ kubectl create secret docker-registry &lt;name&gt; ... and add it to imagePullSe
         <p>Pods fail with CreateContainerError on some nodes and run on others.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  Failed  kubelet  Error: failed to create containerd container: apparmor profile not found k8s-deny-write</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Pod asks for a Localhost AppArmor profile that is not loaded on its node.</p>
         <ul>
           <li>The profile was loaded on some nodes only</li>
@@ -454,11 +424,7 @@ ssh &lt;node&gt; sudo apparmor_parser -q /etc/apparmor.d/&lt;profile&gt;</code><
           <li>Install profiles with the node image or a DaemonSet, so every node has them at boot.</li>
           <li>Label the nodes that have the profile, and select them, if not all do.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/apparmor">AppArmor profile</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a>. <a href="./#fix/apparmor-profile-not-found">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/apparmor">AppArmor profile</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a> on a real cluster. <a href="./#fix/apparmor-profile-not-found">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -471,7 +437,7 @@ ssh &lt;node&gt; sudo apparmor_parser -q /etc/apparmor.d/&lt;profile&gt;</code><
         <h4>Error or output</h4>
         <pre class="fix-error"><code>orders-6c9b7f5d4-qx8zm   0/1   CrashLoopBackOff   6 (2m ago)   10m
 Warning  BackOff  kubelet  Back-off restarting failed container orders in pod orders-6c9b7f5d4-qx8zm_kitchen(&lt;uid&gt;)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The container starts, exits, and is restarted with growing delays.</p>
         <ul>
           <li>The app errors on start (missing env var, bad config): read the logs</li>
@@ -495,16 +461,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.status.containerStatuses[0].lastState
           <li>Make the app fail fast with a clear message when a required setting is missing.</li>
           <li>Run the image with production-like configuration in CI, and keep maxUnavailable low so a crashing rollout never takes every replica.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/crash">CrashLoopBackOff</a> in the browser playground</li>
-          <li><a href="./#play/cmdtypo">Wrong command</a> in the browser playground</li>
-          <li><a href="./#play/arch">Wrong CPU architecture</a> in the browser playground</li>
-          <li><a href="./#play/liveness">Liveness probe</a> in the browser playground</li>
-          <li><a href="./#play/startup">Slow start killed</a> in the browser playground</li>
-          <li><a href="./#play/oom">OOMKilled</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a>. <a href="./#fix/crashloopbackoff">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/crash">CrashLoopBackOff</a> · <a href="./#play/cmdtypo">Wrong command</a> · <a href="./#play/arch">Wrong CPU architecture</a> · <a href="./#play/liveness">Liveness probe</a> · <a href="./#play/startup">Slow start killed</a> · <a href="./#play/oom">OOMKilled</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/01-crashing-pods">Level 01 · Pods that will not start</a> on a real cluster. <a href="./#fix/crashloopbackoff">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="liveness-probe-failed" aria-labelledby="liveness-probe-failed-title">
@@ -514,7 +471,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.status.containerStatuses[0].lastState
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  Unhealthy  kubelet  Liveness probe failed: Get &quot;http://10.244.1.7:8080/healthz&quot;: dial tcp 10.244.1.7:8080: connect: connection refused
 Normal   Killing    kubelet  Container web failed liveness probe, will be restarted</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The kubelet kills containers whose liveness probe fails, even when the app is fine.</p>
         <ul>
           <li>Probe on the wrong port or path</li>
@@ -537,12 +494,7 @@ kubectl get pod &lt;pod&gt; -o yaml | grep -A8 livenessProbe</code></pre>
           <li>Let liveness check only the process itself; put dependency checks in readiness.</li>
           <li>Test probes against the image locally (<code>curl localhost:&lt;port&gt;&lt;path&gt;</code>) before shipping them.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/liveness">Liveness probe</a> in the browser playground</li>
-          <li><a href="./#play/startup">Slow start killed</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/06-health-probes">Level 06 · Never ready, always restarting</a>. <a href="./#fix/liveness-probe-failed">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/liveness">Liveness probe</a> · <a href="./#play/startup">Slow start killed</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/06-health-probes">Level 06 · Never ready, always restarting</a> on a real cluster. <a href="./#fix/liveness-probe-failed">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="oomkilled" aria-labelledby="oomkilled-title">
@@ -553,7 +505,7 @@ kubectl get pod &lt;pod&gt; -o yaml | grep -A8 livenessProbe</code></pre>
         <pre class="fix-error"><code>    Last State:     Terminated
       Reason:       OOMKilled
       Exit Code:    137</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The container went over its memory limit and the kernel killed it (exit code 137).</p>
         <ul>
           <li>The memory limit is lower than the real working set</li>
@@ -577,13 +529,7 @@ kubectl describe vpa &lt;name&gt;   # if a VPA watches it, read its recommendati
           <li>Size limits from measured peaks (<code>kubectl top pod</code>, a VPA recommendation) with headroom.</li>
           <li>Alert on container restarts with reason OOMKilled, and on memory close to its limit.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/oom">OOMKilled</a> in the browser playground</li>
-          <li><a href="./#play/limitrange">OOMKilled, no limit set</a> in the browser playground</li>
-          <li><a href="./#play/vpa">VPA recommendation</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a>. <a href="./#fix/oomkilled">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/oom">OOMKilled</a> · <a href="./#play/limitrange">OOMKilled, no limit set</a> · <a href="./#play/vpa">VPA recommendation</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a> on a real cluster. <a href="./#fix/oomkilled">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="not-ready" aria-labelledby="not-ready-title">
@@ -593,7 +539,7 @@ kubectl describe vpa &lt;name&gt;   # if a VPA watches it, read its recommendati
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  Unhealthy  kubelet  Readiness probe failed: HTTP probe failed with statuscode: 404
 Warning  Unhealthy  kubelet  Readiness probe failed: Get &quot;http://10.244.2.5:8080/ready&quot;: dial tcp 10.244.2.5:8080: connect: connection refused</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The readiness probe fails, so the Pod is kept out of its Services.</p>
         <ul>
           <li>Probe path or port is wrong (404 or connection refused)</li>
@@ -615,11 +561,7 @@ kubectl logs &lt;pod&gt;   # the probe's requests show up here</code></pre>
           <li>Give every app a cheap readiness endpoint, and test it in CI.</li>
           <li>Watch for Pods that stay unready; they shrink capacity without any restart.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/probe">Readiness probe</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/06-health-probes">Level 06 · Never ready, always restarting</a>. <a href="./#fix/not-ready">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/probe">Readiness probe</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/06-health-probes">Level 06 · Never ready, always restarting</a> on a real cluster. <a href="./#fix/not-ready">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="config-not-reloaded" aria-labelledby="config-not-reloaded-title">
@@ -628,7 +570,7 @@ kubectl logs &lt;pod&gt;   # the probe's requests show up here</code></pre>
         <p>You updated a ConfigMap or Secret, but the running app still behaves the old way.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>MENU_FILE=/etc/menu/summer.json</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>A ConfigMap or Secret was updated but running Pods did not pick it up.</p>
         <ul>
           <li>Values in env or envFrom are read once, when the container starts</li>
@@ -649,11 +591,7 @@ kubectl rollout status deployment/&lt;name&gt;</code></pre>
           <li>Put a hash of the config in a Pod template annotation (Helm and Kustomize can), so a config change rolls out by itself.</li>
           <li>Or use immutable, versioned ConfigMaps (menu-config-v2) and change the reference.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/cmreload">ConfigMap not reloaded</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a>. <a href="./#fix/config-not-reloaded">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/cmreload">ConfigMap not reloaded</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a> on a real cluster. <a href="./#fix/config-not-reloaded">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="secret-encoded-twice" aria-labelledby="secret-encoded-twice-title">
@@ -662,7 +600,7 @@ kubectl rollout status deployment/&lt;name&gt;</code></pre>
         <p>The app cannot log in to its database, though the password in the Secret looks right.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>FATAL:  password authentication failed for user &quot;accounts&quot;</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The app gets a different value from the one you meant: usually encoded twice, or with a trailing newline.</p>
         <ul>
           <li>A base64 value put under stringData:, or passed to --from-literal, so Kubernetes encodes it again</li>
@@ -684,11 +622,7 @@ kubectl create secret generic &lt;name&gt; --from-literal=KEY=&lt;plain value&gt
           <li>Put plain values under stringData, base64 only under data, and use <code>echo -n</code> when encoding.</li>
           <li>Create Secrets from files or a secret manager, not by hand.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/base64twice">Secret encoded twice</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a>. <a href="./#fix/secret-encoded-twice">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/base64twice">Secret encoded twice</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/05-configmaps-and-secrets">Level 05 · Missing configuration</a> on a real cluster. <a href="./#fix/secret-encoded-twice">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="read-only-filesystem" aria-labelledby="read-only-filesystem-title">
@@ -697,7 +631,7 @@ kubectl create secret generic &lt;name&gt; --from-literal=KEY=&lt;plain value&gt
         <p>After hardening, the container exits at start with a read-only file system error.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>nginx: [emerg] mkdir() &quot;/var/cache/nginx/client_temp&quot; failed (30: Read-only file system)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The container's root filesystem is read-only (securityContext.readOnlyRootFilesystem) and the app writes to it.</p>
         <ul>
           <li>Hardening turned on for an image that writes caches, pid files or /tmp at start</li>
@@ -717,11 +651,7 @@ Mount an emptyDir at each path the app writes; keep the root read-only</code></p
           <li>Find the paths an image writes before hardening it, by running it with a read-only root locally.</li>
           <li>Prefer images built to run read-only and as non-root.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/readonlyroot">Read-only root breaks nginx</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a>. <a href="./#fix/read-only-filesystem">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/readonlyroot">Read-only root breaks nginx</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a> on a real cluster. <a href="./#fix/read-only-filesystem">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="evicted" aria-labelledby="evicted-title">
@@ -732,7 +662,7 @@ Mount an emptyDir at each path the app writes; keep the root read-only</code></p
         <pre class="fix-error"><code>Status:   Failed
 Reason:   Evicted
 Message:  The node was low on resource: ephemeral-storage.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The kubelet removed the Pod to protect the node.</p>
         <ul>
           <li>Node disk pressure, often old images filling /var/lib/containerd</li>
@@ -755,11 +685,7 @@ kubectl delete pods -A --field-selector=status.phase=Failed</code></pre>
           <li>Set requests (and ephemeral-storage limits) so critical Pods are not BestEffort.</li>
           <li>Alert on node disk use well before the kubelet's eviction threshold.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/diskpressure">Node DiskPressure</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a>. <a href="./#fix/evicted">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/diskpressure">Node DiskPressure</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a> on a real cluster. <a href="./#fix/evicted">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -772,7 +698,7 @@ kubectl delete pods -A --field-selector=status.phase=Failed</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedScheduling  default-scheduler  0/3 nodes are available: 3 Insufficient memory. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod.
 0/3 nodes are available: 1 node(s) had untolerated taint {dedicated: gpu}, 2 node(s) didn't match Pod's node affinity/selector.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The scheduler has not found a node for the Pod.</p>
         <ul>
           <li>Requests bigger than any node's free capacity (Insufficient cpu/memory)</li>
@@ -798,16 +724,7 @@ kubectl describe node &lt;node&gt; | grep Taints</code></pre>
           <li>Set requests from measured use (<code>kubectl top pods</code>, a VPA recommendation) rather than guesses.</li>
           <li>Alert on Pods that stay Pending for more than a few minutes, and on nodes running out of allocatable memory.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/pending">Pending</a> in the browser playground</li>
-          <li><a href="./#play/nodeselector">Node selector</a> in the browser playground</li>
-          <li><a href="./#play/taint">Untolerated taint</a> in the browser playground</li>
-          <li><a href="./#play/maxpods">Too many pods</a> in the browser playground</li>
-          <li><a href="./#play/pvc">PVC Pending</a> in the browser playground</li>
-          <li><a href="./#play/scheduler">Scheduler down</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a>. <a href="./#fix/pending">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/pending">Pending</a> · <a href="./#play/nodeselector">Node selector</a> · <a href="./#play/taint">Untolerated taint</a> · <a href="./#play/maxpods">Too many pods</a> · <a href="./#play/pvc">PVC Pending</a> · <a href="./#play/scheduler">Scheduler down</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a> on a real cluster. <a href="./#fix/pending">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="pending-no-events" aria-labelledby="pending-no-events-title">
@@ -817,7 +734,7 @@ kubectl describe node &lt;node&gt; | grep Taints</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Events:  &lt;none&gt;
 kube-scheduler-control-plane   0/1   CrashLoopBackOff   5 (40s ago)   3m</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>No scheduler is looking at the Pod, so nothing writes FailedScheduling.</p>
         <ul>
           <li>kube-scheduler is down: a broken static Pod manifest, a missing kubeconfig, a bad flag</li>
@@ -840,11 +757,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.spec.schedulerName}'</code></pre>
           <li>Back up the control-plane manifests before editing them, and change one thing at a time.</li>
           <li>Alert on control-plane Pods that are not Running.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/scheduler">Scheduler down</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/pending-no-events">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/scheduler">Scheduler down</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/pending-no-events">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="pending-anti-affinity" aria-labelledby="pending-anti-affinity-title">
@@ -853,7 +766,7 @@ kubectl get pod &lt;pod&gt; -o jsonpath='{.spec.schedulerName}'</code></pre>
         <p>Some replicas run, one per node, and the rest stay Pending although nodes have room.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedScheduling  default-scheduler  0/3 nodes are available: 3 node(s) didn't match pod anti-affinity rules. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Required pod anti-affinity allows only one such Pod per node (or zone), and every node already has one.</p>
         <ul>
           <li>More replicas than nodes with requiredDuringScheduling anti-affinity on kubernetes.io/hostname</li>
@@ -875,11 +788,7 @@ Use preferredDuringScheduling, or topologySpreadConstraints with whenUnsatisfiab
           <li>Use hard anti-affinity only when two replicas on one node is really unacceptable.</li>
           <li>Remember drains and node failures: a hard rule with replicas equal to nodes cannot reschedule.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/antiaffinity">Anti-affinity blocks scaling</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/12-scheduling">Level 12 · The GPU node</a>. <a href="./#fix/pending-anti-affinity">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/antiaffinity">Anti-affinity blocks scaling</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/12-scheduling">Level 12 · The GPU node</a> on a real cluster. <a href="./#fix/pending-anti-affinity">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="pending-preemption" aria-labelledby="pending-preemption-title">
@@ -888,7 +797,7 @@ Use preferredDuringScheduling, or topologySpreadConstraints with whenUnsatisfiab
         <p>An important Pod stays Pending in a full cluster while less important batch Pods keep running.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedScheduling  default-scheduler  0/3 nodes are available: 3 Insufficient cpu. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The cluster is full and the Pod's priority is no higher than anything running, so the scheduler will not evict for it.</p>
         <ul>
           <li>Critical services and batch jobs both run at the default priority 0</li>
@@ -910,11 +819,7 @@ kubectl patch deployment &lt;name&gt; -p '{&quot;spec&quot;:{&quot;template&quot
           <li>Give critical services a higher PriorityClass than batch work from day one.</li>
           <li>Use ResourceQuotas per priority class so batch work cannot fill the cluster.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/priority">Critical Pod can't schedule</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a>. <a href="./#fix/pending-preemption">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/priority">Critical Pod can't schedule</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/07-resources-and-quotas">Level 07 · Stuck in Pending</a> on a real cluster. <a href="./#fix/pending-preemption">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="pvc-pending" aria-labelledby="pvc-pending-title">
@@ -925,7 +830,7 @@ kubectl patch deployment &lt;name&gt; -p '{&quot;spec&quot;:{&quot;template&quot
         <pre class="fix-error"><code>Warning  ProvisioningFailed  persistentvolume-controller  storageclass.storage.k8s.io &quot;fast-ssd&quot; not found
 Normal   FailedBinding       persistentvolume-controller  no persistent volumes available for this claim and no storage class is set
 Normal   WaitForFirstConsumer  persistentvolume-controller  waiting for first consumer to be created before binding</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>No volume has been bound to the claim yet.</p>
         <ul>
           <li>The storageClassName does not exist, or there is no default StorageClass</li>
@@ -947,11 +852,7 @@ kubectl get pv</code></pre>
           <li>Keep one default StorageClass in every cluster, and the same class names across environments.</li>
           <li>Claims cannot change class later: choose it before the first deploy.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/pvc">PVC Pending</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a>. <a href="./#fix/pvc-pending">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/pvc">PVC Pending</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a> on a real cluster. <a href="./#fix/pvc-pending">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="no-space-left" aria-labelledby="no-space-left-title">
@@ -960,7 +861,7 @@ kubectl get pv</code></pre>
         <p>The app fails on writes and its logs end with no space left on device.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>inventory: fatal: write /data/inventory.db-wal: no space left on device</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The app filled its volume, or the node's disk, and fails on its next write.</p>
         <ul>
           <li>A PersistentVolumeClaim sized for last year's data</li>
@@ -982,11 +883,7 @@ kubectl patch pvc &lt;name&gt; -p '{&quot;spec&quot;:{&quot;resources&quot;:{&qu
           <li>Use StorageClasses with allowVolumeExpansion: true.</li>
           <li>Alert on kubelet_volume_stats_used_bytes above 80% of capacity.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/volumefull">Volume full</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a>. <a href="./#fix/no-space-left">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/volumefull">Volume full</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/08-persistent-storage">Level 08 · Data that survives</a> on a real cluster. <a href="./#fix/no-space-left">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="daemonset-missing-node" aria-labelledby="daemonset-missing-node-title">
@@ -996,7 +893,7 @@ kubectl patch pvc &lt;name&gt; -p '{&quot;spec&quot;:{&quot;resources&quot;:{&qu
         <h4>Error or output</h4>
         <pre class="fix-error"><code>NAME        DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
 log-agent   2         2         2       2            2           &lt;none&gt;          30d</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>A node agent (logs, metrics, CNI) is missing on some nodes, yet the DaemonSet looks healthy.</p>
         <ul>
           <li>The node has a taint the DaemonSet does not tolerate, so DESIRED does not even count it</li>
@@ -1018,11 +915,7 @@ kubectl get pods -l app=&lt;name&gt; -o wide</code></pre>
           <li>Give node agents tolerations for every taint you use, including control-plane ones if they belong there.</li>
           <li>Alert when a DaemonSet's DESIRED count differs from the number of nodes it should cover.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/daemonset">DaemonSet missing a node</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/19-daemonsets">Level 19 · One agent per node</a>. <a href="./#fix/daemonset-missing-node">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/daemonset">DaemonSet missing a node</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/19-daemonsets">Level 19 · One agent per node</a> on a real cluster. <a href="./#fix/daemonset-missing-node">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="statefulset-stuck" aria-labelledby="statefulset-stuck-title">
@@ -1033,7 +926,7 @@ kubectl get pods -l app=&lt;name&gt; -o wide</code></pre>
         <pre class="fix-error"><code>NAME      READY   AGE
 records   0/3     10m
 records-0   0/1   CrashLoopBackOff   5 (1m ago)   10m</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>With OrderedReady, a StatefulSet creates each Pod only after the one before is Ready, so a broken first Pod stops the rest.</p>
         <ul>
           <li>&lt;name&gt;-0 cannot start (a missing ConfigMap, a PVC, a crash)</li>
@@ -1055,11 +948,7 @@ kubectl get pvc -l app=&lt;name&gt;</code></pre>
           <li>Give StatefulSets a readiness probe that passes as soon as the Pod can serve.</li>
           <li>Test a scale-up from zero in staging.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/statefulset">StatefulSet stuck at 0</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/15-statefulsets">Level 15 · Every replica is the same, except it is not</a>. <a href="./#fix/statefulset-stuck">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/statefulset">StatefulSet stuck at 0</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/15-statefulsets">Level 15 · Every replica is the same, except it is not</a> on a real cluster. <a href="./#fix/statefulset-stuck">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -1073,7 +962,7 @@ kubectl get pvc -l app=&lt;name&gt;</code></pre>
         <pre class="fix-error"><code>Endpoints:         &lt;none&gt;
 NAME       ENDPOINTS   AGE
 menu-svc   &lt;none&gt;      2h</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Service's selector matches no Ready Pod.</p>
         <ul>
           <li>Label typo between Service selector and Pod labels</li>
@@ -1095,12 +984,7 @@ kubectl get endpointslices -l kubernetes.io/service-name=&lt;svc&gt;</code></pre
           <li>Generate the selector and the Pod labels from one value (a Helm value, a Kustomize label).</li>
           <li>Alert on Services with zero ready endpoints.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/service">No endpoints</a> in the browser playground</li>
-          <li><a href="./#play/probe">Readiness probe</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/02-labels-and-selectors">Level 02 · The Service that routes nowhere</a>. <a href="./#fix/service-no-endpoints">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/service">No endpoints</a> · <a href="./#play/probe">Readiness probe</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/02-labels-and-selectors">Level 02 · The Service that routes nowhere</a> on a real cluster. <a href="./#fix/service-no-endpoints">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="connection-refused" aria-labelledby="connection-refused-title">
@@ -1110,7 +994,7 @@ kubectl get endpointslices -l kubernetes.io/service-name=&lt;svc&gt;</code></pre
         <h4>Error or output</h4>
         <pre class="fix-error"><code>wget: can't connect to remote host (10.96.112.40): Connection refused
 wget: download timed out</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Traffic reaches the wrong port, or something blocks it.</p>
         <ul>
           <li>Refused: targetPort does not match the port the app listens on, or no endpoints</li>
@@ -1132,12 +1016,7 @@ kubectl get svc &lt;svc&gt; -o yaml | grep -A4 ports</code></pre>
           <li>Name container ports and use the name as targetPort, so a port change cannot break the Service.</li>
           <li>Add NetworkPolicies together with the allow rules each app needs, and test them in CI.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/svcport">Wrong targetPort</a> in the browser playground</li>
-          <li><a href="./#play/netpol">NetworkPolicy</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/11-network-policies">Level 11 · Everyone can reach the database</a>. <a href="./#fix/connection-refused">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/svcport">Wrong targetPort</a> · <a href="./#play/netpol">NetworkPolicy</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/11-network-policies">Level 11 · Everyone can reach the database</a> on a real cluster. <a href="./#fix/connection-refused">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="intermittent-failures" aria-labelledby="intermittent-failures-title">
@@ -1146,7 +1025,7 @@ kubectl get svc &lt;svc&gt; -o yaml | grep -A4 ports</code></pre>
         <p>The same request sometimes works and sometimes fails, or returns a different version.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Endpoints:         10.244.1.4:80,10.244.2.6:80,10.244.3.9:8081</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Service sends traffic to Pods that cannot answer, often ones it should not select at all.</p>
         <ul>
           <li>Another Deployment (a canary, an old version) carries the same labels</li>
@@ -1168,11 +1047,7 @@ kubectl set selector service &lt;svc&gt; app=&lt;app&gt;,track=stable</code></pr
           <li>Give canaries their own label (track=canary) and select it explicitly.</li>
           <li>Watch error rates per Pod, not only per Service.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/canary">Canary leaking</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/02-labels-and-selectors">Level 02 · The Service that routes nowhere</a>. <a href="./#fix/intermittent-failures">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/canary">Canary leaking</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/02-labels-and-selectors">Level 02 · The Service that routes nowhere</a> on a real cluster. <a href="./#fix/intermittent-failures">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="dns-resolution" aria-labelledby="dns-resolution-title">
@@ -1184,7 +1059,7 @@ kubectl set selector service &lt;svc&gt; app=&lt;app&gt;,track=stable</code></pr
 curl: (6) Could not resolve host: menu-svc
 ** server can't find menu-svc.kitchen.svc.cluster.local: NXDOMAIN
 ;; connection timed out; no servers could be reached</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>A Pod cannot turn a Service name into an IP address.</p>
         <ul>
           <li>Wrong name, or a Service in another namespace (use &lt;svc&gt;.&lt;namespace&gt;)</li>
@@ -1206,13 +1081,7 @@ kubectl get networkpolicy</code></pre>
           <li>Ship a DNS allow rule with every default-deny egress policy.</li>
           <li>Run at least two CoreDNS replicas with a PodDisruptionBudget.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/dns">DNS across namespaces</a> in the browser playground</li>
-          <li><a href="./#play/coredns">CoreDNS down</a> in the browser playground</li>
-          <li><a href="./#play/dnsegress">Egress lockdown breaks DNS</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a>. <a href="./#fix/dns-resolution">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/dns">DNS across namespaces</a> · <a href="./#play/coredns">CoreDNS down</a> · <a href="./#play/dnsegress">Egress lockdown breaks DNS</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a> on a real cluster. <a href="./#fix/dns-resolution">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="ingress-404-503" aria-labelledby="ingress-404-503-title">
@@ -1222,7 +1091,7 @@ kubectl get networkpolicy</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>HTTP/1.1 404 Not Found
 HTTP/1.1 503 Service Temporarily Unavailable</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The ingress controller got the request but could not route it to a working backend.</p>
         <ul>
           <li>404: no rule matches the host or path, or the wrong ingressClassName</li>
@@ -1248,14 +1117,7 @@ curl -i -H 'Host: &lt;host&gt;' http://&lt;ingress-address&gt;/</code></pre>
           <li>Test each Ingress with curl and its Host header in CI or a smoke test after deploy.</li>
           <li>Keep the Ingress, Service and Deployment in one release so names and ports stay in step.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/ingress404">Ingress 404</a> in the browser playground</li>
-          <li><a href="./#play/ingress503">Ingress 503</a> in the browser playground</li>
-          <li><a href="./#play/pathtype">Ingress path too exact</a> in the browser playground</li>
-          <li><a href="./#play/rewrite">Ingress path not rewritten</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a>. <a href="./#fix/ingress-404-503">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/ingress404">Ingress 404</a> · <a href="./#play/ingress503">Ingress 503</a> · <a href="./#play/pathtype">Ingress path too exact</a> · <a href="./#play/rewrite">Ingress path not rewritten</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a> on a real cluster. <a href="./#fix/ingress-404-503">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="ingress-fake-certificate" aria-labelledby="ingress-fake-certificate-title">
@@ -1265,7 +1127,7 @@ curl -i -H 'Host: &lt;host&gt;' http://&lt;ingress-address&gt;/</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>*  subject: O=Acme Co; CN=Kubernetes Ingress Controller Fake Certificate
 curl: (60) SSL certificate problem: self-signed certificate</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>HTTPS answers with &quot;Kubernetes Ingress Controller Fake Certificate&quot;, so clients reject it.</p>
         <ul>
           <li>The Secret named in spec.tls does not exist, or is in another namespace</li>
@@ -1288,11 +1150,7 @@ kubectl create secret tls &lt;name&gt; --cert=&lt;file.crt&gt; --key=&lt;file.ke
           <li>Issue certificates automatically (cert-manager) and alert on their expiry.</li>
           <li>Test HTTPS for each host after deploy: <code>curl -v https://&lt;host&gt;/</code>.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/ingresstls">Ingress TLS</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a>. <a href="./#fix/ingress-fake-certificate">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/ingresstls">Ingress TLS</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a> on a real cluster. <a href="./#fix/ingress-fake-certificate">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="httproute-not-accepted" aria-labelledby="httproute-not-accepted-title">
@@ -1304,7 +1162,7 @@ kubectl create secret tls &lt;name&gt; --cert=&lt;file.crt&gt; --key=&lt;file.ke
     Type:     Accepted
     Status:   False
     Reason:   NotAllowedByListeners</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The route exists, but no Gateway accepted it, so its hosts return 404.</p>
         <ul>
           <li>parentRefs names a Gateway that does not exist, or one in another namespace</li>
@@ -1326,11 +1184,7 @@ kubectl get gatewayclass</code></pre>
           <li>Check every route's Accepted condition after deploy.</li>
           <li>Document which namespaces each shared Gateway accepts routes from.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/gateway">Gateway API route</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a>. <a href="./#fix/httproute-not-accepted">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/gateway">Gateway API route</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a> on a real cluster. <a href="./#fix/httproute-not-accepted">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="loadbalancer-pending" aria-labelledby="loadbalancer-pending-title">
@@ -1340,7 +1194,7 @@ kubectl get gatewayclass</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>NAME      TYPE           CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
 shop-lb   LoadBalancer   10.96.45.12   &lt;pending&gt;     80:31380/TCP   20m</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Nothing in the cluster provisions load balancers, so the address never arrives.</p>
         <ul>
           <li>kind, minikube or bare metal without MetalLB or cloud-provider-kind</li>
@@ -1362,11 +1216,7 @@ kubectl patch svc &lt;name&gt; -p '{&quot;spec&quot;:{&quot;type&quot;:&quot;Nod
           <li>Use an Ingress or Gateway with one load balancer for many Services.</li>
           <li>Keep cloud-only Service types out of local overlays.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/lbpending">LoadBalancer pending</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a>. <a href="./#fix/loadbalancer-pending">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/lbpending">LoadBalancer pending</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/04-services-and-dns">Level 04 · Connection refused</a> on a real cluster. <a href="./#fix/loadbalancer-pending">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -1379,7 +1229,7 @@ kubectl patch svc &lt;name&gt; -p '{&quot;spec&quot;:{&quot;type&quot;:&quot;Nod
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedCreate  replicaset-controller  Error creating: pods &quot;orders-6c9b7f5d4-qx8zm&quot; is forbidden: violates PodSecurity &quot;restricted:latest&quot;: allowPrivilegeEscalation != false (container &quot;orders&quot; must set securityContext.allowPrivilegeEscalation=false)
 Warning  FailedCreate  replicaset-controller  Error creating: pods &quot;orders-6c9b7f5d4-qx8zm&quot; is forbidden: exceeded quota: kitchen-quota, requested: limits.memory=512Mi, used: limits.memory=1792Mi, limited: limits.memory=2Gi</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The ReplicaSet cannot create Pods at all (Error creating: pods ... is forbidden), so the error is on the ReplicaSet, not a Pod.</p>
         <ul>
           <li>Pod Security admission rejects the Pod (violates PodSecurity)</li>
@@ -1403,12 +1253,7 @@ kubectl get ns &lt;ns&gt; --show-labels; kubectl describe resourcequota</code></
           <li>Run <code>kubectl apply --dry-run=server</code> in CI against a namespace with the same Pod Security level and quota.</li>
           <li>Alert on Deployments whose available replicas stay below the desired count.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/podsecurity">Pod Security</a> in the browser playground</li>
-          <li><a href="./#play/quota">Quota exceeded</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a>. <a href="./#fix/replicaset-failedcreate">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/podsecurity">Pod Security</a> · <a href="./#play/quota">Quota exceeded</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/17-pod-security">Level 17 · Rejected at the door</a> on a real cluster. <a href="./#fix/replicaset-failedcreate">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="rollout-stuck" aria-labelledby="rollout-stuck-title">
@@ -1418,7 +1263,7 @@ kubectl get ns &lt;ns&gt; --show-labels; kubectl describe resourcequota</code></
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Waiting for deployment &quot;orders&quot; rollout to finish: 1 out of 3 new replicas have been updated...
 error: deployment &quot;orders&quot; exceeded its progress deadline</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>kubectl rollout status waits forever: the new Pods never become Ready.</p>
         <ul>
           <li>The new image or config is broken; old Pods keep serving</li>
@@ -1440,11 +1285,7 @@ kubectl rollout history deployment/&lt;name&gt;; kubectl rollout undo deployment
           <li>Set progressDeadlineSeconds and fail the pipeline when <code>kubectl rollout status</code> fails.</li>
           <li>Use readiness probes, so a bad version never receives traffic.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/rollout">Bad rollout</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a>. <a href="./#fix/rollout-stuck">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/rollout">Bad rollout</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a> on a real cluster. <a href="./#fix/rollout-stuck">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="rollout-paused" aria-labelledby="rollout-paused-title">
@@ -1454,7 +1295,7 @@ kubectl rollout history deployment/&lt;name&gt;; kubectl rollout undo deployment
         <h4>Error or output</h4>
         <pre class="fix-error"><code>menu   2/2   0   2   1d
   Progressing    Unknown  DeploymentPaused</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Deployment shows the new image, but no new ReplicaSet is created and the Pods keep the old one.</p>
         <ul>
           <li>Someone ran kubectl rollout pause during an incident and never resumed</li>
@@ -1475,11 +1316,7 @@ kubectl rollout resume deployment/&lt;name&gt;</code></pre>
           <li>Resume in the same runbook step that paused, and note pauses in the incident channel.</li>
           <li>Alert on Deployments paused for more than an hour.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/paused">Rollout paused</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a>. <a href="./#fix/rollout-paused">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/paused">Rollout paused</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a> on a real cluster. <a href="./#fix/rollout-paused">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="helm-release-failed" aria-labelledby="helm-release-failed-title">
@@ -1488,7 +1325,7 @@ kubectl rollout resume deployment/&lt;name&gt;</code></pre>
         <p><code>helm upgrade</code> stops with an error and <code>helm list</code> shows the release as failed.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error: UPGRADE FAILED: context deadline exceeded</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>helm upgrade or install did not finish; the release records the failed revision.</p>
         <ul>
           <li>Bad values (an image tag that does not exist, a typo in a key)</li>
@@ -1511,11 +1348,7 @@ helm rollback &lt;release&gt; &lt;good-revision&gt;</code></pre>
           <li>Run <code>helm template</code> and <code>helm lint</code> in CI, and upgrade with <code>--wait --atomic</code> so a failure rolls back on its own.</li>
           <li>Change Helm-managed objects only through Helm.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/helm">Helm failed upgrade</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/18-kustomize-overlays">Level 18 · One app, many environments</a>. <a href="./#fix/helm-release-failed">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/helm">Helm failed upgrade</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/18-kustomize-overlays">Level 18 · One app, many environments</a> on a real cluster. <a href="./#fix/helm-release-failed">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="job-backofflimitexceeded" aria-labelledby="job-backofflimitexceeded-title">
@@ -1524,7 +1357,7 @@ helm rollback &lt;release&gt; &lt;good-revision&gt;</code></pre>
         <p>The Job shows Failed, its Pods are in Error, and nothing retries any more.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  BackoffLimitExceeded  job-controller  Job has reached the specified backoff limit</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Job's Pods failed more times than backoffLimit allows, so it gave up.</p>
         <ul>
           <li>The task itself fails: read the logs of a failed Pod</li>
@@ -1546,11 +1379,7 @@ kubectl logs job/&lt;name&gt;</code></pre>
           <li>Alert on failed Jobs, and keep failed Pods (or ship their logs) so the cause can be read.</li>
           <li>Use podFailurePolicy to stop retrying errors that will never succeed.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/job">Failed Job</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/09-jobs-and-cronjobs">Level 09 · The cleanup that never ran</a>. <a href="./#fix/job-backofflimitexceeded">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/job">Failed Job</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/09-jobs-and-cronjobs">Level 09 · The cleanup that never ran</a> on a real cluster. <a href="./#fix/job-backofflimitexceeded">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="cronjob-not-running" aria-labelledby="cronjob-not-running-title">
@@ -1561,7 +1390,7 @@ kubectl logs job/&lt;name&gt;</code></pre>
         <pre class="fix-error"><code>NAME      SCHEDULE    TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDULE   AGE
 cleanup   0 2 * * *   &lt;none&gt;     True      0        12d             90d
 Warning  JobAlreadyActive  cronjob-controller  Not starting job because prior execution is running and concurrency policy is Forbid</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>No Jobs appear at the scheduled time.</p>
         <ul>
           <li>suspend: true</li>
@@ -1586,12 +1415,7 @@ kubectl create job manual-run --from=cronjob/&lt;name&gt;</code></pre>
           <li>Alert when a CronJob's last successful time is older than its schedule allows.</li>
           <li>Give every CronJob an activeDeadlineSeconds and a timeZone.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/cronjob">CronJob not running</a> in the browser playground</li>
-          <li><a href="./#play/cronhung">CronJob blocked by a hung Job</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/09-jobs-and-cronjobs">Level 09 · The cleanup that never ran</a>. <a href="./#fix/cronjob-not-running">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/cronjob">CronJob not running</a> · <a href="./#play/cronhung">CronJob blocked by a hung Job</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/09-jobs-and-cronjobs">Level 09 · The cleanup that never ran</a> on a real cluster. <a href="./#fix/cronjob-not-running">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="hpa-unknown" aria-labelledby="hpa-unknown-title">
@@ -1602,7 +1426,7 @@ kubectl create job manual-run --from=cronjob/&lt;name&gt;</code></pre>
         <pre class="fix-error"><code>menu   Deployment/menu   cpu: &lt;unknown&gt;/70%   2   6   2   5m
 Warning  FailedGetResourceMetric  horizontal-pod-autoscaler  failed to get cpu utilization: missing request for cpu in container menu of Pod menu-5b8d9c6f7-tw4kp
 unable to get metrics for resource cpu: unable to fetch metrics from resource metrics API: the server could not find the requested resource (get pods.metrics.k8s.io)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The HorizontalPodAutoscaler cannot compute utilisation, so it never scales.</p>
         <ul>
           <li>Containers have no CPU (or memory) request; utilisation is a percentage of it</li>
@@ -1624,11 +1448,7 @@ kubectl get apiservice v1beta1.metrics.k8s.io</code></pre>
           <li>Require requests on every container (a LimitRange, or an admission policy).</li>
           <li>Alert on HPAs with a ScalingActive condition of False.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/hpa">HPA not scaling</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a>. <a href="./#fix/hpa-unknown">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/hpa">HPA not scaling</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a> on a real cluster. <a href="./#fix/hpa-unknown">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="vpa-no-change" aria-labelledby="vpa-no-change-title">
@@ -1641,7 +1461,7 @@ kubectl get apiservice v1beta1.metrics.k8s.io</code></pre>
   Recommendation:
     Container Recommendations:
       Container Name:  oven</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The VerticalPodAutoscaler only reports, or its updater will not evict.</p>
         <ul>
           <li>updateMode is Off (recommend only) or Initial (new Pods only)</li>
@@ -1662,11 +1482,7 @@ kubectl get pods -n kube-system | grep vpa</code></pre>
           <li>Do not let a VPA in Auto mode and an HPA on CPU or memory control the same Deployment.</li>
           <li>Review recommendations regularly, even in Off mode, and copy them into the manifests.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/vpa">VPA recommendation</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a>. <a href="./#fix/vpa-no-change">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/vpa">VPA recommendation</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a> on a real cluster. <a href="./#fix/vpa-no-change">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="stale-image-tag" aria-labelledby="stale-image-tag-title">
@@ -1675,7 +1491,7 @@ kubectl get pods -n kube-system | grep vpa</code></pre>
         <p>You pushed a new image under the same tag, but the Pods still run the old code.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>shop: version 2.4.0</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The Pods run an older image than the one you pushed under the same tag.</p>
         <ul>
           <li>A mutable tag (latest, main) with imagePullPolicy IfNotPresent: nodes keep the image they pulled before</li>
@@ -1696,11 +1512,7 @@ kubectl set image deployment/&lt;name&gt; &lt;container&gt;=&lt;image&gt;:&lt;ve
           <li>Tag every build with a version or commit and never reuse a tag; deploy by that tag or by digest.</li>
           <li>Block :latest in production with an admission policy.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/stalelatest">Old code on :latest</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a>. <a href="./#fix/stale-image-tag">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/stalelatest">Old code on :latest</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/03-rollouts-and-rollbacks">Level 03 · A deploy went wrong</a> on a real cluster. <a href="./#fix/stale-image-tag">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="terminating-forever" aria-labelledby="terminating-forever-title">
@@ -1710,7 +1522,7 @@ kubectl set image deployment/&lt;name&gt; &lt;container&gt;=&lt;image&gt;:&lt;ve
         <h4>Error or output</h4>
         <pre class="fix-error"><code>menu-5b8d9c6f7-tw4kp   0/1   Terminating   0   3h
 [&quot;kitchen.example/cleanup&quot;]</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Deletion started but cannot finish.</p>
         <ul>
           <li>A finalizer on the object that no controller removes</li>
@@ -1733,11 +1545,7 @@ kubectl patch pod &lt;pod&gt; -p '{&quot;metadata&quot;:{&quot;finalizers&quot;:
           <li>Uninstall operators only after deleting the objects they finalize.</li>
           <li>Handle SIGTERM in the app and keep terminationGracePeriodSeconds short.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/finalizer">Stuck Terminating</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/terminating-forever">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/finalizer">Stuck Terminating</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/terminating-forever">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -1749,7 +1557,7 @@ kubectl patch pod &lt;pod&gt; -p '{&quot;metadata&quot;:{&quot;finalizers&quot;:
         <p>A user, CI job or Pod gets Forbidden from the API server for one action, while others work.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error from server (Forbidden): pods is forbidden: User &quot;system:serviceaccount:kitchen:reporter&quot; cannot list resource &quot;pods&quot; in API group &quot;&quot; in the namespace &quot;kitchen&quot;</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Authentication worked; RBAC does not allow this user or ServiceAccount to do that.</p>
         <ul>
           <li>No Role or ClusterRole grants the verb</li>
@@ -1771,12 +1579,7 @@ kubectl describe rolebinding &lt;name&gt;</code></pre>
           <li>Write Roles per app with the verbs it needs, and test them with <code>kubectl auth can-i</code> in CI.</li>
           <li>Avoid wildcard verbs and resources; they grant future resources too.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/rbac">RBAC forbidden</a> in the browser playground</li>
-          <li><a href="./#play/csr">New user access</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/10-rbac-least-privilege">Level 10 · Too much access</a>. <a href="./#fix/forbidden-403">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/rbac">RBAC forbidden</a> · <a href="./#play/csr">New user access</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/10-rbac-least-privilege">Level 10 · Too much access</a> on a real cluster. <a href="./#fix/forbidden-403">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="no-resources-found" aria-labelledby="no-resources-found-title">
@@ -1785,7 +1588,7 @@ kubectl describe rolebinding &lt;name&gt;</code></pre>
         <p>You know the Pods exist, yet <code>kubectl get pods</code> lists nothing.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>No resources found in default namespace.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The objects exist, but in another namespace than the one your context uses.</p>
         <ul>
           <li>The context's default namespace is default (or another team's)</li>
@@ -1807,11 +1610,7 @@ kubectl config set-context --current --namespace=&lt;ns&gt;</code></pre>
           <li>Show the context and namespace in your shell prompt.</li>
           <li>Set metadata.namespace in manifests, or always apply with -n, so objects land where you expect.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/context">Wrong namespace</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/00-hello-cluster">Level 00 · Hello, cluster</a>. <a href="./#fix/no-resources-found">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/context">Wrong namespace</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/00-hello-cluster">Level 00 · Hello, cluster</a> on a real cluster. <a href="./#fix/no-resources-found">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="admission-policy-denied" aria-labelledby="admission-policy-denied-title">
@@ -1820,7 +1619,7 @@ kubectl config set-context --current --namespace=&lt;ns&gt;</code></pre>
         <p>The Deployment has no Pods; its ReplicaSet shows FailedCreate from an admission policy.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning  FailedCreate  replicaset-controller  Error creating: pods &quot;orders-6c9b7f5d4-qx8zm&quot; is forbidden: ValidatingAdmissionPolicy 'allowed-registries' with binding 'allowed-registries-binding' denied request: images must come from registry.kitchen.example</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Admission rejected the Pods, so the Deployment has no Pods at all.</p>
         <ul>
           <li>The image is not from an allowed registry</li>
@@ -1843,11 +1642,7 @@ kubectl get validatingadmissionpolicybinding</code></pre>
           <li>Roll out new policies in Warn or Audit mode before Deny.</li>
           <li>Run <code>kubectl apply --dry-run=server</code> in CI, so policy denials fail the pipeline.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/registry">Untrusted registry</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a>. <a href="./#fix/admission-policy-denied">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/registry">Untrusted registry</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a> on a real cluster. <a href="./#fix/admission-policy-denied">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="webhook-failed" aria-labelledby="webhook-failed-title">
@@ -1856,7 +1651,7 @@ kubectl get validatingadmissionpolicybinding</code></pre>
         <p>Creating or updating objects fails across the cluster, with an error naming an admission webhook.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error creating: Internal error occurred: failed calling webhook &quot;validate.policy.kitchen.example&quot;: failed to call webhook: Post &quot;https://policy-webhook.policy.svc:443/validate?timeout=10s&quot;: no endpoints available for service &quot;policy-webhook&quot;</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>An admission webhook could not be reached, and its failurePolicy is Fail, so the API server refuses the request.</p>
         <ul>
           <li>The webhook's own Pods are down, and cannot be recreated because the webhook checks them too</li>
@@ -1879,11 +1674,7 @@ kubectl patch validatingwebhookconfiguration &lt;name&gt; -p '{&quot;webhooks&qu
           <li>Run webhooks with two or more replicas and a PodDisruptionBudget.</li>
           <li>Never let a webhook with failurePolicy Fail select its own namespace or kube-system.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/webhook">Admission webhook down</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a>. <a href="./#fix/webhook-failed">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/webhook">Admission webhook down</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a> on a real cluster. <a href="./#fix/webhook-failed">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="image-vulnerabilities" aria-labelledby="image-vulnerabilities-title">
@@ -1892,7 +1683,7 @@ kubectl patch validatingwebhookconfiguration &lt;name&gt; -p '{&quot;webhooks&qu
         <p>A scan of a running image reports HIGH and CRITICAL vulnerabilities.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Total: 12 (HIGH: 9, CRITICAL: 3)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>A scanner found known vulnerabilities in packages inside the image.</p>
         <ul>
           <li>An old base image</li>
@@ -1914,11 +1705,7 @@ trivy image --exit-code 1 --severity CRITICAL &lt;image&gt;   # in CI</code></pr
           <li>Fail CI on critical findings: <code>trivy image --exit-code 1 --severity CRITICAL &lt;image&gt;</code>.</li>
           <li>Rebuild images on a schedule, so base image fixes reach production.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/trivy">Vulnerable image</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a>. <a href="./#fix/image-vulnerabilities">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/trivy">Vulnerable image</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a> on a real cluster. <a href="./#fix/image-vulnerabilities">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="secrets-unencrypted" aria-labelledby="secrets-unencrypted-title">
@@ -1928,7 +1715,7 @@ trivy image --exit-code 1 --severity CRITICAL &lt;image&gt;   # in CI</code></pr
         <h4>Error or output</h4>
         <pre class="fix-error"><code>/registry/secrets/kitchen/payments-api
 k8s  v1  Secret  payments-api  kitchen  Opaque</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Secret values appear as plain text in etcd or its backups.</p>
         <ul>
           <li>No --encryption-provider-config on the API server</li>
@@ -1950,11 +1737,7 @@ kubectl get secrets -A -o json | kubectl replace -f -</code></pre>
           <li>Turn on encryption at rest when you build the cluster, and keep the key out of etcd backups.</li>
           <li>Restrict who can read etcd and its backups as tightly as the Secrets themselves.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/encryption">Encryption at rest</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a>. <a href="./#fix/secrets-unencrypted">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/encryption">Encryption at rest</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a> on a real cluster. <a href="./#fix/secrets-unencrypted">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="audit-who-deleted" aria-labelledby="audit-who-deleted-title">
@@ -1964,7 +1747,7 @@ kubectl get secrets -A -o json | kubectl replace -f -</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error from server (NotFound): secrets &quot;payments-api&quot; not found
 {&quot;kind&quot;:&quot;Event&quot;,&quot;apiVersion&quot;:&quot;audit.k8s.io/v1&quot;,&quot;level&quot;:&quot;Metadata&quot;,&quot;verb&quot;:&quot;delete&quot;,&quot;user&quot;:{&quot;username&quot;:&quot;ci&quot;},&quot;objectRef&quot;:{&quot;resource&quot;:&quot;secrets&quot;,&quot;namespace&quot;:&quot;kitchen&quot;,&quot;name&quot;:&quot;payments-api&quot;}}</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>An object changed or vanished and you need to know who did it and when.</p>
         <ul>
           <li>A person or automation with broad rights (a shared edit binding, cluster-admin)</li>
@@ -1987,11 +1770,7 @@ kubectl get rolebindings,clusterrolebindings -A -o wide</code></pre>
           <li>Turn on audit logging with a policy that records at least Metadata for Secrets and RBAC objects.</li>
           <li>Give automation its own ServiceAccounts with narrow Roles, never shared admin rights.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/audit">Audit log</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a>. <a href="./#fix/audit-who-deleted">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/audit">Audit log</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/21-boss-production-hardening">Level 21 · Final boss: ready for production</a> on a real cluster. <a href="./#fix/audit-who-deleted">Open this in the interactive reference</a>.</p>
       </article>
     </section>
 
@@ -2004,7 +1783,7 @@ kubectl get rolebindings,clusterrolebindings -A -o wide</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>worker-2   NotReady   &lt;none&gt;   40d   v1.33.1
   Ready   Unknown   NodeStatusUnknown   Kubelet stopped posting node status.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The node's kubelet stopped reporting healthy; its Pods are evicted after a timeout.</p>
         <ul>
           <li>The kubelet or container runtime stopped</li>
@@ -2028,11 +1807,7 @@ kubectl get pods -A -o wide --field-selector spec.nodeName=&lt;node&gt;</code></
           <li>Run every app with at least two replicas spread across nodes, so one node does not take it down.</li>
           <li>Alert on node conditions (Ready, MemoryPressure, DiskPressure) before the node fails.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/nodenotready">Node NotReady</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/node-notready">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/nodenotready">Node NotReady</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/node-notready">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="drain-blocked-pdb" aria-labelledby="drain-blocked-pdb-title">
@@ -2041,7 +1816,7 @@ kubectl get pods -A -o wide --field-selector spec.nodeName=&lt;node&gt;</code></
         <p><code>kubectl drain</code> repeats the same eviction error and never finishes.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>error when evicting pods/&quot;menu-5b8d9c6f7-tw4kp&quot; -n &quot;kitchen&quot; (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Cannot evict pod as it would violate the pod's disruption budget.</p>
         <ul>
           <li>minAvailable equals the replica count, so no Pod may go</li>
@@ -2063,11 +1838,7 @@ kubectl scale deployment/&lt;name&gt; --replicas=&lt;more&gt;</code></pre>
           <li>Never set minAvailable equal to the replica count, and never 1 on a single-replica app.</li>
           <li>Check <code>kubectl get pdb -A</code> for ALLOWED DISRUPTIONS 0 before maintenance.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/drain">Drain blocked</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a>. <a href="./#fix/drain-blocked-pdb">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/drain">Drain blocked</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/13-autoscaling">Level 13 · Ready for the dinner rush</a> on a real cluster. <a href="./#fix/drain-blocked-pdb">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="certificate-expired" aria-labelledby="certificate-expired-title">
@@ -2077,7 +1848,7 @@ kubectl scale deployment/&lt;name&gt; --replicas=&lt;more&gt;</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Unable to connect to the server: tls: failed to verify certificate: x509: certificate has expired or is not yet valid: current time 2026-10-30T09:14:02Z is after 2026-10-30T07:42:10Z
 error: You must be logged in to the server (Unauthorized)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>kubectl cannot connect because a control-plane or client certificate is past its end date.</p>
         <ul>
           <li>kubeadm certificates last one year and the cluster has not been upgraded in that time</li>
@@ -2100,11 +1871,7 @@ sudo cp /etc/kubernetes/admin.conf ~/.kube/config</code></pre>
           <li>Upgrade the cluster at least once a year; kubeadm renews certificates on upgrade.</li>
           <li>Alert 30 days before expiry, for example from <code>kubeadm certs check-expiration</code> in a scheduled job.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/certs">Certificates expired</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/certificate-expired">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/certs">Certificates expired</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/certificate-expired">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="kubeadm-upgrade-fails" aria-labelledby="kubeadm-upgrade-fails-title">
@@ -2116,7 +1883,7 @@ sudo cp /etc/kubernetes/admin.conf ~/.kube/config</code></pre>
 
 	- Specified version to upgrade to &quot;v1.34.1&quot; is higher than the kubeadm version &quot;v1.33.5&quot;. Upgrade kubeadm first using the tool you used to install kubeadm
 E: Held packages were changed and -y was used without --allow-change-held-packages.</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>kubeadm will not move the control plane to the version you asked for.</p>
         <ul>
           <li>The kubeadm package is older than the target: upgrade kubeadm first</li>
@@ -2140,11 +1907,7 @@ apt-mark showhold</code></pre>
           <li>Follow the fixed order: kubeadm, control plane, then each node's kubelet and kubectl.</li>
           <li>Keep the packages held, so a routine apt upgrade never changes them.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/kubeadm">kubeadm upgrade</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/kubeadm-upgrade-fails">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/kubeadm">kubeadm upgrade</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/kubeadm-upgrade-fails">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="kubelet-upgrade-notready" aria-labelledby="kubelet-upgrade-notready-title">
@@ -2154,7 +1917,7 @@ apt-mark showhold</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Warning: The unit file, source configuration file or drop-ins of kubelet.service changed on disk. Run 'systemctl daemon-reload' to reload units.
      Active: activating (auto-restart) (Result: exit-code)</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The kubelet restarted on the new version and does not register.</p>
         <ul>
           <li>The kubelet is newer than the API server: upgrade the control plane first</li>
@@ -2176,11 +1939,7 @@ sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart kubelet</code></p
           <li>Upgrade the control plane before any kubelet.</li>
           <li>Drain each node before its kubelet upgrade, and do one node at a time.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/kubeadm">kubeadm upgrade</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/kubelet-upgrade-notready">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/kubeadm">kubeadm upgrade</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/kubelet-upgrade-notready">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="etcd-snapshot-fails" aria-labelledby="etcd-snapshot-fails-title">
@@ -2190,7 +1949,7 @@ sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart kubelet</code></p
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error: context deadline exceeded
 transport: authentication handshake failed: tls: failed to verify certificate: x509: certificate signed by unknown authority</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>etcdctl cannot reach or authenticate to etcd.</p>
         <ul>
           <li>context deadline exceeded: wrong endpoint, or no client certificate</li>
@@ -2212,11 +1971,7 @@ etcdutl snapshot status &lt;file&gt; --write-out=table</code></pre>
           <li>Schedule snapshots, copy them off the node, and test a restore regularly.</li>
           <li>Alert when the newest snapshot is older than a day.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/etcd">etcd backup</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/etcd-snapshot-fails">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/etcd">etcd backup</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/etcd-snapshot-fails">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="etcd-restore" aria-labelledby="etcd-restore-title">
@@ -2226,7 +1981,7 @@ etcdutl snapshot status &lt;file&gt; --write-out=table</code></pre>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>Error: data-dir &quot;/var/lib/etcd&quot; not empty or already exists
 The connection to the server 172.18.0.2:6443 was refused - did you specify the right host or port?</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>Objects were deleted or the cluster state is damaged, and a snapshot exists.</p>
         <ul>
           <li>Restoring over /var/lib/etcd while etcd runs: corrupts it, and etcdutl refuses a non-empty directory</li>
@@ -2249,11 +2004,7 @@ kubectl get pods -A   # refused for a minute while etcd and the API server resta
           <li>Practise the restore before you need it, on a test cluster.</li>
           <li>Keep snapshots off the node, with their date in the file name.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/etcdrestore">etcd restore</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a>. <a href="./#fix/etcd-restore">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/etcdrestore">etcd restore</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/14-boss-friday-incident">Level 14 · Boss level: the Friday night incident</a> on a real cluster. <a href="./#fix/etcd-restore">Open this in the interactive reference</a>.</p>
       </article>
 
       <article class="card problem" id="namespace-terminating" aria-labelledby="namespace-terminating-title">
@@ -2262,7 +2013,7 @@ kubectl get pods -A   # refused for a minute while etcd and the API server resta
         <p>The namespace was deleted but stays Terminating, and creating it again is refused.</p>
         <h4>Error or output</h4>
         <pre class="fix-error"><code>NamespaceFinalizersRemaining   True   SomeFinalizersRemain   Some content in the namespace has finalizers remaining: backup.kitchen.example/protect in 1 resource instances</code></pre>
-        <h4>Cause</h4>
+        <h4>Why it happens</h4>
         <p>The namespace was deleted, but something inside it is still waiting for a finalizer to be removed.</p>
         <ul>
           <li>An operator was uninstalled before its custom resources, so nothing removes their finalizers</li>
@@ -2284,11 +2035,7 @@ kubectl patch &lt;kind&gt; &lt;name&gt; -n &lt;ns&gt; --type=merge -p '{&quot;me
           <li>Delete custom resources before uninstalling the operator that owns them.</li>
           <li>Remove broken APIServices (<code>kubectl get apiservice</code> shows False) so namespaces can be emptied.</li>
         </ul>
-        <h4>Practise it</h4>
-        <ul>
-          <li><a href="./#play/nsstuck">Namespace stuck Terminating</a> in the browser playground</li>
-        </ul>
-        <p class="note">On a real cluster: <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/00-hello-cluster">Level 00 · Hello, cluster</a>. <a href="./#fix/namespace-terminating">Open this in the interactive reference</a>.</p>
+        <p class="note"><strong>Now learn it:</strong> break and fix it yourself in <a href="./#play/nsstuck">Namespace stuck Terminating</a>, then take <a href="https://github.com/SandeepKomal/kubernetes-k8s/tree/main/labs/00-hello-cluster">Level 00 · Hello, cluster</a> on a real cluster. <a href="./#fix/namespace-terminating">Open this in the interactive reference</a>.</p>
       </article>
     </section>
   </main>

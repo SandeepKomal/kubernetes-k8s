@@ -338,12 +338,12 @@ window.QUEST = {
       ]
     },
     doctor: {
-      what: "A reference for the Kubernetes problems you will meet in real clusters: Pod states from `kubectl get pods`, errors from Services, Ingress, DNS and the API, and controller problems with rollouts, autoscalers, Jobs, storage and nodes. Each entry reads like a reference answer: the symptom, the exact error, the cause, the commands that confirm it, the fix, how to prevent it, and a scenario to practise it.",
+      what: "A reference for the Kubernetes problems you will meet in real clusters: Pod states from `kubectl get pods`, errors from Services, Ingress, DNS and the API, and controller problems with rollouts, autoscalers, Jobs, storage and nodes. Each entry reads like a reference answer: the symptom, the exact error, why it happens, the commands that confirm it, the fix, how to prevent it, and a scenario to break and fix it yourself.",
       steps: [
         "Run `kubectl get pods` (or reproduce the error) and note the STATUS or the message.",
         "Paste the error into the search box, or type a status (Pending), an error word (forbidden, refused, quota) or an object (hpa, pvc, ingress). Pod names and counts in a pasted error are ignored; Enter opens the best match.",
         "Run the commands under Confirm with, replacing names in angle brackets with yours, and compare what you see with the likely causes.",
-        "Fix the cause as the entry says. Practise it opens the playground scenario for that problem; the level link practises it on a real cluster."
+        "Fix the cause as the entry says. Now learn it opens the playground scenario for that problem; the level link practises it on a real cluster."
       ],
       uses: [
         "A calm checklist during an incident, when it is easy to guess instead of look.",
